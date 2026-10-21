@@ -56,12 +56,91 @@
     /* A 1px inset shadow rather than a border: it follows the rounded corners more smoothly. */
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-ink) 45%, transparent);
     border-radius: calc(var(--tile-radius, 8px) + var(--focus-pad));
-    transition: --focus-mix var(--focus-duration) cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+      --focus-mix var(--focus-duration) cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.25s ease-out;
   }
 
   @media (prefers-reduced-motion: reduce) {
     .focus-frame {
       transition: none;
+    }
+  }
+
+  /* Leaving the canvas for another page (main.ts): the chrome and the focus frame fade as the camera flies in. */
+  [data-chrome] {
+    transition: opacity 0.3s ease-out;
+  }
+  html[data-leaving] [data-chrome],
+  html[data-leaving] .focus-frame {
+    opacity: 0;
+  }
+  html[data-leaving] [data-canvas] {
+    cursor: default;
+  }
+
+  /* The focused image's caption (src/canvas/caption.ts), small at the bottom left. */
+  .focus-caption {
+    position: fixed;
+    left: max(24px, env(safe-area-inset-left));
+    bottom: max(24px, env(safe-area-inset-bottom));
+    z-index: 20;
+    max-width: min(22rem, calc(100vw - 48px));
+    color: var(--color-ink);
+    pointer-events: none;
+    user-select: none;
+  }
+  /* Each line is its own mask. */
+  .focus-caption > p {
+    overflow: hidden;
+  }
+  .focus-caption-category {
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.55;
+  }
+  .focus-caption-title {
+    margin-top: 2px;
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 500;
+  }
+  .focus-caption-alt {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 18px;
+    opacity: 0.65;
+    text-wrap: pretty;
+  }
+  /* Below the mask until shown; rising in line by line; leaving upwards, quicker, in the same order. */
+  .focus-caption > p > span {
+    display: block;
+    transform: translateY(105%);
+    opacity: 0;
+  }
+  .focus-caption[data-state="in"] > p > span {
+    transform: none;
+    opacity: 1;
+    transition:
+      transform var(--caption-in) cubic-bezier(0.22, 1, 0.36, 1) calc(var(--line) * var(--caption-stagger)),
+      opacity var(--caption-in) cubic-bezier(0.22, 1, 0.36, 1) calc(var(--line) * var(--caption-stagger));
+  }
+  .focus-caption[data-state="out"] > p > span {
+    transform: translateY(-105%);
+    opacity: 0;
+    transition:
+      transform var(--caption-out) cubic-bezier(0.55, 0, 1, 0.45) calc(var(--line) * var(--caption-out-stagger)),
+      opacity var(--caption-out) cubic-bezier(0.55, 0, 1, 0.45) calc(var(--line) * var(--caption-out-stagger));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* Fade only. */
+    .focus-caption > p > span,
+    .focus-caption[data-state] > p > span {
+      transform: none;
     }
   }
 }

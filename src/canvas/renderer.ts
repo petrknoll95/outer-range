@@ -10,6 +10,8 @@ import {
   TRAIL_LAG_TAU,
   TRAIL_MAX_OFFSET,
 } from './config';
+import type { FlightView } from './flight';
+import { flightDepth, flightView } from './flight';
 import { hash, unit } from './hash';
 import type { CellRange, CellRect, Geometry } from './layout';
 import { cellRange } from './layout';
@@ -27,7 +29,9 @@ export interface ClientImage extends WorldImage {
   webp: string;
   /** Fallback src (smallest WebP). */
   src: string;
-  /** Alt text, from the image's content entry. */
+  /** From the image's content entry: shown under the focused view, and the alt text set on every tile. */
+  title: string;
+  category: string;
   alt: string;
 }
 
@@ -104,6 +108,9 @@ const KEY_SCALE = 2 ** 26;
 const cellKey = (i: number, j: number) => (i + KEY_OFFSET) * KEY_SCALE + (j + KEY_OFFSET);
 const SALT_WEIGHT = 7;
 
+/** A tile's CSS transform: its top-left corner at (x, y) screen px, scaled about it. */
+const transform = (x: number, y: number, scale: number) => (scale === 1 ? `translate3d(${x}px, ${y}px, 0)` : `translate3d(${x}px, ${y}px, 0) scale(${scale})`);
+
 const TILE_CLASS =
   'absolute top-0 left-0 origin-top-left overflow-hidden rounded-(--tile-radius) will-change-transform [contain:strict]';
 const IMG_CLASS =
@@ -160,6 +167,9 @@ export class Renderer {
   onActiveChange: ((tile: HTMLElement | null) => void) | null = null;
   /** Called when a tile element is about to be reused for another image. */
   onRelease: ((tile: HTMLElement) => void) | null = null;
+  /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began. */
+  private flight: { slot: Slot; x: number; y: number; scale: number; opacity: number; depth: number }[] | null = null;
+  private readonly view: FlightView = { scale: 1, opacity: 1 };
 
   constructor(
     private readonly container: HTMLElement,
@@ -289,13 +299,54 @@ export class Renderer {
       slot.cssX = x;
       slot.cssY = y;
       slot.cssScale = scale;
-      slot.el.style.transform = scale === 1 ? `translate3d(${x}px, ${y}px, 0)` : `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+      slot.el.style.transform = transform(x, y, scale);
     }
     // The centremost image is active; keep the current one unless another is clearly closer.
     const current = this.activeSlot;
     if (!current || current.key < 0 || !this.byKey.has(current.key) || (nearest && nearest.distance < current.distance - ACTIVE_SWITCH_MARGIN)) {
       this.setActive(nearest);
     }
+  }
+
+  /**
+   * Start the flight out of the canvas (flight.ts) from the tiles as drawn now. Until
+   * endFlight(), draw with drawFlight() instead of step() and update().
+   */
+  beginFlight(): void {
+    const g = this.geometry;
+    if (!g) return;
+    this.flight = [];
+    for (const slot of this.active) {
+      // Off screen a tile only flies further off; leave it.
+      if (slot.cssX > g.vw || slot.cssY > g.vh || slot.cssX + slot.drawnWidth < 0 || slot.cssY + slot.drawnHeight < 0) continue;
+      const depth = flightDepth(slot.i, slot.j, this.world.seed);
+      this.flight.push({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, opacity: slot.cssOpacity, depth });
+    }
+  }
+
+  /** Draw the flight with the camera `travel` in (see flightTravel). `still`: fade only, nothing moves (reduced motion). */
+  drawFlight(travel: number, still = false): void {
+    const g = this.geometry;
+    if (!this.flight || !g) return;
+    // The vanishing point is the viewport centre: each tile's corner moves away from it as much as the tile grows.
+    const cx = g.vw / 2;
+    const cy = g.vh / 2;
+    for (const f of this.flight) {
+      const v = flightView(f.depth, travel, this.view);
+      const s = still ? 1 : v.scale;
+      f.slot.el.style.transform = transform(cx + (f.x - cx) * s, cy + (f.y - cy) * s, f.scale * s);
+      f.slot.el.style.opacity = (f.opacity * v.opacity).toFixed(3);
+    }
+  }
+
+  /** End the flight: every tile as it was drawn when it began. */
+  endFlight(): void {
+    if (!this.flight) return;
+    for (const { slot } of this.flight) {
+      slot.el.style.transform = transform(slot.cssX, slot.cssY, slot.cssScale);
+      slot.el.style.opacity = slot.cssOpacity === 1 ? '' : slot.cssOpacity.toFixed(3);
+    }
+    this.flight = null;
   }
 
   /** The active image: the one drawn nearest the viewport centre (see ACTIVE_SWITCH_MARGIN). */

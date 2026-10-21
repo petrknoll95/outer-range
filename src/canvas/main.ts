@@ -1,5 +1,7 @@
 import { gsap } from 'gsap';
-import { STEP, ZOOM_DURATION } from './config';
+import { FocusCaption } from './caption';
+import { CAPTION_ZOOM_DELAY, FLIGHT_DURATION, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, STEP, ZOOM_DURATION } from './config';
+import { flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
 import { attachInput } from './input';
@@ -27,7 +29,12 @@ physics.snapper = (x, y, z) => snapper(x, y, z);
 const renderer = new Renderer(layer, world, data.images, lens, debug);
 // The frame around the active image, on top of the tiles; it follows the active image as it changes.
 const frame = new FocusFrame(root);
-renderer.onActiveChange = (tile) => frame.focus(tile);
+// Zoomed in, the active image's category, title and alt text at the bottom left.
+const caption = new FocusCaption(document.body);
+renderer.onActiveChange = (tile) => {
+  frame.focus(tile);
+  updateCaption();
+};
 renderer.onRelease = (tile) => frame.release(tile);
 
 // How much world the no-repeat sizing counts as visible; see LENS_REPEAT_SHARE.
@@ -42,6 +49,15 @@ renderer.setGeometry(geometry);
  */
 let zoomState: 'out' | 'in' = 'out';
 let zoomIn = 1;
+
+/** Zoomed in, and far enough into the zoom that the caption shows. */
+let captionOn = false;
+let captionTimer = 0;
+
+function updateCaption(): void {
+  const active = captionOn ? renderer.activeImage() : null;
+  caption.show(active ? data.images[active.image]! : null);
+}
 
 /** 0 zoomed out to 1 zoomed in, from the actual zoom, so the fade follows the animation. */
 const focusAt = (z: number) => (zoomIn > 1 ? Math.min(1, Math.max(0, (z - 1) / (zoomIn - 1))) : 0);
@@ -92,6 +108,10 @@ function draw(vx: number, vy: number, zoomAtRest: boolean): void {
 const atRest = () => physics.isAtRest() && renderer.isAtRest();
 
 function tick(): void {
+  if (flight) {
+    stepFlight();
+    return;
+  }
   physics.advance(now());
   draw(physics.stepVx, physics.stepVy, physics.z === physics.tz);
   for (const fn of listeners) fn();
@@ -140,6 +160,19 @@ function zoomInOn(rect: CellRect | null, t: number): void {
   // Zoomed in, the view pages from image to image, one neighbour per gesture.
   physics.setPaging(geometry.pitch);
   physics.push(ZOOM_TO, t, rect.left + rect.width / 2, rect.top + rect.height / 2, zoomIn, ZOOM_DURATION);
+  revealCaption();
+}
+
+/** Show the caption once a zoom-in is nearly there (it eases out), or at once if there's no zoom to wait for. */
+function revealCaption(zooming = true): void {
+  clearTimeout(captionTimer);
+  captionTimer = window.setTimeout(
+    () => {
+      captionOn = true;
+      updateCaption();
+    },
+    zooming && !reducedMotion.matches ? ZOOM_DURATION * CAPTION_ZOOM_DELAY * 1000 : 0,
+  );
 }
 
 /** Zoom back out, keeping whatever is centred in place. */
@@ -148,6 +181,9 @@ function zoomOut(t: number): void {
   zoomState = 'out';
   physics.setPaging(0);
   physics.push(ZOOM_TO, t, physics.tx + geometry.vw / 2 / physics.tz, physics.ty + geometry.vh / 2 / physics.tz, 1, ZOOM_DURATION);
+  captionOn = false;
+  clearTimeout(captionTimer);
+  updateCaption();
 }
 
 /** Switch zoom state. Zooming in locks onto the image under (x, y), or the active one if there's none there. */
@@ -169,6 +205,7 @@ attachInput({
   tap: centreAt,
   zoom: setZoom,
   toggleZoom,
+  enabled: () => !flight,
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
 });
@@ -183,6 +220,8 @@ function toCanvas(x: number, y: number, out: { x: number; y: number }): void {
 }
 
 function relayout(): void {
+  // Mid-flight the tiles are drawn from a snapshot; catch up once back.
+  if (flight) return;
   const next = computeGeometry(root.clientWidth, root.clientHeight, world, seen);
   const dprChanged = window.devicePixelRatio !== dpr;
   dpr = window.devicePixelRatio;
@@ -228,6 +267,103 @@ document.addEventListener('visibilitychange', () => {
   else wake();
 });
 
+/**
+ * Leaving for another page (links marked `data-fly-out`): the camera flies on into the
+ * canvas, each image growing towards it at its own depth and fading (flight.ts), and the
+ * page changes on the frame the canvas is clear. If the browser brings this page back from
+ * its back/forward cache, the flight plays in reverse and browsing picks up where it was.
+ */
+interface Flight {
+  href: string;
+  start: number;
+  duration: number;
+  back: boolean;
+  /** Reduced motion: a fade, nothing moves. */
+  still: boolean;
+}
+let flight: Flight | null = null;
+
+function flyOut(href: string): void {
+  if (flight) return;
+  // Hold the camera where it is drawn; nothing else moves while the flight plays.
+  physics.halt();
+  captionOn = false;
+  clearTimeout(captionTimer);
+  updateCaption();
+  document.documentElement.dataset.leaving = '';
+  renderer.beginFlight();
+  const still = reducedMotion.matches;
+  flight = { href, start: now(), duration: still ? FLIGHT_REDUCED_DURATION : FLIGHT_DURATION, back: false, still };
+  wake();
+}
+
+function stepFlight(): void {
+  const f = flight!;
+  const u = Math.min(1, (now() - f.start) / f.duration);
+  renderer.drawFlight(flightTravel(f.back ? 1 - u : u), f.still);
+  if (u < 1) return;
+  if (!f.back) {
+    // The canvas is clear: change page on this frame. Prerendered, the new page is already there.
+    sleep();
+    location.assign(f.href);
+    return;
+  }
+  // Back where it was: browse on from exactly here.
+  renderer.endFlight();
+  flight = null;
+  relayout();
+  resettle(now());
+}
+
+/** Back from a flight: finish settling into the zoom state, on an image's centre when zoomed in. */
+function resettle(t: number): void {
+  const z = zoomState === 'in' ? zoomIn : 1;
+  const cx = physics.x + geometry.vw / 2 / physics.z;
+  const cy = physics.y + geometry.vh / 2 / physics.z;
+  if (zoomState === 'in') nearestImageCentre(world, geometry, cx, cy, nearest);
+  const [px, py] = zoomState === 'in' ? [nearest.x, nearest.y] : [cx, cy];
+  const moving = z !== physics.z || px !== cx || py !== cy;
+  if (moving) physics.push(ZOOM_TO, t, px, py, z, ZOOM_DURATION);
+  if (zoomState === 'in') revealCaption(moving);
+}
+
+window.addEventListener('pageshow', (e) => {
+  if (!e.persisted || !flight) return;
+  delete document.documentElement.dataset.leaving;
+  flight = { ...flight, start: now(), duration: flight.still ? FLIGHT_REDUCED_DURATION : FLIGHT_RETURN_DURATION, back: true };
+  wake();
+});
+
+/** The fly-out link an event came from, if any. */
+const flyOutLink = (e: Event) => (e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[data-fly-out]') : null);
+
+// A plain click or Enter flies there; modified clicks (new tab, new window) open the link as usual.
+document.addEventListener('click', (e) => {
+  const link = flyOutLink(e);
+  if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  prefetch(link.href);
+  flyOut(link.href);
+});
+
+// Where Speculation Rules can't prerender the page (see index.astro), fetch it early instead.
+const speculates = HTMLScriptElement.supports?.('speculationrules') ?? false;
+const prefetched = new Set<string>();
+function prefetch(href: string): void {
+  if (speculates || prefetched.has(href)) return;
+  prefetched.add(href);
+  const hint = document.createElement('link');
+  hint.rel = 'prefetch';
+  hint.href = href;
+  document.head.append(hint);
+}
+for (const type of ['pointerover', 'focusin'] as const) {
+  document.addEventListener(type, (e) => {
+    const link = flyOutLink(e);
+    if (link) prefetch(link.href);
+  });
+}
+
 // First frame now, so tiles are in place before the first paint.
 draw(0, 0, true);
 wake();
@@ -247,6 +383,8 @@ if (debug || params.has('test')) {
     zoomState: () => zoomState,
     zoomInLevel: () => zoomIn,
     zoomLimits: () => ({ min: physics.zoomMin, max: physics.zoomMax }),
+    /** Leaving (or coming back to) the canvas, or null. */
+    flight: () => (flight ? { back: flight.back } : null),
     activeImage: () => renderer.activeImage(),
     /** At rest, every image back on its grid position, and every on-screen image decoded. */
     isSettled: () => atRest() && renderer.visibleLoaded(),

@@ -1,6 +1,6 @@
 ---
 file: "e70374c7-6318-4c99-972c-5a6d82ba0bde.jpg"
-title: "oraa wordmark"
+title: "Oraa wordmark"
 category: "Logo"
 alt: "The oraa wordmark in dark green on a pale blue background."
 caption: "Primary wordmark."

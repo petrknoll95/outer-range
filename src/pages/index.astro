@@ -34,7 +34,8 @@ const images: ClientImage[] = await Promise.all(
     const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < short * 0.9), short];
     const widths = edges.map((e) => Math.round((m.width * e) / short));
     const [avif, webp] = await Promise.all([srcset(src, 'avif', widths), srcset(src, 'webp', widths)]);
-    return { aspect: m.aspect as Aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, alt: content[n]!.alt };
+    const { title, category, alt } = content[n]!;
+    return { aspect: m.aspect as Aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, title, category, alt };
   }),
 );
 
@@ -57,12 +58,30 @@ const data = JSON.stringify({ sharpEdge, images, projects } satisfies CanvasData
 
 <Layout title="Petr Knoll" description="An infinite canvas of images.">
   <!--
-    The wordmark, fixed at the top centre. White with a difference blend, so it reads on the light
-    or dark canvas and over any image passing under it. It takes no pointer events: dragging or
-    scrolling across it moves the canvas.
+    Pages the canvas flies out to (data-fly-out, see main.ts) are prerendered on hover or press,
+    so the page changes the moment the flight has cleared the screen.
   -->
-  <header class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference select-none">
+  <script
+    is:inline
+    slot="head"
+    type="speculationrules"
+    set:html={JSON.stringify({ prerender: [{ where: { selector_matches: 'a[data-fly-out]' }, eagerness: 'moderate' }] })}
+  />
+  <!--
+    The wordmark at the top centre and the About link at the top right, set alike. White with a
+    difference blend, so they read on the light or dark canvas and over any image passing under
+    them. Only the link takes pointer events: dragging or scrolling across the rest moves the canvas.
+  -->
+  <header data-chrome class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference select-none">
     <h1 class="text-2xl leading-none font-medium tracking-[-0.02em] text-white">Petr Knoll</h1>
+    <nav class="absolute inset-y-0 right-6 flex items-center">
+      <a
+        href="/about"
+        data-fly-out
+        class="pointer-events-auto rounded-sm text-2xl leading-none font-medium tracking-[-0.02em] text-white transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+        >About</a
+      >
+    </nav>
   </header>
   <main
     data-canvas

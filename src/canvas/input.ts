@@ -29,6 +29,8 @@ export interface InputOptions {
   zoom?: (direction: 1 | -1, x: number, y: number, t: number) => void;
   /** Space or Enter was pressed at time t (s): zoom into the active image, or back out. */
   toggleZoom?: (t: number) => void;
+  /** While this is false the canvas ignores input (e.g. while leaving it for another page). */
+  enabled?: () => boolean;
   /** Current on-screen pitch and viewport, px, for keyboard steps. */
   metrics: () => { pitch: number; vw: number; vh: number };
   /**
@@ -73,7 +75,7 @@ const identity = (x: number, y: number, out: { x: number; y: number }) => {
   out.y = y;
 };
 
-export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, metrics, toCanvas = identity }: InputOptions): () => void {
+export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, enabled = () => true, metrics, toCanvas = identity }: InputOptions): () => void {
   const point = { x: 0, y: 0 };
   /** Screen → canvas point. Returns a shared object: read it before the next call. */
   const canvas = (x: number, y: number) => {
@@ -123,7 +125,9 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, metric
   };
 
   const onWheel = (e: WheelEvent) => {
+    // Never the page's own scroll or zoom, even while the canvas ignores input.
     e.preventDefault();
+    if (!enabled()) return;
     let dx = e.deltaX;
     let dy = e.deltaY;
     if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
@@ -158,6 +162,7 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, metric
   };
   const onGestureChange = (e: Event) => {
     e.preventDefault();
+    if (!enabled()) return;
     const g = e as GestureEvent;
     if (g.scale > 0) {
       // Safari reports the gesture's total scale; feed in the change since the last event.
@@ -172,7 +177,7 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, metric
   };
 
   const onPointerDown = (e: PointerEvent) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (!enabled() || (e.pointerType === 'mouse' && e.button !== 0)) return;
     // One mouse/pen pointer, or up to two fingers.
     if (pointers.size >= 2 || (pointers.size === 1 && e.pointerType !== 'touch')) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -256,7 +261,7 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, metric
 
   const onKeyDown = (e: KeyboardEvent) => {
     // ctrl/⌘ +/− stay the browser's page zoom.
-    if (e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || isEditable(e.target)) return;
+    if (!enabled() || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || isEditable(e.target)) return;
     const m = metrics();
     const t = seconds(e);
     switch (e.key) {

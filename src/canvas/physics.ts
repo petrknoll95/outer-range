@@ -239,6 +239,14 @@ export class CameraPhysics {
     );
   }
 
+  /** Stop dead where the camera is drawn, dropping anything in progress or queued. */
+  halt(): void {
+    this.queueLength = 0;
+    this.glideDuration = this.zoomToDuration = 0;
+    this.scrollPending = this.pageAbsorb = this.dragging = false;
+    this.jumpTo(this.renderX, this.renderY, this.renderZ);
+  }
+
   /** Place the camera without motion. */
   jumpTo(x: number, y: number, z = this.z): void {
     this.x = this.tx = this.prevX = this.renderX = x;
