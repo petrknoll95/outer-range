@@ -20,7 +20,6 @@ const TO = '--focus-to';
  */
 export class FocusFrame {
   readonly el: HTMLDivElement;
-  private readonly label: HTMLSpanElement;
   private from: HTMLElement | null = null;
   private to: HTMLElement | null = null;
 
@@ -31,9 +30,6 @@ export class FocusFrame {
     this.el.style.setProperty('--focus-pad', `${FOCUS_FRAME_PADDING}px`);
     this.el.style.setProperty('--focus-duration', `${FOCUS_FRAME_DURATION}s`);
     this.el.hidden = true;
-    this.label = document.createElement('span');
-    this.label.className = 'focus-frame-label';
-    this.el.append(this.label);
     parent.append(this.el);
   }
 
@@ -84,12 +80,6 @@ export class FocusFrame {
     } else if (tile === this.to) {
       this.focus(null);
     }
-  }
-
-  /** Dev layer: the frame turns accent-coloured and shows `label`. */
-  setDev(on: boolean, label = ''): void {
-    this.el.toggleAttribute('data-dev', on);
-    this.label.textContent = label;
   }
 
   private name(tile: HTMLElement | null, name: string | null): void {

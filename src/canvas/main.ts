@@ -1,5 +1,4 @@
 import { gsap } from 'gsap';
-import { attachDevtools } from './devtools';
 import { STEP, ZOOM_DURATION } from './config';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
@@ -248,6 +247,7 @@ if (debug || params.has('test')) {
     zoomState: () => zoomState,
     zoomInLevel: () => zoomIn,
     zoomLimits: () => ({ min: physics.zoomMin, max: physics.zoomMax }),
+    activeImage: () => renderer.activeImage(),
     /** At rest, every image back on its grid position, and every on-screen image decoded. */
     isSettled: () => atRest() && renderer.visibleLoaded(),
     domNodes: () => root.getElementsByTagName('*').length,
@@ -261,8 +261,3 @@ if (debug || params.has('test')) {
   (window as unknown as { __canvas: typeof api }).__canvas = api;
   if (debug) import('./debug').then((m) => m.attachDebug(api));
 }
-
-// Tweak pane (top-right button) and the dev layer it toggles, which marks the active image.
-const devtools = attachDevtools({ renderer, frame });
-const testApi = (window as unknown as { __canvas?: object }).__canvas;
-if (testApi) Object.assign(testApi, { activeImage: () => renderer.activeImage(), devtools });

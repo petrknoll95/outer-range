@@ -51,9 +51,9 @@ function isEditable(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
 }
 
-/** Space and Enter on a focused button, link or the tweak pane belong to it, not the canvas. */
+/** Space and Enter on a focused button or link belong to it, not the canvas. */
 function isControl(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest('button, a[href], [data-ui]') !== null;
+  return target instanceof Element && target.closest('button, a[href]') !== null;
 }
 
 /**
@@ -123,11 +123,6 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, metric
   };
 
   const onWheel = (e: WheelEvent) => {
-    // Panels over the canvas (e.g. the dev pane) keep their own scrolling; pinching there zooms nothing.
-    if (e.target instanceof Element && e.target.closest('[data-ui]')) {
-      if (e.ctrlKey || e.metaKey) e.preventDefault();
-      return;
-    }
     e.preventDefault();
     let dx = e.deltaX;
     let dy = e.deltaY;

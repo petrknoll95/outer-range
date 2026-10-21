@@ -198,7 +198,7 @@ export const FOCUS_DISTANCE_UNIT = 300;
 export const GLIDE_EASE_OUT = 3;
 export const GLIDE_MIN_DURATION = 0.25;
 
-// ── Active image and dev layer ─────────────────────────────────────────────
+// ── Active image and focus frame ───────────────────────────────────────────
 
 /**
  * The active image is the one whose on-screen centre is nearest the viewport centre.

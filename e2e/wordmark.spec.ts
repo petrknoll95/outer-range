@@ -10,15 +10,14 @@ async function open(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as unknown as { __canvas?: Api }).__canvas?.isSettled(), null, { timeout: 30_000 });
 }
 
-test('the wordmark sits at the top centre, level with the tweaks button', async ({ page }) => {
+test('the wordmark sits at the top centre', async ({ page }) => {
   await open(page);
   const wordmark = page.getByRole('heading', { level: 1, name: 'Petr Knoll' });
   await expect(wordmark).toBeVisible();
   const box = (await wordmark.boundingBox())!;
-  const button = (await page.getByRole('button', { name: 'Tweaks' }).boundingBox())!;
   expect(box.x + box.width / 2).toBeCloseTo(1440 / 2, 0);
-  expect(box.y).toBeLessThan(40);
-  expect(Math.abs(box.y + box.height / 2 - (button.y + button.height / 2))).toBeLessThan(1);
+  // Centred on a 36 px band 16 px from the top.
+  expect(Math.abs(box.y + box.height / 2 - 34)).toBeLessThan(1);
 });
 
 test('PP Neue Montreal is the page font, and the wordmark is set in its medium weight', async ({ page }) => {

@@ -156,8 +156,6 @@ export class Renderer {
   private resetTrails = false;
   private activeSlot: Slot | null = null;
   private focus = 0;
-  /** Called after every update with the active image, e.g. to draw dev overlays on it. */
-  onDraw: ((active: ActiveImage | null) => void) | null = null;
   /** Called with the active image's tile element whenever another image becomes active. */
   onActiveChange: ((tile: HTMLElement | null) => void) | null = null;
   /** Called when a tile element is about to be reused for another image. */
@@ -298,7 +296,6 @@ export class Renderer {
     if (!current || current.key < 0 || !this.byKey.has(current.key) || (nearest && nearest.distance < current.distance - ACTIVE_SWITCH_MARGIN)) {
       this.setActive(nearest);
     }
-    this.onDraw?.(this.activeImage());
   }
 
   /** The active image: the one drawn nearest the viewport centre (see ACTIVE_SWITCH_MARGIN). */

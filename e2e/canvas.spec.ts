@@ -293,12 +293,6 @@ test('Space or Enter zooms in on the active image, and pressing again zooms back
   await page.keyboard.press(' ');
   await settled(page);
   expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('out');
-
-  // On the focused Tweaks button, Space is the button's: it opens the pane and leaves the zoom alone.
-  await page.getByRole('button', { name: 'Tweaks' }).focus();
-  await page.keyboard.press(' ');
-  await expect(page.locator('#canvas-tweaks')).toBeVisible();
-  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('out');
 });
 
 test('zoomed in, a scroll moves exactly one image in its direction, however far it goes', async ({ page }) => {
@@ -532,8 +526,8 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
   );
   console.info(`pool bound ${bound}`);
   expect(after.pool).toBeLessThanOrEqual(bound);
-  // Four nodes per tile, plus the layer and the focus frame with its label.
-  expect(after.dom).toBe(after.pool * 4 + 3);
+  // Four nodes per tile, plus the layer and the focus frame.
+  expect(after.dom).toBe(after.pool * 4 + 2);
   expect(afterHeap - baseHeap).toBeLessThan(1_000_000);
 });
 

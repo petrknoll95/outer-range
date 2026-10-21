@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FOCUS_FRAME_DURATION, FOCUS_FRAME_PADDING } from '../src/canvas/config';
+import { ACTIVE_SWITCH_MARGIN, FOCUS_FRAME_DURATION, FOCUS_FRAME_PADDING } from '../src/canvas/config';
 
 interface Rect {
   left: number;
@@ -12,6 +12,17 @@ interface Api {
   renderer: { visibleCells: () => (Rect & { i: number; j: number })[]; rectOf: (el: Element) => unknown };
   activeImage: () => (Rect & { i: number; j: number; image: number }) | null;
 }
+
+/** The on-screen tile whose drawn centre is nearest the viewport centre, the active image, and their distances. */
+const centremost = (page: Page) =>
+  page.evaluate(() => {
+    const c = (window as unknown as { __canvas: Api }).__canvas;
+    const d = (t: Rect) => Math.hypot(t.left + t.width / 2 - innerWidth / 2, t.top + t.height / 2 - innerHeight / 2);
+    const tiles = c.renderer.visibleCells();
+    const best = tiles.reduce((a, b) => (d(a) <= d(b) ? a : b));
+    const active = c.activeImage()!;
+    return { best: { i: best.i, j: best.j, d: d(best) }, active: { i: active.i, j: active.j, d: d(active) } };
+  });
 const P = FOCUS_FRAME_PADDING;
 
 async function open(page: Page): Promise<void> {
@@ -28,6 +39,36 @@ const sample = (page: Page) =>
     const f = document.querySelector('.focus-frame')!.getBoundingClientRect();
     return { frame: { left: f.left, top: f.top, width: f.width, height: f.height }, active: c.activeImage()! };
   });
+
+test('the active image is the centremost one, and follows the canvas', async ({ page }) => {
+  await open(page);
+  let c = await centremost(page);
+  expect([c.active.i, c.active.j]).toEqual([c.best.i, c.best.j]);
+  await page.mouse.move(720, 450);
+  for (const [dx, dy] of [[300, 0], [0, 240], [-170, -90], [520, 410]] as const) {
+    await page.mouse.wheel(dx, dy);
+    await settled(page);
+    c = await centremost(page);
+    // The current one only gives way once another is clearly closer.
+    expect(c.active.d).toBeLessThanOrEqual(c.best.d + ACTIVE_SWITCH_MARGIN);
+  }
+});
+
+test('clicking an image makes it the active one', async ({ page }) => {
+  await open(page);
+  const target = await page.evaluate(() => {
+    const c = (window as unknown as { __canvas: Api }).__canvas;
+    const active = c.activeImage()!;
+    const t = c.renderer
+      .visibleCells()
+      .find((t) => (t.i !== active.i || t.j !== active.j) && t.left > 40 && t.top > 40 && t.left + t.width < 1400 && t.top + t.height < 860)!;
+    return { i: t.i, j: t.j, x: t.left + t.width / 2, y: t.top + t.height / 2 };
+  });
+  await page.mouse.click(target.x, target.y);
+  await settled(page);
+  const active = (await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.activeImage()))!;
+  expect([active.i, active.j]).toEqual([target.i, target.j]);
+});
 
 test('the frame sits around the active image, a gap all round, and never takes clicks', async ({ page }) => {
   await open(page);

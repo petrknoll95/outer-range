@@ -5,9 +5,8 @@ One page: an infinite canvas of images. Astro 7, Tailwind CSS v4, GSAP (its tick
 - **Pan:** drag, scroll (trackpad in any direction), or arrow keys (Shift for a bigger step).
 - **Zoom:** two states, out and in. Pinch, ctrl/⌘ + scroll or `+` zooms in on the image under the cursor; pinching back, `−` or `0` zooms out. `Space` or `Enter` zooms in on the active image (the one in the focus frame), and pressing it again zooms back out. Zoomed in, the view pages between neighbouring images: each scroll, swipe or drag moves one image in its direction (diagonals included), always settling with that image exactly centred, and every other image fades.
 - **Click an image** to glide it to the centre.
-- **Wordmark:** "Petr Knoll" at the top centre, level with the tweaks button. It is white with a difference blend, so it reads on either theme and over images. It ignores the pointer, so the canvas drags and scrolls under it.
+- **Wordmark:** "Petr Knoll" at the top centre. It is white with a difference blend, so it reads on either theme and over images. It ignores the pointer, so the canvas drags and scrolls under it.
 - **Type:** PP Neue Montreal is the site font: Regular (400) and Medium (500) from [`src/assets/fonts`](src/assets/fonts), self-hosted through Astro's Fonts API (`astro.config.mjs`) with a metric-matched fallback, and Tailwind's `--font-sans` points at it. Only Medium, the wordmark's weight, is preloaded.
-- **Tweaks:** the round button at the top right opens a [Tweakpane](https://tweakpane.github.io/docs/) panel (loaded on first open). Its **Dev layer** toggle turns the focus frame white and labels the active image's number ([`devtools.ts`](src/canvas/devtools.ts)). The setting is remembered in the browser.
 
 Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 
