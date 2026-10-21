@@ -1,4 +1,4 @@
-import { CELLS_PER_VIEWPORT, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX } from './config';
+import { CELLS_PER_VIEWPORT, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_MAX, ZOOM_MIN, ZOOM_MIN_S_PX } from './config';
 import type { Cell, World } from './world';
 import { emptyCell } from './world';
 
@@ -41,6 +41,19 @@ export function computeGeometry(vw: number, vh: number, world: World): Geometry 
     pitch: s * PITCH,
     radius: Math.round(s * RADIUS),
     noRepeatGuaranteed: s * span.x > vw && s * span.y > vh,
+  };
+}
+
+/**
+ * Zoom range for a geometry. Zooming in stops at ZOOM_MAX or where the on-screen short
+ * edge in device pixels reaches `sharpEdge` (beyond it images go soft), whichever is
+ * first, but never below 1. Zooming out stops at ZOOM_MIN or where the short edge would
+ * shrink below ZOOM_MIN_S_PX, but never above 1.
+ */
+export function zoomLimits(g: Geometry, dpr: number, sharpEdge: number): { min: number; max: number } {
+  return {
+    min: Math.min(1, Math.max(ZOOM_MIN, ZOOM_MIN_S_PX / g.s)),
+    max: Math.max(1, Math.min(ZOOM_MAX, sharpEdge / (g.s * dpr))),
   };
 }
 

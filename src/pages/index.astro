@@ -3,7 +3,7 @@ import type { ImageMetadata } from 'astro';
 import { getImage } from 'astro:assets';
 import manifest from '../assets/placeholders/manifest.json';
 import { VARIANT_SHORT_EDGES } from '../canvas/config';
-import type { ClientImage } from '../canvas/renderer';
+import type { CanvasData, ClientImage } from '../canvas/renderer';
 import type { Aspect } from '../canvas/world';
 import Layout from '../layouts/Layout.astro';
 
@@ -20,25 +20,29 @@ const images: ClientImage[] = await Promise.all(
   manifest.map(async (m) => {
     const src = files[`../assets/placeholders/${m.file}`]!.default;
     const short = Math.min(m.width, m.height);
-    const largest = VARIANT_SHORT_EDGES[VARIANT_SHORT_EDGES.length - 1]!;
-    const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < short), ...(short < largest ? [short] : [])];
+    // Every standard size the master can supply, topped with the master itself.
+    const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < short * 0.9), short];
     const widths = edges.map((e) => Math.round((m.width * e) / short));
     const [avif, webp] = await Promise.all([srcset(src, 'avif', widths), srcset(src, 'webp', widths)]);
     return { aspect: m.aspect as Aspect, color: m.color, avif, webp, src: webp.split(' ')[0]! };
   }),
 );
 
+// Zooming in stops where images would go soft; use the short edge three quarters of them reach.
+const shortEdges = manifest.map((m) => Math.min(m.width, m.height)).sort((a, b) => a - b);
+const sharpEdge = shortEdges[Math.floor(shortEdges.length * 0.25)]!;
+
 // Inline JSON; escape '<' so no string can close the script element.
-const data = JSON.stringify(images).replace(/</g, '\\u003c');
+const data = JSON.stringify({ sharpEdge, images } satisfies CanvasData).replace(/</g, '\\u003c');
 ---
 
 <Layout title="Petr Knoll" description="An infinite canvas of images.">
   <main
     data-canvas
-    aria-label="Image canvas. Drag, scroll or use the arrow keys to move around."
+    aria-label="Image canvas. Drag, scroll or use the arrow keys to move around; pinch, ctrl-scroll or plus and minus to zoom."
     class="fixed inset-0 cursor-grab touch-none overflow-hidden select-none data-dragging:cursor-grabbing"
   >
-    <div data-canvas-layer class="absolute top-0 left-0 will-change-transform"></div>
+    <div data-canvas-layer class="absolute inset-0"></div>
   </main>
   <script is:inline type="application/json" id="canvas-data" set:html={data} />
   <script>

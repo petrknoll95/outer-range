@@ -21,7 +21,7 @@ const CACHE = here('./.cache/');
 const OUT = here('../../src/assets/placeholders/');
 
 const MIN_SHORT_EDGE = 400; // after cropping; 2x of the smallest rendered short edge
-const MAX_SHORT_EDGE = 800; // stored master size; build variants (up to 768) are derived from it
+const MAX_SHORT_EDGE = 1200; // stored master size; zooming in needs up to this, build variants are derived from it
 const MAX_EXTRA_LOSS = 0.3; // rebalancing never crops away more than this extra fraction of an image
 const DUPLICATE_DISTANCE = 8; // dHash bits; below this two images are the same picture
 const RATIOS = { landscape: 4 / 3, portrait: 3 / 4, square: 1 };
@@ -119,7 +119,7 @@ for (const p of pool) {
     .rotate()
     .resize({ width, height, fit: 'cover', position: sharp.strategy.attention })
     .toColourspace('srgb')
-    .jpeg({ quality: 88, mozjpeg: true })
+    .jpeg({ quality: 85, mozjpeg: true })
     .toBuffer();
   writeFileSync(join(OUT, file), buffer);
   const { dominant } = await sharp(buffer).stats();

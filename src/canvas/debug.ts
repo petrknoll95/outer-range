@@ -8,6 +8,7 @@ interface DebugApi {
   physics: CameraPhysics;
   renderer: Renderer;
   geometry: () => Geometry;
+  zoomLimits: () => { min: number; max: number };
   domNodes: () => number;
   onFrame: (fn: () => void) => () => void;
 }
@@ -53,16 +54,17 @@ export function attachDebug(api: DebugApi): void {
     ctx.strokeStyle = 'rgba(255, 0, 80, 0.35)';
     ctx.fillStyle = 'rgba(255, 0, 80, 0.8)';
     ctx.font = '10px ui-monospace, monospace';
+    const z = p.renderZ;
     const i0 = Math.floor(p.renderX / g.pitch) - 1;
-    const i1 = Math.ceil((p.renderX + g.vw) / g.pitch) + 1;
+    const i1 = Math.ceil((p.renderX + g.vw / z) / g.pitch) + 1;
     for (let i = i0; i <= i1; i++) {
-      const x = i * g.pitch - p.renderX;
+      const x = (i * g.pitch - p.renderX) * z;
       const st = world.columnStagger(i) * g.s;
       const j0 = Math.floor((p.renderY - st) / g.pitch) - 1;
-      const j1 = Math.ceil((p.renderY + g.vh - st) / g.pitch) + 1;
+      const j1 = Math.ceil((p.renderY + g.vh / z - st) / g.pitch) + 1;
       for (let j = j0; j <= j1; j++) {
-        const y = j * g.pitch + st - p.renderY;
-        ctx.strokeRect(x - g.pitch / 2, y - g.pitch / 2, g.pitch, g.pitch);
+        const y = (j * g.pitch + st - p.renderY) * z;
+        ctx.strokeRect(x - (g.pitch * z) / 2, y - (g.pitch * z) / 2, g.pitch * z, g.pitch * z);
         ctx.fillRect(x - 2, y - 2, 4, 4);
       }
     }
@@ -74,7 +76,8 @@ export function attachDebug(api: DebugApi): void {
       `camera   ${p.renderX.toFixed(0)}, ${p.renderY.toFixed(0)}`,
       `speed    ${Math.hypot(p.vx, p.vy).toFixed(0)} px/s ${p.dragging ? '(drag)' : ''}`,
       `S        ${g.s.toFixed(1)} px  pitch ${g.pitch.toFixed(1)}`,
-      `no-repeat ${g.noRepeatGuaranteed ? 'guaranteed' : 'NOT guaranteed'} (${world.cols}×${world.rows})`,
+      `zoom     ${p.renderZ.toFixed(3)} (${api.zoomLimits().min.toFixed(2)}–${api.zoomLimits().max.toFixed(2)}), laid out at ${r.zoomLaidOut.toFixed(3)}`,
+      `no-repeat ${g.noRepeatGuaranteed && p.renderZ >= 1 ? 'on screen' : `≥ ${world.cols} cells apart (zoomed out)`} (${world.cols}×${world.rows})`,
       `tiles    ${r.activeCount} active / ${r.poolSize} pool`,
       `dom      ${api.domNodes()} nodes`,
       `frame    p95 ${p95.toFixed(1)} ms  max ${worst.toFixed(1)} ms`,

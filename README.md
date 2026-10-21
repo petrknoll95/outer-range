@@ -1,6 +1,9 @@
 # petrknoll26
 
-One page: an infinite canvas of images you pan by dragging, scrolling or with the arrow keys. Astro 7, Tailwind CSS v4, GSAP (its ticker drives the single animation loop).
+One page: an infinite canvas of images. Astro 7, Tailwind CSS v4, GSAP (its ticker drives the single animation loop).
+
+- **Pan:** drag, scroll (trackpad in any direction), or arrow keys (Shift for a bigger step).
+- **Zoom:** pinch, ctrl/⌘ + scroll, or `+` `−` `0`. Zoom centres on the cursor.
 
 Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 
@@ -8,8 +11,8 @@ Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 | :-- | :-- |
 | `npm run dev` | Dev server. Add `?debug` to the URL for the lattice, tile labels, frame-time graph and pool stats. |
 | `npm run build` / `npm run preview` | Production build (generates every image variant). |
-| `npm test` | Property tests for the world model and the camera physics (Vitest + fast-check). |
-| `npm run test:e2e` | Playwright against the production build: input, round trip, memory, frame timing. |
+| `npm test` | Property tests for the world model, camera physics and image trail (Vitest + fast-check). |
+| `npm run test:e2e` | Playwright against the production build: input, zoom, trail, round trips, memory, frame timing. |
 | `npm run check` | Type check. |
 | `npm run placeholders:collect` / `placeholders:build` | Re-collect candidates from Cosmos / re-crop them and rewrite the manifest. |
 
@@ -24,7 +27,19 @@ All tunable numbers are in [`src/canvas/config.ts`](src/canvas/config.ts).
   - Fixed 240 Hz step, with inputs applied at their event timestamps, so the same gesture gives the same motion at 60, 120 or 144 Hz.
   - Wheel and trackpad move a target that the camera follows with an 80 ms time constant (the slight drag). The OS already supplies trackpad momentum, so nothing adds more.
   - Dragging follows the pointer 1:1. On release the canvas glides with a 300 ms velocity half-life.
-- **Rendering** ([`renderer.ts`](src/canvas/renderer.ts)). A pool of tiles covers the cells around the viewport, with extra margin in the direction of travel. Tiles sit in one layer relative to a floating origin, so each frame writes a single transform. Each tile loads AVIF/WebP from a `srcset`, shows its dominant colour while loading, and fades in once decoded.
+  - Zoom eases toward a target with a 90 ms time constant, keeping the world point under the cursor fixed at every step.
+- **Zoom limits** ([`layout.ts`](src/canvas/layout.ts)).
+  - Zooming in stops where images would go soft: the on-screen short edge in device pixels may not exceed the source size three quarters of the images have. That's 2.5× at most, about 2.5× on a 1440 px retina screen.
+  - Zooming out stops at 0.75×. With 91 images, zooming out lets an image appear twice on screen, always at least 6 cells from its twin. That affects about 1 tile in 8 at 0.75× and 43% at 0.5×; more images would let the limit go lower.
+- **Image trail** ([`trail.ts`](src/canvas/trail.ts)). Every image hangs on its grid position from its own damped spring with air drag, simulated on the same 240 Hz step.
+  - While the canvas moves, each image trails behind by lag × velocity along the velocity vector. Lag runs from 8 ms near the pointer to 32 ms far from it, plus a per-image weight, so the grid stretches like cloth instead of moving as one block.
+  - When the canvas stops, images settle back (with a slight overshoot) and snap exactly onto the grid.
+  - Zooming moves images radially, so they trail there too. Reduced motion turns the trail off.
+- **Rendering** ([`renderer.ts`](src/canvas/renderer.ts)).
+  - A pool of tiles covers the cells around the viewport, with extra margin in the direction of travel.
+  - Each tile is placed in screen space as (world − camera) × zoom + its trail offset, so the numbers written to CSS stay small however far you travel.
+  - During a zoom, tiles are scaled from their last layout. They're laid out again (re-rasterised sharp, with a fitting image variant) once the zoom settles or drifts by 1.4×.
+  - Each tile loads AVIF/WebP from a `srcset`, shows its dominant colour while loading, and fades in once decoded.
 
 ## Placeholder images
 

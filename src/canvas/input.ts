@@ -1,14 +1,23 @@
-import { DRAG_THRESHOLD, KEY_PAGE, KEY_STEP, LINE_HEIGHT } from './config';
+import { DRAG_THRESHOLD, KEY_PAGE, KEY_STEP, KEY_ZOOM, LINE_HEIGHT, WHEEL_ZOOM_MAX_DELTA, WHEEL_ZOOM_SPEED } from './config';
 import type { CameraPhysics } from './physics';
-import { DRAG_END, DRAG_MOVE, DRAG_START, NUDGE, WHEEL } from './physics';
+import { DRAG_END, DRAG_MOVE, DRAG_START, NUDGE, PINCH, WHEEL, ZOOM, ZOOM_RESET } from './physics';
 
 export interface InputOptions {
   root: HTMLElement;
   physics: CameraPhysics;
   /** Called after every queued input so the render loop can wake up. */
   wake: () => void;
-  /** Current pitch and viewport, px, for keyboard steps. */
+  /** The pointer moved to (x, y), screen px. */
+  focus: (x: number, y: number) => void;
+  /** Current on-screen pitch and viewport, px, for keyboard steps. */
   metrics: () => { pitch: number; vw: number; vh: number };
+}
+
+/** Safari's trackpad pinch events (non-standard, so not in lib.dom). */
+interface GestureEvent extends UIEvent {
+  scale: number;
+  clientX: number;
+  clientY: number;
 }
 
 const seconds = (e: Event) => e.timeStamp / 1000;
@@ -20,22 +29,35 @@ function isEditable(target: EventTarget | null): boolean {
 /**
  * Turns DOM events into timestamped physics inputs.
  *
- * - Wheel / trackpad: both axes pan, deltaMode normalised. ctrl+wheel (trackpad pinch,
- *   ctrl+scroll zoom) is left to the browser untouched.
+ * - Wheel / trackpad: both axes pan, deltaMode normalised.
+ * - Zoom about the cursor: trackpad pinch (ctrl+wheel in Chrome and Firefox, gesture
+ *   events in Safari), ctrl/⌘ + mouse wheel, two-finger touch pinch, and + − 0 keys.
  * - Pointer: mouse, pen and one-finger touch drag with pointer capture. A press stays a
  *   click until it travels DRAG_THRESHOLD px; a click that ends a drag is swallowed.
  * - Arrow keys pan by KEY_STEP pitches, with Shift by KEY_PAGE of the viewport.
  */
-export function attachInput({ root, physics, wake, metrics }: InputOptions): () => void {
-  let pointerId: number | null = null;
+export function attachInput({ root, physics, wake, focus, metrics }: InputOptions): () => void {
+  const pointers = new Map<number, { x: number; y: number }>();
+  let mode: 'idle' | 'press' | 'drag' | 'pinch' = 'idle';
   let startX = 0;
   let startY = 0;
-  let dragging = false;
+  let pinchDistance = 0;
+  let midX = 0;
+  let midY = 0;
   let suppressClick = false;
+  let gestureScale = 1;
+  let inGesture = false;
+
+  const measurePinch = () => {
+    const [a, b] = [...pointers.values()];
+    midX = (a!.x + b!.x) / 2;
+    midY = (a!.y + b!.y) / 2;
+    return Math.hypot(a!.x - b!.x, a!.y - b!.y);
+  };
 
   const onWheel = (e: WheelEvent) => {
-    if (e.ctrlKey) return;
     e.preventDefault();
+    focus(e.clientX, e.clientY);
     let dx = e.deltaX;
     let dy = e.deltaY;
     if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
@@ -46,6 +68,14 @@ export function attachInput({ root, physics, wake, metrics }: InputOptions): () 
       dx *= m.vw;
       dy *= m.vh;
     }
+    if (e.ctrlKey || e.metaKey) {
+      // Safari reports its pinch as gesture events; don't count it twice.
+      if (inGesture) return;
+      const d = Math.max(-WHEEL_ZOOM_MAX_DELTA, Math.min(WHEEL_ZOOM_MAX_DELTA, dy));
+      physics.push(ZOOM, seconds(e), e.clientX, e.clientY, Math.exp(-d * WHEEL_ZOOM_SPEED));
+      wake();
+      return;
+    }
     // Windows mice: Shift turns the wheel horizontal, but not every browser swaps the axes.
     if (e.shiftKey && dx === 0) {
       dx = dy;
@@ -55,38 +85,97 @@ export function attachInput({ root, physics, wake, metrics }: InputOptions): () 
     wake();
   };
 
+  const onGestureStart = (e: Event) => {
+    e.preventDefault();
+    inGesture = true;
+    gestureScale = 1;
+  };
+  const onGestureChange = (e: Event) => {
+    e.preventDefault();
+    const g = e as GestureEvent;
+    if (g.scale > 0) {
+      physics.push(ZOOM, seconds(e), g.clientX, g.clientY, g.scale / gestureScale);
+      gestureScale = g.scale;
+      focus(g.clientX, g.clientY);
+      wake();
+    }
+  };
+  const onGestureEnd = (e: Event) => {
+    e.preventDefault();
+    inGesture = false;
+  };
+
   const onPointerDown = (e: PointerEvent) => {
-    if (pointerId !== null || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    pointerId = e.pointerId;
-    startX = e.clientX;
-    startY = e.clientY;
-    dragging = false;
-    suppressClick = false;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // One mouse/pen pointer, or up to two fingers.
+    if (pointers.size >= 2 || (pointers.size === 1 && e.pointerType !== 'touch')) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     root.setPointerCapture(e.pointerId);
+    focus(e.clientX, e.clientY);
+    if (pointers.size === 1) {
+      mode = 'press';
+      startX = e.clientX;
+      startY = e.clientY;
+      suppressClick = false;
+      return;
+    }
+    // A second finger: pinch about the midpoint (re-anchoring any drag already running).
+    mode = 'pinch';
+    suppressClick = true;
+    root.dataset.dragging = '';
+    pinchDistance = measurePinch();
+    physics.push(DRAG_START, seconds(e), midX, midY);
+    wake();
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (e.pointerId !== pointerId) return;
-    if (!dragging) {
+    const p = pointers.get(e.pointerId);
+    if (!p) {
+      if (e.pointerType === 'mouse') focus(e.clientX, e.clientY);
+      return;
+    }
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (mode === 'press') {
       if (Math.hypot(e.clientX - startX, e.clientY - startY) < DRAG_THRESHOLD) return;
-      dragging = true;
+      mode = 'drag';
       suppressClick = true;
       root.dataset.dragging = '';
       // Anchor at the press point so the threshold distance is not lost.
       physics.push(DRAG_START, seconds(e), startX, startY);
     }
-    physics.push(DRAG_MOVE, seconds(e), e.clientX, e.clientY);
+    if (mode === 'drag') {
+      focus(e.clientX, e.clientY);
+      physics.push(DRAG_MOVE, seconds(e), e.clientX, e.clientY);
+    } else if (mode === 'pinch') {
+      const distance = measurePinch();
+      focus(midX, midY);
+      // Pan so the held world point follows the midpoint, then zoom about it.
+      physics.push(DRAG_MOVE, seconds(e), midX, midY);
+      if (pinchDistance > 0 && distance > 0) physics.push(PINCH, seconds(e), midX, midY, distance / pinchDistance);
+      pinchDistance = distance;
+    }
     wake();
   };
 
   const onPointerEnd = (e: PointerEvent) => {
-    if (e.pointerId !== pointerId) return;
-    pointerId = null;
-    if (!dragging) return;
-    dragging = false;
-    delete root.dataset.dragging;
-    physics.push(DRAG_END, seconds(e));
-    wake();
+    if (!pointers.delete(e.pointerId)) return;
+    if (mode === 'pinch') {
+      // Carry on as a one-finger drag from wherever the remaining finger is.
+      const [rest] = [...pointers.values()];
+      if (rest) {
+        mode = 'drag';
+        physics.push(DRAG_START, seconds(e), rest.x, rest.y);
+        wake();
+        return;
+      }
+    }
+    if (mode === 'drag' || mode === 'pinch') {
+      delete root.dataset.dragging;
+      physics.push(DRAG_END, seconds(e));
+      wake();
+    }
+    mode = 'idle';
   };
 
   const onClick = (e: MouseEvent) => {
@@ -97,27 +186,47 @@ export function attachInput({ root, physics, wake, metrics }: InputOptions): () 
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // ctrl/⌘ +/− stay the browser's page zoom.
     if (e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || isEditable(e.target)) return;
     const m = metrics();
-    const stepX = e.shiftKey ? m.vw * KEY_PAGE : m.pitch * KEY_STEP;
-    const stepY = e.shiftKey ? m.vh * KEY_PAGE : m.pitch * KEY_STEP;
-    let dx = 0;
-    let dy = 0;
-    if (e.key === 'ArrowLeft') dx = -stepX;
-    else if (e.key === 'ArrowRight') dx = stepX;
-    else if (e.key === 'ArrowUp') dy = -stepY;
-    else if (e.key === 'ArrowDown') dy = stepY;
-    else return;
+    const t = seconds(e);
+    switch (e.key) {
+      case '+':
+      case '=':
+        physics.push(ZOOM, t, m.vw / 2, m.vh / 2, KEY_ZOOM);
+        break;
+      case '-':
+      case '_':
+        physics.push(ZOOM, t, m.vw / 2, m.vh / 2, 1 / KEY_ZOOM);
+        break;
+      case '0':
+        physics.push(ZOOM_RESET, t, m.vw / 2, m.vh / 2);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowRight':
+      case 'ArrowUp':
+      case 'ArrowDown': {
+        const step = e.shiftKey ? (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ? m.vw : m.vh) * KEY_PAGE : m.pitch * KEY_STEP;
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        physics.push(NUDGE, t, dx, dy);
+        break;
+      }
+      default:
+        return;
+    }
     e.preventDefault();
-    physics.push(NUDGE, seconds(e), dx, dy);
     wake();
   };
 
   const onDragStart = (e: DragEvent) => e.preventDefault();
 
   window.addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('gesturestart', onGestureStart);
+  window.addEventListener('gesturechange', onGestureChange);
+  window.addEventListener('gestureend', onGestureEnd);
   root.addEventListener('pointerdown', onPointerDown);
-  root.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointermove', onPointerMove);
   root.addEventListener('pointerup', onPointerEnd);
   root.addEventListener('pointercancel', onPointerEnd);
   root.addEventListener('lostpointercapture', onPointerEnd);
@@ -127,8 +236,11 @@ export function attachInput({ root, physics, wake, metrics }: InputOptions): () 
 
   return () => {
     window.removeEventListener('wheel', onWheel);
+    window.removeEventListener('gesturestart', onGestureStart);
+    window.removeEventListener('gesturechange', onGestureChange);
+    window.removeEventListener('gestureend', onGestureEnd);
     root.removeEventListener('pointerdown', onPointerDown);
-    root.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointermove', onPointerMove);
     root.removeEventListener('pointerup', onPointerEnd);
     root.removeEventListener('pointercancel', onPointerEnd);
     root.removeEventListener('lostpointercapture', onPointerEnd);
