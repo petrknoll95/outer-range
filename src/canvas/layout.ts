@@ -1,4 +1,4 @@
-import { CELLS_PER_VIEWPORT, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_MAX, ZOOM_MIN, ZOOM_MIN_S_PX } from './config';
+import { CELLS_PER_VIEWPORT, LENS_REPEAT_SHARE, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_MAX, ZOOM_MIN, ZOOM_MIN_S_PX } from './config';
 import type { Cell, World } from './world';
 import { emptyCell } from './world';
 
@@ -11,7 +11,10 @@ export interface Geometry {
   /** Lattice pitch, px. */
   pitch: number;
   radius: number;
-  /** True when S is large enough that two copies of an image can never both be on screen. */
+  /**
+   * True when S is large enough that two copies of an image can never both be within the
+   * span the sizing counted (`reach` viewports): the whole screen without the lens.
+   */
   noRepeatGuaranteed: boolean;
 }
 
@@ -28,11 +31,23 @@ export function noRepeatSpan(world: World): { x: number; y: number } {
   };
 }
 
-export function computeGeometry(vw: number, vh: number, world: World): Geometry {
+/** How much world, in viewports per axis, the no-repeat sizing counts as visible under a lens with this reach. */
+export function sizingReach(lensReach: number, share = LENS_REPEAT_SHARE): number {
+  return 1 + share * (lensReach - 1);
+}
+
+/**
+ * `reach` is how much world the viewport shows per axis, in viewports: 1 without the
+ * lens, Lens.reach with it (the lens squeezes extra world in around the edges). The
+ * no-repeat sizing counts all of it as visible.
+ */
+export function computeGeometry(vw: number, vh: number, world: World, reach = 1): Geometry {
   const byArea = Math.sqrt((vw * vh) / CELLS_PER_VIEWPORT) / PITCH;
   const span = noRepeatSpan(world);
+  const seenX = vw * reach;
+  const seenY = vh * reach;
   // A hair above the bound so rounding never lands exactly on it.
-  const byRepeat = Math.max(vw / span.x, vh / span.y) * 1.02;
+  const byRepeat = Math.max(seenX / span.x, seenY / span.y) * 1.02;
   const s = Math.min(S_MAX_PX, Math.max(S_MIN_PX, byArea, byRepeat));
   return {
     vw,
@@ -40,7 +55,7 @@ export function computeGeometry(vw: number, vh: number, world: World): Geometry 
     s,
     pitch: s * PITCH,
     radius: Math.round(s * RADIUS),
-    noRepeatGuaranteed: s * span.x > vw && s * span.y > vh,
+    noRepeatGuaranteed: s * span.x > seenX && s * span.y > seenY,
   };
 }
 

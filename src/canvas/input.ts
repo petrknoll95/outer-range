@@ -11,6 +11,11 @@ export interface InputOptions {
   focus: (x: number, y: number) => void;
   /** Current on-screen pitch and viewport, px, for keyboard steps. */
   metrics: () => { pitch: number; vw: number; vh: number };
+  /**
+   * Maps a screen point to the canvas point drawn there (undoing the lens), so the image
+   * under the pointer is the one that drags, pinches and zooms with it. Identity by default.
+   */
+  toCanvas?: (x: number, y: number, out: { x: number; y: number }) => void;
 }
 
 /** Safari's trackpad pinch events (non-standard, so not in lib.dom). */
@@ -36,7 +41,18 @@ function isEditable(target: EventTarget | null): boolean {
  *   click until it travels DRAG_THRESHOLD px; a click that ends a drag is swallowed.
  * - Arrow keys pan by KEY_STEP pitches, with Shift by KEY_PAGE of the viewport.
  */
-export function attachInput({ root, physics, wake, focus, metrics }: InputOptions): () => void {
+const identity = (x: number, y: number, out: { x: number; y: number }) => {
+  out.x = x;
+  out.y = y;
+};
+
+export function attachInput({ root, physics, wake, focus, metrics, toCanvas = identity }: InputOptions): () => void {
+  const point = { x: 0, y: 0 };
+  /** Screen → canvas point. Returns a shared object: read it before the next call. */
+  const canvas = (x: number, y: number) => {
+    toCanvas(x, y, point);
+    return point;
+  };
   const pointers = new Map<number, { x: number; y: number }>();
   let mode: 'idle' | 'press' | 'drag' | 'pinch' = 'idle';
   let startX = 0;
@@ -57,7 +73,8 @@ export function attachInput({ root, physics, wake, focus, metrics }: InputOption
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    focus(e.clientX, e.clientY);
+    const at = canvas(e.clientX, e.clientY);
+    focus(at.x, at.y);
     let dx = e.deltaX;
     let dy = e.deltaY;
     if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
@@ -72,7 +89,7 @@ export function attachInput({ root, physics, wake, focus, metrics }: InputOption
       // Safari reports its pinch as gesture events; don't count it twice.
       if (inGesture) return;
       const d = Math.max(-WHEEL_ZOOM_MAX_DELTA, Math.min(WHEEL_ZOOM_MAX_DELTA, dy));
-      physics.push(ZOOM, seconds(e), e.clientX, e.clientY, Math.exp(-d * WHEEL_ZOOM_SPEED));
+      physics.push(ZOOM, seconds(e), at.x, at.y, Math.exp(-d * WHEEL_ZOOM_SPEED));
       wake();
       return;
     }
@@ -94,9 +111,10 @@ export function attachInput({ root, physics, wake, focus, metrics }: InputOption
     e.preventDefault();
     const g = e as GestureEvent;
     if (g.scale > 0) {
-      physics.push(ZOOM, seconds(e), g.clientX, g.clientY, g.scale / gestureScale);
+      const at = canvas(g.clientX, g.clientY);
+      physics.push(ZOOM, seconds(e), at.x, at.y, g.scale / gestureScale);
       gestureScale = g.scale;
-      focus(g.clientX, g.clientY);
+      focus(at.x, at.y);
       wake();
     }
   };
@@ -111,7 +129,8 @@ export function attachInput({ root, physics, wake, focus, metrics }: InputOption
     if (pointers.size >= 2 || (pointers.size === 1 && e.pointerType !== 'touch')) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     root.setPointerCapture(e.pointerId);
-    focus(e.clientX, e.clientY);
+    const at = canvas(e.clientX, e.clientY);
+    focus(at.x, at.y);
     if (pointers.size === 1) {
       mode = 'press';
       startX = e.clientX;
@@ -124,14 +143,18 @@ export function attachInput({ root, physics, wake, focus, metrics }: InputOption
     suppressClick = true;
     root.dataset.dragging = '';
     pinchDistance = measurePinch();
-    physics.push(DRAG_START, seconds(e), midX, midY);
+    const mid = canvas(midX, midY);
+    physics.push(DRAG_START, seconds(e), mid.x, mid.y);
     wake();
   };
 
   const onPointerMove = (e: PointerEvent) => {
     const p = pointers.get(e.pointerId);
     if (!p) {
-      if (e.pointerType === 'mouse') focus(e.clientX, e.clientY);
+      if (e.pointerType === 'mouse') {
+        const at = canvas(e.clientX, e.clientY);
+        focus(at.x, at.y);
+      }
       return;
     }
     p.x = e.clientX;
@@ -142,17 +165,20 @@ export function attachInput({ root, physics, wake, focus, metrics }: InputOption
       suppressClick = true;
       root.dataset.dragging = '';
       // Anchor at the press point so the threshold distance is not lost.
-      physics.push(DRAG_START, seconds(e), startX, startY);
+      const start = canvas(startX, startY);
+      physics.push(DRAG_START, seconds(e), start.x, start.y);
     }
     if (mode === 'drag') {
-      focus(e.clientX, e.clientY);
-      physics.push(DRAG_MOVE, seconds(e), e.clientX, e.clientY);
+      const at = canvas(e.clientX, e.clientY);
+      focus(at.x, at.y);
+      physics.push(DRAG_MOVE, seconds(e), at.x, at.y);
     } else if (mode === 'pinch') {
       const distance = measurePinch();
-      focus(midX, midY);
+      const mid = canvas(midX, midY);
+      focus(mid.x, mid.y);
       // Pan so the held world point follows the midpoint, then zoom about it.
-      physics.push(DRAG_MOVE, seconds(e), midX, midY);
-      if (pinchDistance > 0 && distance > 0) physics.push(PINCH, seconds(e), midX, midY, distance / pinchDistance);
+      physics.push(DRAG_MOVE, seconds(e), mid.x, mid.y);
+      if (pinchDistance > 0 && distance > 0) physics.push(PINCH, seconds(e), mid.x, mid.y, distance / pinchDistance);
       pinchDistance = distance;
     }
     wake();
@@ -165,7 +191,8 @@ export function attachInput({ root, physics, wake, focus, metrics }: InputOption
       const [rest] = [...pointers.values()];
       if (rest) {
         mode = 'drag';
-        physics.push(DRAG_START, seconds(e), rest.x, rest.y);
+        const at = canvas(rest.x, rest.y);
+        physics.push(DRAG_START, seconds(e), at.x, at.y);
         wake();
         return;
       }

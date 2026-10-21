@@ -20,10 +20,13 @@ interface CanvasApi {
     poolSize: number;
     activeCount: number;
     zoomLaidOut: number;
-    visibleCells: () => { i: number; j: number; image: number; left: number; top: number; width: number; height: number }[];
+    visibleCells: () => { i: number; j: number; image: number; left: number; top: number; width: number; height: number; scale: number }[];
     trailOffsets: () => { i: number; j: number; x: number; y: number }[];
   };
   geometry: () => { vw: number; vh: number; s: number; pitch: number };
+  lens: { reach: number; params: unknown };
+  /** Screen point → the unlensed canvas point the lens draws there. */
+  toCanvas: (x: number, y: number) => { x: number; y: number };
   zoomLimits: () => { min: number; max: number };
   isSettled: () => boolean;
   domNodes: () => number;
@@ -35,8 +38,8 @@ declare global {
   }
 }
 
-async function open(page: Page): Promise<void> {
-  await page.goto('/?test');
+async function open(page: Page, query = ''): Promise<void> {
+  await page.goto(`/?test${query}`);
   await settled(page);
 }
 
@@ -70,14 +73,36 @@ async function drag(page: Page, dx: number, dy: number, steps: number, holdMs = 
   await page.mouse.up();
 }
 
-test('dragging moves the canvas 1:1 with the pointer', async ({ page }) => {
+test('dragging moves the canvas with the pointer: what was under it stays under it', async ({ page }) => {
   await open(page);
   const before = await camera(page);
-  await drag(page, -300, -180, 30, 150);
+  // From the centre well into the shrinking edge band, so the lens is part of the test.
+  await drag(page, -560, -330, 40, 150);
   await settled(page);
   const after = await camera(page);
-  expect(after.x - before.x).toBeCloseTo(300, 6);
-  expect(after.y - before.y).toBeCloseTo(180, 6);
+  const [from, to] = await page.evaluate(() => [window.__canvas.toCanvas(720, 450), window.__canvas.toCanvas(160, 120)]);
+  // There, a screen pixel covers more than one canvas pixel.
+  expect(720 - to!.x).toBeGreaterThan(560 + 20);
+  expect(after.x - before.x).toBeCloseTo(from!.x - to!.x, 6);
+  expect(after.y - before.y).toBeCloseTo(from!.y - to!.y, 6);
+});
+
+test('the lens keeps the centre full size and shrinks images towards every edge; ?flat turns it off', async ({ page }) => {
+  await open(page);
+  const tiles = await page.evaluate(() => window.__canvas.renderer.visibleCells());
+  const distance = (t: (typeof tiles)[number]) =>
+    Math.max(Math.abs(t.left + t.width / 2 - 720) / 720, Math.abs(t.top + t.height / 2 - 450) / 450);
+  const centre = tiles.reduce((a, b) => (distance(a) < distance(b) ? a : b));
+  expect(centre.scale).toBe(1);
+  for (const t of tiles) if (distance(t) > 0.9) expect(t.scale).toBeLessThan(0.75);
+  // Scale falls (or holds) with distance from the centre.
+  const sorted = [...tiles].sort((a, b) => distance(a) - distance(b));
+  expect(sorted.at(-1)!.scale).toBeLessThan(sorted[0]!.scale);
+
+  await open(page, '&flat');
+  const flat = await page.evaluate(() => window.__canvas.renderer.visibleCells());
+  expect(flat.every((t) => t.scale === 1)).toBe(true);
+  expect(await page.evaluate(() => window.__canvas.lens.reach)).toBe(1);
 });
 
 test('a quick flick keeps gliding after release', async ({ page }) => {
@@ -115,7 +140,9 @@ test('pinch (ctrl+wheel) zooms about the cursor, and the browser page never zoom
   );
   expect(prevented).toBe(true);
 
-  const under = (c: { x: number; y: number; z: number }) => ({ x: c.x + 400 / c.z, y: c.y + 260 / c.z });
+  // Off-centre, where the lens bends things: the anchor is the canvas point drawn under the cursor.
+  const anchor = await page.evaluate(() => window.__canvas.toCanvas(400, 260));
+  const under = (c: { x: number; y: number; z: number }) => ({ x: c.x + anchor.x / c.z, y: c.y + anchor.y / c.z });
   const before = await camera(page);
   await pinchWheel(page, 400, 260, -15, 10);
   await settled(page);
@@ -319,12 +346,14 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
   const afterHeap = await heap();
   console.info(`pool ${base.pool} → ${after.pool} (max seen ${Math.max(...pools)}), dom ${base.dom} → ${after.dom}, heap ${(baseHeap / 1e6).toFixed(2)} → ${(afterHeap / 1e6).toFixed(2)} MB`);
   // The pool is the most tiles ever active at once, so it can never exceed the cells the
-  // loaded range covers at the smallest zoom with the full lead margin.
+  // loaded range covers at the smallest zoom with the full lead margin and the lens's reach.
   const bound = await page.evaluate(
     ({ MARGIN, LEAD_MAX, LONG, JITTER_X, JITTER_Y, COLUMN_STAGGER, COLUMN_STAGGER_JITTER }) => {
       const g = window.__canvas.geometry();
       const z = window.__canvas.zoomLimits().min;
-      const span = (view: number, reach: number) => Math.floor((view / z + (2 * MARGIN + LEAD_MAX) * g.pitch + 2 * reach * g.s) / g.pitch) + 1;
+      const lensReach = window.__canvas.lens.reach;
+      const span = (view: number, reach: number) =>
+        Math.floor(((view * lensReach) / z + (2 * MARGIN + LEAD_MAX) * g.pitch + 2 * reach * g.s) / g.pitch) + 1;
       return span(g.vw, LONG / 2 + JITTER_X) * span(g.vh, LONG / 2 + JITTER_Y + COLUMN_STAGGER + COLUMN_STAGGER_JITTER);
     },
     { MARGIN, LEAD_MAX, LONG, JITTER_X, JITTER_Y, COLUMN_STAGGER, COLUMN_STAGGER_JITTER },

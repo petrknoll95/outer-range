@@ -150,6 +150,33 @@ export const LINE_HEIGHT = 40;
 export const KEY_STEP = 0.75;
 export const KEY_PAGE = 0.8;
 
+// ── Lens (watchOS-style edge scaling) ───────────────────────────────────────
+
+/**
+ * Images keep full size near the centre of the viewport and shrink towards every edge,
+ * and the grid is pulled inwards so smaller images also sit closer together (lens.ts).
+ * Radii are in viewport half-extents: 1 is an edge midpoint, a corner is
+ * 2^(1/LENS_ROUNDNESS) ≈ 1.19. `?flat` in the URL turns the lens off.
+ */
+/** Full size inside this radius. */
+export const LENS_INNER = 0.45;
+/** Smallest from this radius on. */
+export const LENS_OUTER = 1.2;
+export const LENS_MIN_SCALE = 0.45;
+/** Superellipse exponent of the radius: 2 is an ellipse, higher is squarer; 4 is close to the Watch's squircle. */
+export const LENS_ROUNDNESS = 4;
+/**
+ * The lens squeezes extra world into the edge ring, so more cells are on screen than the
+ * no-repeat sizing in layout.ts assumes. This is how much of that extra world the sizing
+ * counts: 1 sizes images so no image can ever appear twice on screen; lower keeps images
+ * smaller and the grid denser, at the cost of the odd repeat between two small images on
+ * opposite edges (never one larger than about half size). Measured at 1440×900:
+ *   1    → S 282 px, 18 images on screen, no repeats (guaranteed)
+ *   0.55 → S 246 px, 22 images, a repeat on ~3% of screens
+ *   0    → S 205 px, 30 images, a repeat on ~75% of screens
+ */
+export const LENS_REPEAT_SHARE = 0.55;
+
 // ── Rendering and loading ───────────────────────────────────────────────────
 
 /** Cells kept loaded around the viewport on every side, in pitches. */

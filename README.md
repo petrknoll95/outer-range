@@ -22,7 +22,7 @@ Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 All tunable numbers are in [`src/canvas/config.ts`](src/canvas/config.ts).
 
 - **The world is a pure function** ([`world.ts`](src/canvas/world.ts)). `cell(i, j)` gives a cell's image, shape, offset and z-order from an integer hash of its coordinates. Nothing is stored and nothing is "respawned". Pan away and back and the same images are in the same places.
-- **No repeats, by construction.** Each cell belongs to one of 6×6 lattice classes, and each class draws from its own slice of the images. Two cells can only show the same image if they are at least 6 columns or 6 rows apart. [`layout.ts`](src/canvas/layout.ts) sizes the images so that span never fits on screen (up to 3440 px wide).
+- **No repeats, by construction.** Each cell belongs to one of 6×6 lattice classes, and each class draws from its own slice of the images. Two cells can only show the same image if they are at least 6 columns or 6 rows apart. [`layout.ts`](src/canvas/layout.ts) sizes the images so that span never fits on screen (up to 3440 px wide). With the lens on, its edge ring is the one exception; see Lens below.
 - **Overlap budget.** The horizontal jitter is derived from a 15% cap on how much of the smaller image an overlap may cover. Columns are brick-offset, so overlaps always read as layered, never as one merged image. Images in the same column never overlap.
 - **Physics** ([`physics.ts`](src/canvas/physics.ts)).
   - Fixed 240 Hz step, with inputs applied at their event timestamps, so the same gesture gives the same motion at 60, 120 or 144 Hz.
@@ -36,6 +36,11 @@ All tunable numbers are in [`src/canvas/config.ts`](src/canvas/config.ts).
   - While the canvas moves, each image trails behind by lag × velocity along the velocity vector. Lag runs from 8 ms near the pointer to 32 ms far from it, plus a per-image weight, so the grid stretches like cloth instead of moving as one block.
   - When the canvas stops, images settle back (with a slight overshoot) and snap exactly onto the grid.
   - Zooming moves images radially, so they trail there too. Reduced motion turns the trail off.
+- **Lens** ([`lens.ts`](src/canvas/lens.ts)), like the watchOS app grid. `?flat` turns it off.
+  - Images inside the middle ~45% of the screen are full size. Toward every edge they shrink smoothly to 45%, smallest in the corners, in a rounded-rectangle (squircle) shape.
+  - The grid is pulled toward the centre by the integral of that scale, so spacing tightens as fast as the images shrink. Each image's scale is taken at its corner farthest from the centre, so the lens can't push images into each other. The most it adds is a sliver, under 2% of an image.
+  - Drag, pinch and zoom map the pointer back through the lens, so they act on the image actually under it.
+  - The edge ring squeezes in more of the canvas, so `LENS_REPEAT_SHARE` sets how much of it the no-repeat sizing counts. At 1440×900: 1 means no repeats ever (18 images on screen); the default 0.55 gives 22 images, with a repeat between two small edge images on about 3% of screens; 0 gives 30 images, with repeats on 75%.
 - **Rendering** ([`renderer.ts`](src/canvas/renderer.ts)).
   - A pool of tiles covers the cells around the viewport, with extra margin in the direction of travel.
   - Each tile is placed in screen space as (world − camera) × zoom + its trail offset, so the numbers written to CSS stay small however far you travel.

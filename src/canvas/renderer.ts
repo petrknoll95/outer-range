@@ -2,6 +2,7 @@ import { LEAD_MAX, LEAD_TIME, MARGIN, RELAYOUT_RATIO, TRAIL_MAX_OFFSET } from '.
 import { hash, unit } from './hash';
 import type { CellRange, Geometry } from './layout';
 import { cellRange } from './layout';
+import type { Lens, LensPoint } from './lens';
 import type { Trail } from './trail';
 import { limitOffset, placeTrail, restingTrail, stepTrail, trailLag } from './trail';
 import type { Cell, World, WorldImage } from './world';
@@ -73,6 +74,10 @@ const IMG_CLASS =
  * Zoom: tiles are laid out (sized in CSS) at a layout zoom and scaled by
  * zoom / layoutZoom. They are laid out again at the current zoom when it settles or has
  * drifted by RELAYOUT_RATIO, so they are re-rasterised sharp and pick a fitting variant.
+ *
+ * Lens: last of all, each tile's centre goes through the lens (lens.ts), which pulls it
+ * towards the viewport centre and scales the tile down near the edges. Because the lens
+ * squeezes extra world into the viewport, cells are loaded out to `lens.reach`.
  */
 export class Renderer {
   private readonly slots: Slot[] = [];
@@ -83,6 +88,7 @@ export class Renderer {
   private readonly range: CellRange = { i0: 0, i1: -1, j0: 0, j1: -1 };
   private readonly lastRange: CellRange = { i0: 0, i1: -1, j0: 0, j1: -1 };
   private readonly offset = { x: 0, y: 0 };
+  private readonly lensed: LensPoint = { x: 0, y: 0, scale: 1 };
   private geometry: Geometry | null = null;
   private dirty = true;
   private frame = 0;
@@ -103,6 +109,7 @@ export class Renderer {
     private readonly layer: HTMLElement,
     private readonly world: World,
     private readonly images: readonly ClientImage[],
+    private readonly lens: Lens,
     private readonly debug = false,
   ) {}
 
@@ -168,13 +175,20 @@ export class Renderer {
     const leadCap = LEAD_MAX * g.pitch;
     const leadX = Math.max(-leadCap, Math.min(leadCap, vx * LEAD_TIME));
     const leadY = Math.max(-leadCap, Math.min(leadCap, vy * LEAD_TIME));
+    // The world the lens squeezes into the viewport, around the world point at its centre.
+    const hx = g.vw / 2;
+    const hy = g.vh / 2;
+    const centreX = camX + hx / camZ;
+    const centreY = camY + hy / camZ;
+    const reachX = (hx * this.lens.reach) / camZ;
+    const reachY = (hy * this.lens.reach) / camZ;
     const range = cellRange(
       this.world,
       g,
-      camX - margin + Math.min(leadX, 0),
-      camY - margin + Math.min(leadY, 0),
-      camX + g.vw / camZ + margin + Math.max(leadX, 0),
-      camY + g.vh / camZ + margin + Math.max(leadY, 0),
+      centreX - reachX - margin + Math.min(leadX, 0),
+      centreY - reachY - margin + Math.min(leadY, 0),
+      centreX + reachX + margin + Math.max(leadX, 0),
+      centreY + reachY + margin + Math.max(leadY, 0),
       this.range,
     );
     const last = this.lastRange;
@@ -182,12 +196,21 @@ export class Renderer {
       this.reassign(range, vx, vy);
     }
 
-    const scale = camZ / this.layoutZoom;
+    const zoomScale = camZ / this.layoutZoom;
     const maxOffset = TRAIL_MAX_OFFSET * g.s * camZ;
+    const lensed = this.lensed;
     for (const slot of this.active) {
       limitOffset(slot.trail.ox, slot.trail.oy, maxOffset, this.offset);
-      const x = (slot.left - camX) * camZ + this.offset.x;
-      const y = (slot.top - camY) * camZ + this.offset.y;
+      const w = slot.width * camZ;
+      const h = slot.height * camZ;
+      // Centre on screen (grid + trail), relative to the viewport centre, then the lens.
+      const qx = (slot.left - camX) * camZ + this.offset.x + w / 2 - hx;
+      const qy = (slot.top - camY) * camZ + this.offset.y + h / 2 - hy;
+      this.lens.apply(qx, qy, hx, hy, lensed, w / 2, h / 2);
+      // Tiles scale about their top-left corner, so place that corner for the lensed size.
+      const x = hx + lensed.x - (w * lensed.scale) / 2;
+      const y = hy + lensed.y - (h * lensed.scale) / 2;
+      const scale = zoomScale * lensed.scale;
       if (x === slot.cssX && y === slot.cssY && scale === slot.cssScale) continue;
       slot.cssX = x;
       slot.cssY = y;
@@ -220,21 +243,33 @@ export class Renderer {
     return true;
   }
 
-  /** Cells currently on screen with their screen rectangles (trail offsets excluded), for tests and debugging. */
-  visibleCells(): { i: number; j: number; image: number; left: number; top: number; width: number; height: number }[] {
+  /**
+   * Cells currently on screen with their screen rectangles and lens scale (trail offsets
+   * excluded), for tests and debugging.
+   */
+  visibleCells(): { i: number; j: number; image: number; left: number; top: number; width: number; height: number; scale: number }[] {
     const g = this.geometry;
     if (!g) return [];
     const z = this.camZ;
+    const hx = g.vw / 2;
+    const hy = g.vh / 2;
+    const p: LensPoint = { x: 0, y: 0, scale: 1 };
     return this.active
-      .map((s) => ({
-        i: s.i,
-        j: s.j,
-        image: s.image,
-        left: (s.left - this.camX) * z,
-        top: (s.top - this.camY) * z,
-        width: s.width * z,
-        height: s.height * z,
-      }))
+      .map((s) => {
+        const w = s.width * z;
+        const h = s.height * z;
+        this.lens.apply((s.left - this.camX) * z + w / 2 - hx, (s.top - this.camY) * z + h / 2 - hy, hx, hy, p, w / 2, h / 2);
+        return {
+          i: s.i,
+          j: s.j,
+          image: s.image,
+          left: hx + p.x - (w * p.scale) / 2,
+          top: hy + p.y - (h * p.scale) / 2,
+          width: w * p.scale,
+          height: h * p.scale,
+          scale: p.scale,
+        };
+      })
       .filter((c) => c.left < g.vw && c.left + c.width > 0 && c.top < g.vh && c.top + c.height > 0);
   }
 

@@ -2,7 +2,8 @@ import { gsap } from 'gsap';
 import { STEP } from './config';
 import { attachInput } from './input';
 import type { Geometry } from './layout';
-import { computeGeometry, zoomLimits } from './layout';
+import { computeGeometry, sizingReach, zoomLimits } from './layout';
+import { DEFAULT_LENS, Lens } from './lens';
 import { CameraPhysics } from './physics';
 import type { CanvasData } from './renderer';
 import { Renderer } from './renderer';
@@ -16,11 +17,15 @@ const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
 
 const world = createWorld(data.images);
+// `?flat` turns the watchOS-style lens off, for comparison.
+const lens = new Lens(params.has('flat') ? null : DEFAULT_LENS);
 const physics = new CameraPhysics();
-const renderer = new Renderer(root, layer, world, data.images, debug);
+const renderer = new Renderer(root, layer, world, data.images, lens, debug);
 physics.onStep = (x, y, z) => renderer.step(x, y, z, STEP);
 
-let geometry: Geometry = computeGeometry(root.clientWidth, root.clientHeight, world);
+// How much world the no-repeat sizing counts as visible; see LENS_REPEAT_SHARE.
+const seen = sizingReach(lens.reach);
+let geometry: Geometry = computeGeometry(root.clientWidth, root.clientHeight, world, seen);
 let dpr = window.devicePixelRatio;
 renderer.setGeometry(geometry);
 
@@ -70,10 +75,20 @@ attachInput({
   wake,
   focus: (x, y) => renderer.setFocus(x, y),
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
+  toCanvas,
 });
 
+/** Screen point → the unlensed canvas point the lens draws there. */
+function toCanvas(x: number, y: number, out: { x: number; y: number }): void {
+  const hx = geometry.vw / 2;
+  const hy = geometry.vh / 2;
+  lens.unapply(x - hx, y - hy, hx, hy, out);
+  out.x += hx;
+  out.y += hy;
+}
+
 function relayout(): void {
-  const next = computeGeometry(root.clientWidth, root.clientHeight, world);
+  const next = computeGeometry(root.clientWidth, root.clientHeight, world, seen);
   const dprChanged = window.devicePixelRatio !== dpr;
   dpr = window.devicePixelRatio;
   if (!dprChanged && next.vw === geometry.vw && next.vh === geometry.vh) return;
@@ -120,6 +135,12 @@ if (debug || params.has('test')) {
     world,
     physics,
     renderer,
+    lens,
+    toCanvas: (x: number, y: number) => {
+      const out = { x: 0, y: 0 };
+      toCanvas(x, y, out);
+      return out;
+    },
     geometry: () => geometry,
     zoomLimits: () => ({ min: physics.zoomMin, max: physics.zoomMax }),
     /** At rest, every image back on its grid position, and every on-screen image decoded. */
