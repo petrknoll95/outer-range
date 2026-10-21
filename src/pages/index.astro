@@ -4,6 +4,7 @@ import { getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
 import manifest from '../assets/placeholders/manifest.json';
 import { VARIANT_SHORT_EDGES } from '../canvas/config';
+import { resolveImages } from '../canvas/images';
 import type { ClientProject } from '../canvas/projects';
 import { resolveProjects } from '../canvas/projects';
 import type { CanvasData, ClientImage } from '../canvas/renderer';
@@ -19,15 +20,21 @@ async function srcset(src: ImageMetadata, format: 'avif' | 'webp', widths: numbe
   return urls.map((img, n) => `${img.src} ${widths[n]}w`).join(', ');
 }
 
+// Each image's content entry, in manifest order. Fails the build if an image has none or two.
+const content = resolveImages(
+  (await getCollection('images')).map((entry) => ({ id: entry.id, ...entry.data })),
+  manifest.map((m) => m.file),
+);
+
 const images: ClientImage[] = await Promise.all(
-  manifest.map(async (m) => {
+  manifest.map(async (m, n) => {
     const src = files[`../assets/placeholders/${m.file}`]!.default;
     const short = Math.min(m.width, m.height);
     // Every standard size the master can supply, topped with the master itself.
     const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < short * 0.9), short];
     const widths = edges.map((e) => Math.round((m.width * e) / short));
     const [avif, webp] = await Promise.all([srcset(src, 'avif', widths), srcset(src, 'webp', widths)]);
-    return { aspect: m.aspect as Aspect, color: m.color, avif, webp, src: webp.split(' ')[0]! };
+    return { aspect: m.aspect as Aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, alt: content[n]!.alt };
   }),
 );
 
@@ -38,7 +45,7 @@ const sharpEdge = shortEdges[Math.floor(shortEdges.length * 0.25)]!;
 // Projects associate images. Fails the build if any image is in no project or two.
 const projects: ClientProject[] = resolveProjects(
   (await getCollection('projects')).map((entry) => ({ id: entry.id, ...entry.data })),
-  manifest.map((m) => m.file),
+  content.map((entry) => entry.id),
 );
 
 // Inline JSON; escape '<' so no string can close the script element.

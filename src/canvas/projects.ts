@@ -1,14 +1,14 @@
 /**
  * Projects group images: every image belongs to exactly one project, and a project's
  * images are its associations. Authored in src/content/projects.json (a content
- * collection, see src/content.config.ts), resolved against the image list at build time,
- * and shipped to the canvas as indices into CanvasData.images.
+ * collection, see src/content.config.ts), resolved against the image entries at build
+ * time, and shipped to the canvas as indices into CanvasData.images.
  */
 
 /** Fewest images a project may have. */
 export const MIN_PROJECT_IMAGES = 3;
 
-/** A project as authored. `images` are file names from the placeholder manifest, cover first. */
+/** A project as authored. `images` are image ids (src/content/images), cover first. */
 export interface ProjectEntry {
   id: string;
   title: string;
@@ -25,13 +25,13 @@ export interface ClientProject {
 }
 
 /**
- * Resolve projects against the image list, checking what the canvas relies on: unique
- * ids, at least MIN_PROJECT_IMAGES images each, and every image in exactly one project.
- * Throws one error listing every problem.
+ * Resolve projects against the image ids (in CanvasData.images order), checking what the
+ * canvas relies on: unique ids, at least MIN_PROJECT_IMAGES images each, and every image
+ * in exactly one project. Throws one error listing every problem.
  */
-export function resolveProjects(entries: readonly ProjectEntry[], imageFiles: readonly string[]): ClientProject[] {
+export function resolveProjects(entries: readonly ProjectEntry[], imageIds: readonly string[]): ClientProject[] {
   const problems: string[] = [];
-  const indexOf = new Map(imageFiles.map((file, n) => [file, n]));
+  const indexOf = new Map(imageIds.map((id, n) => [id, n]));
   const owner = new Map<string, string>();
   const ids = new Set<string>();
 
@@ -42,24 +42,24 @@ export function resolveProjects(entries: readonly ProjectEntry[], imageFiles: re
       problems.push(`Project "${entry.id}" has ${entry.images.length} images; it needs at least ${MIN_PROJECT_IMAGES}.`);
     }
     const images: number[] = [];
-    for (const file of entry.images) {
-      const index = indexOf.get(file);
+    for (const image of entry.images) {
+      const index = indexOf.get(image);
       if (index === undefined) {
-        problems.push(`Project "${entry.id}" lists "${file}", which is not in the image manifest.`);
+        problems.push(`Project "${entry.id}" lists "${image}", which is not an image in src/content/images.`);
         continue;
       }
-      const other = owner.get(file);
+      const other = owner.get(image);
       if (other !== undefined) {
-        problems.push(`"${file}" is in both "${other}" and "${entry.id}"${other === entry.id ? ' (twice)' : ''}.`);
+        problems.push(`"${image}" is in both "${other}" and "${entry.id}"${other === entry.id ? ' (twice)' : ''}.`);
         continue;
       }
-      owner.set(file, entry.id);
+      owner.set(image, entry.id);
       images.push(index);
     }
     return { id: entry.id, title: entry.title, ...(entry.year === undefined ? {} : { year: entry.year }), images };
   });
 
-  const orphans = imageFiles.filter((file) => !owner.has(file));
+  const orphans = imageIds.filter((id) => !owner.has(id));
   if (orphans.length) problems.push(`${orphans.length} images belong to no project: ${orphans.join(', ')}.`);
   if (problems.length) throw new Error(`Invalid projects:\n- ${problems.join('\n- ')}`);
   return projects;

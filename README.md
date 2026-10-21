@@ -11,8 +11,8 @@ Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 | :-- | :-- |
 | `npm run dev` | Dev server. Add `?debug` to the URL for the lattice, tile labels, frame-time graph and pool stats. |
 | `npm run build` / `npm run preview` | Production build (generates every image variant). |
-| `npm test` | Property tests for the world model, camera physics and image trail (Vitest + fast-check). |
-| `npm run test:e2e` | Playwright against the production build: input, zoom, trail, round trips, memory, frame timing. |
+| `npm test` | Property tests for the world model, camera physics, image trail and image content (Vitest + fast-check). |
+| `npm run test:e2e` | Playwright against the production build: input, zoom, trail, round trips, memory, frame timing, alt text. |
 | `npm run check` | Type check. |
 | `npm run placeholders:collect` / `placeholders:build` | Re-collect candidates from Cosmos / re-crop them and rewrite the manifest. |
 | `npm run placeholders:projects` | Regenerate the sample projects in `src/content/projects.json`. |
@@ -47,12 +47,39 @@ All tunable numbers are in [`src/canvas/config.ts`](src/canvas/config.ts).
   - During a zoom, tiles are scaled from their last layout. They're laid out again (re-rasterised sharp, with a fitting image variant) once the zoom settles or drifts by 1.4×.
   - Each tile loads AVIF/WebP from a `srcset`, shows its dominant colour while loading, and fades in once decoded.
 
+## Image content
+
+Each image's text lives in a Markdown file in [`src/content/images/`](src/content/images/), a content collection ([`src/content.config.ts`](src/content.config.ts)). There is no editor or admin: edit the files and commit them.
+
+```md
+---
+file: "01a1066c-6146-7010-bfa2-519a378861b9.jpg"
+title: "Mango can mockup"
+category: "Development"
+alt: "Silver cans printed with an orange mango script, stacked on a diagonal…"
+caption: "Early mockup used to test the script at shelf distance."
+notes: "Third-party mockup template; don’t publish."
+---
+
+Optional write-up, in Markdown.
+```
+
+- **The file name is the image's id** (lowercase words joined by hyphens). Projects refer to images by id, so re-cropping or replacing an image file only changes `file`.
+- **Fields.** `file` is the image's name in the manifest. `title` (up to 80 characters), `category` and `alt` are required. `caption` (up to 160) and `notes` are optional. `alt` (up to 200) says what the image shows. `notes` are private and the body is a write-up; neither is shipped to the page.
+- **Categories** are `Brand` (product and campaign photography), `Logo` (the mark or wordmark is the subject), `Website` (layouts for screens: heroes, banners, product grids) and `Development` (mockups, renders, spec views, packshots). They're listed in [`src/canvas/images.ts`](src/canvas/images.ts).
+- **Validated** when the page builds. The collection schema checks each file, and the error names the file and the field. [`resolveImages`](src/canvas/images.ts) then fails the build if a manifest image has no entry, an entry names a file that isn't in the manifest, or two entries describe the same image.
+- **Shipped:** only `alt` reaches the page. It is in the page data and set on every tile. Everything else is available at build time through `getCollection('images')` for whatever UI needs it.
+
+Adding an image: add it to the manifest, then create `src/content/images/<id>.md` with its `file`, `title`, `category` and `alt`, and list the id in a project.
+
+The current 91 entries are samples: the alt text describes each placeholder, but titles, captions, notes and write-ups are invented.
+
 ## Projects
 
 Projects group images: every image belongs to exactly one project, and the images in a project are its associations. Nothing in the UI uses them yet.
 
-- **Authored** in [`src/content/projects.json`](src/content/projects.json), a content collection ([`src/content.config.ts`](src/content.config.ts)). Each project has an `id`, `title`, optional `year`, and `images`: manifest file names, cover first.
-- **Validated** when the page builds. The collection schema requires at least 3 images per project. [`resolveProjects`](src/canvas/projects.ts) then fails the build if an id repeats, a file isn't in the manifest, or an image is in two projects or none.
+- **Authored** in [`src/content/projects.json`](src/content/projects.json), a content collection ([`src/content.config.ts`](src/content.config.ts)). Each project has an `id`, `title`, optional `year`, and `images`: image ids (entry file names in `src/content/images/`), cover first.
+- **Validated** when the page builds. The collection schema requires at least 3 images per project. [`resolveProjects`](src/canvas/projects.ts) then fails the build if an id repeats, an image id doesn't exist, or an image is in two projects or none.
 - **Shipped** to the canvas in the page data as `projects`, with images as indices into `images`. `createProjectIndex` turns that into lookups: an image's project, its siblings, a project by id.
 
 The current 17 projects are samples with invented names. They group images by dominant colour into runs of 3–9, so each looks like one body of work. Replace them by hand with real projects; re-run `npm run placeholders:projects` only while they're still samples.

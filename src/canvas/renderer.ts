@@ -16,6 +16,8 @@ export interface ClientImage extends WorldImage {
   webp: string;
   /** Fallback src (smallest WebP). */
   src: string;
+  /** Alt text, from the image's content entry. */
+  alt: string;
 }
 
 /** Everything the page hands the canvas. */
@@ -427,6 +429,7 @@ export class Renderer {
     slot.image = cell.image;
     slot.loaded = false;
     slot.el.style.backgroundColor = image.color;
+    slot.img.alt = image.alt;
     slot.img.dataset.loading = '';
     slot.source.srcset = image.avif;
     slot.img.srcset = image.webp;

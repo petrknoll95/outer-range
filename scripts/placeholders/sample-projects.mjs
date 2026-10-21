@@ -4,13 +4,15 @@
 // Every image goes into exactly one project of MIN..MAX images. Images are ordered by
 // dominant colour (neutrals by lightness, then colours around the hue wheel) and cut into
 // runs, so each sample project reads as one body of work rather than a random handful.
-// Names and years are invented. Re-run after placeholders:build changes the image set;
-// real projects replace this file by hand.
-import { readFileSync, writeFileSync } from 'node:fs';
+// Names and years are invented. Projects list images by the id of their entry in
+// src/content/images, so every image needs one first. Re-run after placeholders:build
+// changes the image set; real projects replace this file by hand.
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const MANIFEST = here('../../src/assets/placeholders/manifest.json');
+const IMAGES = here('../../src/content/images');
 const OUT = here('../../src/content/projects.json');
 
 const MIN = 3; // matches MIN_PROJECT_IMAGES in src/canvas/projects.ts
@@ -51,7 +53,16 @@ function hsl(hex) {
   return { h: h * 60, s, l };
 }
 
+// Each image file's entry id: the entry's file name, from its `file:` frontmatter line.
+const idOf = new Map();
+for (const name of readdirSync(IMAGES).filter((n) => n.endsWith('.md'))) {
+  const value = /^file:\s*(.+)$/m.exec(readFileSync(`${IMAGES}/${name}`, 'utf8'))?.[1]?.trim();
+  if (value) idOf.set(value.startsWith('"') ? JSON.parse(value) : value, name.slice(0, -3));
+}
+
 const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+const missing = manifest.filter((m) => !idOf.has(m.file)).map((m) => m.file);
+if (missing.length) throw new Error(`No entry in src/content/images for: ${missing.join(', ')}`);
 const ordered = manifest
   .map((m) => ({ file: m.file, ...hsl(m.color) }))
   .map((c) => ({ ...c, neutral: c.s * (1 - Math.abs(2 * c.l - 1)) < 0.12 }))
@@ -73,7 +84,7 @@ if (sizes.length > NAMES.length) throw new Error(`Need ${sizes.length} names; ad
 let at = 0;
 const projects = sizes.map((size, n) => {
   const title = NAMES[n];
-  const images = ordered.slice(at, at + size).map((c) => c.file);
+  const images = ordered.slice(at, at + size).map((c) => idOf.get(c.file));
   at += size;
   return {
     id: title.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
