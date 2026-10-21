@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: oklch(0.968 0.004 90);
+  --color-ink: oklch(0.24 0.005 90);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: oklch(0.165 0.003 90);
+    --color-ink: oklch(0.93 0.004 90);
+  }
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    /* No rubber-banding, and no horizontal two-finger swipe triggering Back/Forward. */
+    overscroll-behavior: none;
+  }
+}

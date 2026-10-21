@@ -1,0 +1,47 @@
+---
+import type { ImageMetadata } from 'astro';
+import { getImage } from 'astro:assets';
+import manifest from '../assets/placeholders/manifest.json';
+import { VARIANT_SHORT_EDGES } from '../canvas/config';
+import type { ClientImage } from '../canvas/renderer';
+import type { Aspect } from '../canvas/world';
+import Layout from '../layouts/Layout.astro';
+
+const files = import.meta.glob<{ default: ImageMetadata }>('../assets/placeholders/*.jpg', { eager: true });
+const QUALITY = { avif: 55, webp: 76 } as const;
+
+/** One srcset per format, with a variant at each short edge the master can supply. */
+async function srcset(src: ImageMetadata, format: 'avif' | 'webp', widths: number[]): Promise<string> {
+  const urls = await Promise.all(widths.map((width) => getImage({ src, width, format, quality: QUALITY[format] })));
+  return urls.map((img, n) => `${img.src} ${widths[n]}w`).join(', ');
+}
+
+const images: ClientImage[] = await Promise.all(
+  manifest.map(async (m) => {
+    const src = files[`../assets/placeholders/${m.file}`]!.default;
+    const short = Math.min(m.width, m.height);
+    const largest = VARIANT_SHORT_EDGES[VARIANT_SHORT_EDGES.length - 1]!;
+    const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < short), ...(short < largest ? [short] : [])];
+    const widths = edges.map((e) => Math.round((m.width * e) / short));
+    const [avif, webp] = await Promise.all([srcset(src, 'avif', widths), srcset(src, 'webp', widths)]);
+    return { aspect: m.aspect as Aspect, color: m.color, avif, webp, src: webp.split(' ')[0]! };
+  }),
+);
+
+// Inline JSON; escape '<' so no string can close the script element.
+const data = JSON.stringify(images).replace(/</g, '\\u003c');
+---
+
+<Layout title="Petr Knoll" description="An infinite canvas of images.">
+  <main
+    data-canvas
+    aria-label="Image canvas. Drag, scroll or use the arrow keys to move around."
+    class="fixed inset-0 cursor-grab touch-none overflow-hidden select-none data-dragging:cursor-grabbing"
+  >
+    <div data-canvas-layer class="absolute top-0 left-0 will-change-transform"></div>
+  </main>
+  <script is:inline type="application/json" id="canvas-data" set:html={data} />
+  <script>
+    import '../canvas/main';
+  </script>
+</Layout>
