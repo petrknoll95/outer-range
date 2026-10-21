@@ -15,6 +15,7 @@ Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 | `npm run test:e2e` | Playwright against the production build: input, zoom, trail, round trips, memory, frame timing. |
 | `npm run check` | Type check. |
 | `npm run placeholders:collect` / `placeholders:build` | Re-collect candidates from Cosmos / re-crop them and rewrite the manifest. |
+| `npm run placeholders:projects` | Regenerate the sample projects in `src/content/projects.json`. |
 
 ## How it works
 
@@ -40,6 +41,16 @@ All tunable numbers are in [`src/canvas/config.ts`](src/canvas/config.ts).
   - Each tile is placed in screen space as (world − camera) × zoom + its trail offset, so the numbers written to CSS stay small however far you travel.
   - During a zoom, tiles are scaled from their last layout. They're laid out again (re-rasterised sharp, with a fitting image variant) once the zoom settles or drifts by 1.4×.
   - Each tile loads AVIF/WebP from a `srcset`, shows its dominant colour while loading, and fades in once decoded.
+
+## Projects
+
+Projects group images: every image belongs to exactly one project, and the images in a project are its associations. Nothing in the UI uses them yet.
+
+- **Authored** in [`src/content/projects.json`](src/content/projects.json), a content collection ([`src/content.config.ts`](src/content.config.ts)). Each project has an `id`, `title`, optional `year`, and `images`: manifest file names, cover first.
+- **Validated** when the page builds. The collection schema requires at least 3 images per project. [`resolveProjects`](src/canvas/projects.ts) then fails the build if an id repeats, a file isn't in the manifest, or an image is in two projects or none.
+- **Shipped** to the canvas in the page data as `projects`, with images as indices into `images`. `createProjectIndex` turns that into lookups: an image's project, its siblings, a project by id.
+
+The current 17 projects are samples with invented names. They group images by dominant colour into runs of 3–9, so each looks like one body of work. Replace them by hand with real projects; re-run `npm run placeholders:projects` only while they're still samples.
 
 ## Placeholder images
 

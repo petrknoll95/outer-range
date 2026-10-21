@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "placeholders:collect": "node scripts/placeholders/collect-cosmos.mjs https://www.cosmos.so/petrknoll/social-tonic",
-    "placeholders:build": "node scripts/placeholders/build-placeholders.mjs"
+    "placeholders:build": "node scripts/placeholders/build-placeholders.mjs",
+    "placeholders:projects": "node scripts/placeholders/sample-projects.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
