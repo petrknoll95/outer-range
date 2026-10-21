@@ -5,6 +5,11 @@
   --color-ink: oklch(0.24 0.005 90);
 }
 
+/* PP Neue Montreal (astro.config.mjs) is the default font: Tailwind's base sets the page in --font-sans. */
+@theme inline {
+  --font-sans: var(--font-neue-montreal);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --color-canvas: oklch(0.165 0.003 90);
@@ -19,5 +24,75 @@
     overflow: hidden;
     /* No rubber-banding, and no horizontal two-finger swipe triggering Back/Forward. */
     overscroll-behavior: none;
+  }
+}
+
+/*
+ * The focus frame around the active image (src/canvas/focusframe.ts). Anchor positioning
+ * places it: each inset blends the matching edge of the image it is leaving
+ * (--focus-from) and the one it is moving to (--focus-to) by --focus-mix, starting
+ * --focus-d* away from the first, and sits --focus-pad outside the image. Only
+ * --focus-mix animates, so the frame stays locked to the images while the canvas moves.
+ */
+@property --focus-mix {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
+@layer components {
+  .focus-frame {
+    --focus-dt: 0px;
+    --focus-dr: 0px;
+    --focus-db: 0px;
+    --focus-dl: 0px;
+    --focus-color: color-mix(in oklab, var(--color-ink) 45%, transparent);
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    top: calc(anchor(--focus-from top) + var(--focus-dt) + (anchor(--focus-to top) - anchor(--focus-from top) - var(--focus-dt)) * var(--focus-mix) - var(--focus-pad));
+    right: calc(anchor(--focus-from right) + var(--focus-dr) + (anchor(--focus-to right) - anchor(--focus-from right) - var(--focus-dr)) * var(--focus-mix) - var(--focus-pad));
+    bottom: calc(anchor(--focus-from bottom) + var(--focus-db) + (anchor(--focus-to bottom) - anchor(--focus-from bottom) - var(--focus-db)) * var(--focus-mix) - var(--focus-pad));
+    left: calc(anchor(--focus-from left) + var(--focus-dl) + (anchor(--focus-to left) - anchor(--focus-from left) - var(--focus-dl)) * var(--focus-mix) - var(--focus-pad));
+    /* A 1px inset shadow rather than a border: it follows the rounded corners more smoothly. */
+    box-shadow: inset 0 0 0 1px var(--focus-color);
+    border-radius: calc(var(--tile-radius, 8px) + var(--focus-pad));
+    transition: --focus-mix var(--focus-duration) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Dev layer: white, with a label naming the image. */
+  .focus-frame[data-dev] {
+    --focus-color: white;
+  }
+  /* A pill floating just above the frame, clear of its outline. */
+  .focus-frame-label {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    padding: 0 8px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.18);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    color: white;
+    font: 10px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: nowrap;
+  }
+  .focus-frame[data-dev] .focus-frame-label {
+    display: block;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .focus-frame {
+      transition: none;
+    }
+  }
+}
+
+/* Without anchor positioning there is nothing to place the frame with: leave it out. */
+@supports not (anchor-name: --focus) {
+  .focus-frame {
+    display: none !important;
   }
 }

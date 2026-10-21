@@ -3,7 +3,11 @@
 One page: an infinite canvas of images. Astro 7, Tailwind CSS v4, GSAP (its ticker drives the single animation loop).
 
 - **Pan:** drag, scroll (trackpad in any direction), or arrow keys (Shift for a bigger step).
-- **Zoom:** pinch, ctrl/⌘ + scroll, or `+` `−` `0`. Zoom centres on the cursor.
+- **Zoom:** two states, out and in. Pinch, ctrl/⌘ + scroll or `+` zooms in on the image under the cursor; pinching back, `−` or `0` zooms out. `Space` or `Enter` zooms in on the active image (the one in the focus frame), and pressing it again zooms back out. Zoomed in, the view pages between neighbouring images: each scroll, swipe or drag moves one image in its direction (diagonals included), always settling with that image exactly centred, and every other image fades.
+- **Click an image** to glide it to the centre.
+- **Wordmark:** "Petr Knoll" at the top centre, level with the tweaks button. It is white with a difference blend, so it reads on either theme and over images. It ignores the pointer, so the canvas drags and scrolls under it.
+- **Type:** PP Neue Montreal is the site font: Regular (400) and Medium (500) from [`src/assets/fonts`](src/assets/fonts), self-hosted through Astro's Fonts API (`astro.config.mjs`) with a metric-matched fallback, and Tailwind's `--font-sans` points at it. Only Medium, the wordmark's weight, is preloaded.
+- **Tweaks:** the round button at the top right opens a [Tweakpane](https://tweakpane.github.io/docs/) panel (loaded on first open). Its **Dev layer** toggle turns the focus frame white and labels the active image's number ([`devtools.ts`](src/canvas/devtools.ts)). The setting is remembered in the browser.
 
 Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 
@@ -11,8 +15,8 @@ Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 | :-- | :-- |
 | `npm run dev` | Dev server. Add `?debug` to the URL for the lattice, tile labels, frame-time graph and pool stats. |
 | `npm run build` / `npm run preview` | Production build (generates every image variant). |
-| `npm test` | Property tests for the world model, camera physics, image trail and image content (Vitest + fast-check). |
-| `npm run test:e2e` | Playwright against the production build: input, zoom, trail, round trips, memory, frame timing, alt text. |
+| `npm test` | Property tests for the world model, camera physics, image trail, click glide, lens, image content and projects (Vitest + fast-check). |
+| `npm run test:e2e` | Playwright against the production build: input, zoom, click-to-centre, trail, lens, round trips, memory, frame timing, alt text. |
 | `npm run check` | Type check. |
 | `npm run placeholders:collect` / `placeholders:build` | Re-collect candidates from Cosmos / re-crop them and rewrite the manifest. |
 | `npm run placeholders:projects` | Regenerate the sample projects in `src/content/projects.json`. |
@@ -29,18 +33,31 @@ All tunable numbers are in [`src/canvas/config.ts`](src/canvas/config.ts).
   - Wheel and trackpad move a target that the camera follows with an 80 ms time constant (the slight drag). The OS already supplies trackpad momentum, so nothing adds more.
   - Dragging follows the pointer 1:1. On release the canvas glides with a 300 ms velocity half-life.
   - Zoom eases toward a target with a 90 ms time constant, keeping the world point under the cursor fixed at every step.
-- **Zoom limits** ([`layout.ts`](src/canvas/layout.ts)).
-  - Zooming in stops where images would go soft: the on-screen short edge in device pixels may not exceed the source size three quarters of the images have. That's 2.5× at most, about 2.5× on a 1440 px retina screen.
-  - Zooming out stops at 0.75×. With 91 images, zooming out lets an image appear twice on screen, always at least 6 cells from its twin. That affects about 1 tile in 8 at 0.75× and 43% at 0.5×; more images would let the limit go lower.
+  - Clicking an image glides the camera until that image's grid centre is in the middle of the screen ([`focus.ts`](src/canvas/focus.ts)). Glides (this one and paging) ease out: an ease-out cubic that leaves at once and slows smoothly to rest. They take 0.45–0.9 s, longer for longer moves. A glide that starts from a flick keeps the flick's speed and arrives sooner rather than overshooting. Any pan, drag or zoom takes over mid-glide.
+- **Zoom states** ([`main.ts`](src/canvas/main.ts), [`physics.ts`](src/canvas/physics.ts)).
+  - Out is zoom 1. In is fixed per viewport: a portrait image's long edge fills 70% of the screen's short side, but never so far that images go soft (`zoomInLevel` in [`layout.ts`](src/canvas/layout.ts)).
+  - One pinch or ctrl/⌘ + scroll gesture switches state once it has zoomed 12% one way; more in the same direction does nothing, and swinging back the other way switches back.
+  - Zooming in grows the image under the cursor and glides it to the centre in one move (physics `ZOOM_TO`), eased out over 0.7 s like a page move. Zooming out keeps whatever is centred in place. Input during either move takes over the panning, but the zoom still finishes at its level.
+  - Zoomed in, the physics pages (`setPaging`): the view is anchored on the centred image, and one gesture moves at most one image, to the neighbour nearest one pitch away in its direction.
+    - Pulling stiffens and can never get further than 90% of a pitch from the anchor.
+    - A scroll commits the moment it has pulled 18% (it has no release to wait for: trackpad momentum keeps it going for a second or more), glides to the neighbour, and ignores the rest of itself.
+    - A new trackpad swipe arrives in the same event stream as the last one's momentum. Momentum only ever slows down, so the scroll's speed (averaged over ~50 ms, each event weighted by the time it covers, so merged or unevenly timed events don't fake a change) slowing to half its peak and then speeding up again (to twice its slowest plus 150 px/s, or back to the peak) is a new swipe. It is credited with everything it has moved since that slowest point.
+    - A drag decides on release: past 18% (counting 0.15 s of release velocity, so a quick flick counts) it moves on, otherwise it springs back, starting at the release speed either way.
+    - Arrow keys page one image per press; clicking an image goes straight to it.
+  - Zoomed in, every image except the active one fades to 15% opacity, easing as the active image changes. The lens and the image trail work as they do zoomed out.
 - **Image trail** ([`trail.ts`](src/canvas/trail.ts)). Every image hangs on its grid position from its own damped spring with air drag, simulated on the same 240 Hz step.
-  - While the canvas moves, each image trails behind by lag × velocity along the velocity vector. Lag runs from 8 ms near the pointer to 32 ms far from it, plus a per-image weight, so the grid stretches like cloth instead of moving as one block.
+  - While the canvas moves, each image trails behind by lag × velocity along the velocity vector.
+  - Lag tapers along the direction of motion, from 8 ms at the viewport edge the images move toward to 32 ms at the opposite edge, plus a small per-image weight. The sheet stretches out behind the gesture like cloth pulled from its front edge.
+  - When the direction changes, each image's lag eases to its new value.
   - When the canvas stops, images settle back (with a slight overshoot) and snap exactly onto the grid.
-  - Zooming moves images radially, so they trail there too. Reduced motion turns the trail off.
+  - Zooming moves images radially, so the taper runs from the zoom anchor outward instead. Reduced motion turns the trail off.
 - **Lens** ([`lens.ts`](src/canvas/lens.ts)), like the watchOS app grid. `?flat` turns it off.
   - Images inside the middle ~45% of the screen are full size. Toward every edge they shrink smoothly to 45%, smallest in the corners, in a rounded-rectangle (squircle) shape.
   - The grid is pulled toward the centre by the integral of that scale, so spacing tightens as fast as the images shrink. Each image's scale is taken at its corner farthest from the centre, so the lens can't push images into each other. The most it adds is a sliver, under 2% of an image.
   - Drag, pinch and zoom map the pointer back through the lens, so they act on the image actually under it.
   - The edge ring squeezes in more of the canvas, so `LENS_REPEAT_SHARE` sets how much of it the no-repeat sizing counts. At 1440×900: 1 means no repeats ever (18 images on screen); the default 0.55 gives 22 images, with a repeat between two small edge images on about 3% of screens; 0 gives 30 images, with repeats on 75%.
+- **Active image** ([`renderer.ts`](src/canvas/renderer.ts)). After every frame the renderer picks the image whose drawn centre (lens and trail included) is nearest the viewport centre. It only switches once another image is closer by `ACTIVE_SWITCH_MARGIN` (12 px), so two near-equal neighbours never flicker. `renderer.activeImage()` returns it, and `onActiveChange` reports each switch.
+- **Focus frame** ([`focusframe.ts`](src/canvas/focusframe.ts), `.focus-frame` in [`global.css`](src/styles/global.css)). A thin ink-coloured outline (a 1px inset box shadow) `FOCUS_FRAME_PADDING` (8 px) outside the active image, with its corners following the image's. It is placed with CSS anchor positioning: the tile it is leaving is anchor `--focus-from`, the one it is moving to is `--focus-to`, and each inset is a blend of the two anchors' edges by `--focus-mix`, a registered custom property that transitions from 0 to 1 over `FOCUS_FRAME_DURATION` (0.45 s). Both anchors stay live, so the frame stays locked to the images while the canvas pans, zooms, lenses and trails; only the hand-over animates. If the focus moves on mid-hand-over, the next one starts from where the frame is drawn. No script runs per frame. With reduced motion it jumps, and browsers without anchor positioning don't show it.
 - **Rendering** ([`renderer.ts`](src/canvas/renderer.ts)).
   - A pool of tiles covers the cells around the viewport, with extra margin in the direction of travel.
   - Each tile is placed in screen space as (world − camera) × zoom + its trail offset, so the numbers written to CSS stay small however far you travel.

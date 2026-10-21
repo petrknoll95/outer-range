@@ -281,3 +281,30 @@ describe('zoom', () => {
     expect(p.x + 500 / p.z).toBeCloseTo(wx, 6);
   });
 });
+
+describe('pan velocity (drives the image trail taper)', () => {
+  it('is zero during a pure zoom, however the camera itself moves', () => {
+    const p = started();
+    p.setZoomLimits(0.5, 2.5, 0, 0);
+    p.push(ZOOM, 0.01, 900, 120, 2);
+    let steps = 0;
+    p.onStep = () => {
+      expect(Math.abs(p.panVx)).toBeLessThan(1e-6);
+      expect(Math.abs(p.panVy)).toBeLessThan(1e-6);
+      if (p.zooming) steps++;
+    };
+    settle(p, 0.01);
+    expect(steps).toBeGreaterThan(20);
+  });
+
+  it('equals the camera velocity while panning at a steady zoom', () => {
+    const p = started();
+    p.push(WHEEL, 0.01, 400, -300);
+    p.onStep = () => {
+      expect(p.panVx).toBeCloseTo(p.stepVx, 6);
+      expect(p.panVy).toBeCloseTo(p.stepVy, 6);
+      expect(p.zooming).toBe(false);
+    };
+    settle(p, 0.01);
+  });
+});

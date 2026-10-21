@@ -86,31 +86,64 @@ export const SETTLE_DISTANCE = 0.05;
 // ── Zoom ───────────────────────────────────────────────────────────────────
 
 /**
- * Zoom range. Zoom 1 is the size layout.ts picks for the viewport.
+ * Two zoom states: out (zoom 1, the size layout.ts picks for the viewport) and in.
  *
- * Zooming in stops where images would go soft: at the zoom where the on-screen short
- * edge, in device pixels, reaches the source size that three quarters of the images
- * have (index.astro passes it in as `sharpEdge`). ZOOM_MAX caps it on low-DPR screens.
- *
- * Zooming out stops at ZOOM_MIN, or where the short edge would drop below
- * ZOOM_MIN_S_PX. Below zoom 1 the screen can hold more cells than the no-repeat lattice
- * spans, so an image can appear twice on screen, always at least REPEAT_COLS columns or
- * REPEAT_ROWS rows from its twin. Measured with the 91 Social Tonic images at 1440×900,
- * the share of on-screen tiles with a twin also on screen is 0% at 1×, 8% at 0.8×,
- * 12% at 0.75× and 43% at 0.5×. 0.75× keeps repeats occasional; more images (and a
- * larger lattice) let it go lower.
+ * Zoomed in, the zoom is fixed so a portrait image's long edge fills ZOOM_IN_FILL of the
+ * viewport's short side, but never past where images would go soft: the zoom where the
+ * on-screen short edge, in device pixels, reaches the source size three quarters of the
+ * images have (index.astro passes it in as `sharpEdge`). ZOOM_MAX caps it on low-DPR screens.
  */
-export const ZOOM_MIN = 0.75;
+export const ZOOM_IN_FILL = 0.7;
 export const ZOOM_MAX = 2.5;
-export const ZOOM_MIN_S_PX = 64;
-/** Time constant of the camera following wheel / key zoom, s. */
+/** Time to move between the two zoom states, s; eased out, like a page move of about the same length. */
+export const ZOOM_DURATION = 0.7;
+/**
+ * A pinch or ctrl/⌘ + scroll switches state once it has zoomed this far (as a ratio)
+ * in one direction, and the rest of that gesture is ignored. A gesture ends after
+ * ZOOM_GESTURE_IDLE s without zoom input.
+ */
+export const ZOOM_GESTURE_THRESHOLD = 1.12;
+export const ZOOM_GESTURE_IDLE = 0.25;
+/**
+ * Zoomed in, the view pages between neighbouring images: one gesture moves at most one
+ * image, toward whichever neighbour lies in its direction. Fractions are of the lattice
+ * pitch (the spacing between neighbours).
+ *
+ * - While pulling (dragging or scrolling) the view follows freely at first, then stiffens:
+ *   it can never travel more than PAGE_REACH from the image it started on.
+ * - A drag decides on release: past PAGE_THRESHOLD (counting the release velocity over
+ *   PAGE_FLICK_TIME, so a quick flick pages too) it goes to the neighbour, otherwise back.
+ * - A wheel or trackpad scroll has no release to wait for (momentum keeps it going for a
+ *   second or more), so it commits the moment it has pulled PAGE_THRESHOLD, glides to the
+ *   neighbour, and ignores the rest of that scroll until a new swipe starts (see
+ *   PAGE_SWIPE_RISE). One that stops short springs back after SNAP_IDLE.
+ */
+export const PAGE_REACH = 0.9;
+export const PAGE_THRESHOLD = 0.18;
+export const PAGE_FLICK_TIME = 0.15; // s
+/** A scroll ends after this long without input, s. */
+export const SNAP_IDLE = 0.14;
+/**
+ * Trackpads keep sending momentum for a second or more after the fingers lift, and a new
+ * swipe arrives in that same stream. Momentum only ever slows down, so once the scroll has
+ * slowed to 1/PAGE_SWIPE_RISE of its peak, speeding up again to PAGE_SWIPE_RISE × its
+ * slowest since, plus PAGE_SWIPE_MIN_SPEED (px/s, above rounding jitter), or back to that
+ * peak, is a new swipe.
+ */
+export const PAGE_SWIPE_RISE = 2;
+export const PAGE_SWIPE_MIN_SPEED = 150;
+/** The scroll's speed is averaged over roughly the last this many s, so uneven event timing doesn't read as a change of speed. */
+export const PAGE_SWIPE_WINDOW = 0.05;
+/** Zoomed in, every image but the active one fades to this opacity. */
+export const FADE_OPACITY = 0.15;
+/** Time constant of an image fading in or out as the active image changes, s. */
+export const FADE_TAU = 0.1;
+/** Time constant of the camera following a continuous zoom (physics ZOOM input), s. */
 export const ZOOM_TAU = 0.09;
 /** Zoom per wheel pixel: factor = e^(−deltaY·WHEEL_ZOOM_SPEED). */
 export const WHEEL_ZOOM_SPEED = 0.01;
 /** Largest wheel delta one event may contribute, px, so a mouse notch is a step, not a jump. */
 export const WHEEL_ZOOM_MAX_DELTA = 25;
-/** Zoom factor per +/− key press. */
-export const KEY_ZOOM = 1.25;
 /**
  * Tiles are rasterised at the zoom they were last laid out at and scaled from there.
  * They are laid out again when the zoom settles, or when it has drifted this far
@@ -123,15 +156,21 @@ export const RELAYOUT_RATIO = 1.4;
 /**
  * Each image hangs on its grid position from a damped spring with air drag, so while
  * the canvas moves it trails behind along the velocity vector by `lag × velocity`, then
- * settles back exactly when the canvas stops. Lag grows with distance from the pointer
- * (images under your finger hold on, far ones trail like cloth) plus a per-image weight.
+ * settles back exactly when the canvas stops.
+ *
+ * Lag tapers along the direction of motion: least at the viewport edge the images move
+ * toward, most at the opposite edge, so the sheet stretches out behind the gesture like
+ * cloth pulled from its front edge. While zooming, images move radially, so the taper
+ * runs from the zoom anchor outward instead. Each image adds a little weight of its own.
  */
 export const TRAIL_LAG_MIN = 0.008; // s
 export const TRAIL_LAG_MAX = 0.032; // s
-/** Share of the lag that comes from distance to the pointer; the rest is each image's own weight. */
-export const TRAIL_DISTANCE_SHARE = 0.65;
-/** Distance from the pointer at which an image gets the full distance lag, in viewport diagonals. */
-export const TRAIL_DISTANCE_FULL = 0.6;
+/** Share of the lag that comes from the taper; the rest is each image's own weight. */
+export const TRAIL_TAPER_SHARE = 0.85;
+/** How quickly an image's lag follows a change of direction, s: the sheet re-tapers smoothly. */
+export const TRAIL_LAG_TAU = 0.12;
+/** Below this on-screen speed (px/s) the taper keeps its last direction rather than following noise. */
+export const TRAIL_DIRECTION_MIN_SPEED = 30;
 /** Damping ratio of each image's spring. Below 1 it overshoots a touch when the canvas stops. */
 export const TRAIL_DAMPING = 0.72;
 /** Largest trail offset shown, in S (soft-limited), so fast flings stretch the grid without scattering it. */
@@ -139,6 +178,38 @@ export const TRAIL_MAX_OFFSET = 0.22;
 /** An image snaps onto its grid position below this offset (screen px) and speed (px/s). */
 export const TRAIL_SETTLE_DISTANCE = 0.02;
 export const TRAIL_SETTLE_SPEED = 0.5;
+
+// ── Glides (click to centre, paging) ───────────────────────────────────────
+
+/** Shortest glide to centre a clicked image or page to the next, s. */
+export const FOCUS_MIN_DURATION = 0.45;
+/** Longest glide, s: even a far move never feels sluggish. */
+export const FOCUS_MAX_DURATION = 0.9;
+/** Extra glide time per doubling of distance beyond FOCUS_DISTANCE_UNIT, s. */
+export const FOCUS_DURATION_PER_DOUBLING = 0.16;
+/** Distance, screen px, at which the glide starts taking longer than the minimum. */
+export const FOCUS_DISTANCE_UNIT = 300;
+/**
+ * Glides ease out: they leave at GLIDE_EASE_OUT × their average speed (3 makes the path
+ * an ease-out cubic) and slow smoothly to rest, arriving with no jolt. A flick that is
+ * already faster keeps its speed and arrives sooner instead of overshooting, but takes
+ * at least GLIDE_MIN_DURATION.
+ */
+export const GLIDE_EASE_OUT = 3;
+export const GLIDE_MIN_DURATION = 0.25;
+
+// ── Active image and dev layer ─────────────────────────────────────────────
+
+/**
+ * The active image is the one whose on-screen centre is nearest the viewport centre.
+ * It only changes once another image is closer by this much, screen px, so it never
+ * flickers between two near-equal neighbours.
+ */
+export const ACTIVE_SWITCH_MARGIN = 12;
+/** Gap between the active image and the focus frame around it, px. */
+export const FOCUS_FRAME_PADDING = 8;
+/** Time for the focus frame to move from one image to the next, s. */
+export const FOCUS_FRAME_DURATION = 0.45;
 
 // ── Input ──────────────────────────────────────────────────────────────────
 

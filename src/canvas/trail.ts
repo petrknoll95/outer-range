@@ -1,12 +1,4 @@
-import {
-  TRAIL_DAMPING,
-  TRAIL_DISTANCE_FULL,
-  TRAIL_DISTANCE_SHARE,
-  TRAIL_LAG_MAX,
-  TRAIL_LAG_MIN,
-  TRAIL_SETTLE_DISTANCE,
-  TRAIL_SETTLE_SPEED,
-} from './config';
+import { TRAIL_DAMPING, TRAIL_LAG_MAX, TRAIL_LAG_MIN, TRAIL_SETTLE_DISTANCE, TRAIL_SETTLE_SPEED, TRAIL_TAPER_SHARE } from './config';
 
 /**
  * One image's trail spring, in screen px.
@@ -48,13 +40,44 @@ export function placeTrail(t: Trail, gx: number, gy: number, ux: number, uy: num
 }
 
 /**
- * Lag for an image at `distance` screen px from the pointer, on a screen with the given
- * diagonal, with its own `weight` in [0, 1).
+ * Taper along the direction of motion, as a weight in [0, 1]: 0 at the viewport edge
+ * the images are moving toward (the leading edge), 1 at the opposite (trailing) edge,
+ * linear in between, so the sheet stretches out behind the gesture like cloth pulled
+ * from its front edge.
+ *
+ * (cx, cy) is the image centre relative to the viewport centre, (dx, dy) the unit
+ * direction the images move on screen, (hx, hy) the viewport half-extents. The
+ * viewport's half-extent along (dx, dy) is |dx|·hx + |dy|·hy, so for diagonal motion
+ * the leading corner gets exactly 0 and the trailing corner exactly 1.
  */
-export function trailLag(distance: number, diagonal: number, weight: number): number {
-  const d = Math.min(1, distance / (TRAIL_DISTANCE_FULL * diagonal));
-  const mix = TRAIL_DISTANCE_SHARE * d + (1 - TRAIL_DISTANCE_SHARE) * weight;
-  return TRAIL_LAG_MIN + (TRAIL_LAG_MAX - TRAIL_LAG_MIN) * mix;
+export function taperWeight(cx: number, cy: number, dx: number, dy: number, hx: number, hy: number): number {
+  const extent = Math.abs(dx) * hx + Math.abs(dy) * hy;
+  if (!(extent > 0)) return 0.5;
+  const along = (cx * dx + cy * dy) / extent;
+  return Math.min(1, Math.max(0, (1 - along) / 2));
+}
+
+/**
+ * Taper during a zoom, as a weight in [0, 1]: images move radially away from or toward
+ * the zoom anchor, so the one under the anchor holds (0) and they trail more with
+ * distance, reaching 1 at half the viewport diagonal.
+ */
+export function zoomTaperWeight(distance: number, halfDiagonal: number): number {
+  return halfDiagonal > 0 ? Math.min(1, distance / halfDiagonal) : 0;
+}
+
+/** Lag from a taper weight and the image's own weight (both in [0, 1]); `share` of it comes from the taper. */
+export function taperedLag(taper: number, own: number, share = TRAIL_TAPER_SHARE): number {
+  return TRAIL_LAG_MIN + (TRAIL_LAG_MAX - TRAIL_LAG_MIN) * (share * taper + (1 - share) * own);
+}
+
+/**
+ * Ease an image's lag toward `target` with time constant `tau` over h seconds. Lag sets
+ * the spring's stiffness, so easing it means a change of direction re-tapers the sheet
+ * smoothly instead of jolting every spring at once.
+ */
+export function easeLag(lag: number, target: number, h: number, tau: number): number {
+  return tau > 0 ? lag + (target - lag) * (1 - Math.exp(-h / tau)) : target;
 }
 
 /**

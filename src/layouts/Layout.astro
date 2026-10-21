@@ -1,4 +1,5 @@
 ---
+import { Font } from 'astro:assets';
 import '../styles/global.css';
 
 interface Props {
@@ -18,6 +19,8 @@ const { title, description } = Astro.props;
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="data:," />
     <title>{title}</title>
+    <!-- The wordmark's weight is preloaded so it paints in the right font straight away. -->
+    <Font cssVariable="--font-neue-montreal" preload={[{ weight: 500 }]} />
   </head>
   <body class="bg-canvas text-ink antialiased">
     <slot />

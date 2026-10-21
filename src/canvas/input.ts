@@ -1,14 +1,34 @@
-import { DRAG_THRESHOLD, KEY_PAGE, KEY_STEP, KEY_ZOOM, LINE_HEIGHT, WHEEL_ZOOM_MAX_DELTA, WHEEL_ZOOM_SPEED } from './config';
+import {
+  DRAG_THRESHOLD,
+  KEY_PAGE,
+  KEY_STEP,
+  LINE_HEIGHT,
+  WHEEL_ZOOM_MAX_DELTA,
+  WHEEL_ZOOM_SPEED,
+  ZOOM_GESTURE_IDLE,
+  ZOOM_GESTURE_THRESHOLD,
+} from './config';
 import type { CameraPhysics } from './physics';
-import { DRAG_END, DRAG_MOVE, DRAG_START, NUDGE, PINCH, WHEEL, ZOOM, ZOOM_RESET } from './physics';
+import { DRAG_END, DRAG_MOVE, DRAG_START, NUDGE, WHEEL } from './physics';
 
 export interface InputOptions {
   root: HTMLElement;
   physics: CameraPhysics;
   /** Called after every queued input so the render loop can wake up. */
   wake: () => void;
-  /** The pointer moved to (x, y), screen px. */
-  focus: (x: number, y: number) => void;
+  /**
+   * A press that never became a drag was released at screen point (x, y). The handler
+   * gets the event time (s) for physics inputs; the element there tells which tile it was.
+   */
+  tap?: (x: number, y: number, t: number) => void;
+  /**
+   * The user asked to zoom in (+1) or out (−1) at screen point (x, y), at time t (s):
+   * once per pinch or ctrl/⌘ + scroll gesture that passes ZOOM_GESTURE_THRESHOLD, or per
+   * + / − / 0 key press.
+   */
+  zoom?: (direction: 1 | -1, x: number, y: number, t: number) => void;
+  /** Space or Enter was pressed at time t (s): zoom into the active image, or back out. */
+  toggleZoom?: (t: number) => void;
   /** Current on-screen pitch and viewport, px, for keyboard steps. */
   metrics: () => { pitch: number; vw: number; vh: number };
   /**
@@ -31,14 +51,21 @@ function isEditable(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
 }
 
+/** Space and Enter on a focused button, link or the tweak pane belong to it, not the canvas. */
+function isControl(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('button, a[href], [data-ui]') !== null;
+}
+
 /**
  * Turns DOM events into timestamped physics inputs.
  *
  * - Wheel / trackpad: both axes pan, deltaMode normalised.
- * - Zoom about the cursor: trackpad pinch (ctrl+wheel in Chrome and Firefox, gesture
- *   events in Safari), ctrl/⌘ + mouse wheel, two-finger touch pinch, and + − 0 keys.
+ * - Zoom in or out: trackpad pinch (ctrl+wheel in Chrome and Firefox, gesture events in
+ *   Safari), ctrl/⌘ + mouse wheel, two-finger touch pinch, and + − 0 keys. Each gesture
+ *   asks for one step (see `zoom`); the rest of it is ignored. Space and Enter toggle
+ *   between the two (see `toggleZoom`).
  * - Pointer: mouse, pen and one-finger touch drag with pointer capture. A press stays a
- *   click until it travels DRAG_THRESHOLD px; a click that ends a drag is swallowed.
+ *   tap until it travels DRAG_THRESHOLD px; a click that ends a drag is swallowed.
  * - Arrow keys pan by KEY_STEP pitches, with Shift by KEY_PAGE of the viewport.
  */
 const identity = (x: number, y: number, out: { x: number; y: number }) => {
@@ -46,7 +73,7 @@ const identity = (x: number, y: number, out: { x: number; y: number }) => {
   out.y = y;
 };
 
-export function attachInput({ root, physics, wake, focus, metrics, toCanvas = identity }: InputOptions): () => void {
+export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, metrics, toCanvas = identity }: InputOptions): () => void {
   const point = { x: 0, y: 0 };
   /** Screen → canvas point. Returns a shared object: read it before the next call. */
   const canvas = (x: number, y: number) => {
@@ -61,8 +88,32 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
   let midX = 0;
   let midY = 0;
   let suppressClick = false;
-  let gestureScale = 1;
   let inGesture = false;
+  // One zoom gesture: how far it has zoomed (log) since it last asked, when it last moved,
+  // and which way it last asked (0: not yet).
+  let zoomAmount = 0;
+  let zoomLast = Number.NEGATIVE_INFINITY;
+  let zoomAsked: -1 | 0 | 1 = 0;
+  let gestureLog = 0;
+  const limit = Math.log(ZOOM_GESTURE_THRESHOLD);
+  /**
+   * Add `delta` (log zoom) to the current gesture and ask once it passes the threshold.
+   * After that, more of the same direction is absorbed; only a reversal asks again.
+   */
+  const zoomGesture = (delta: number, x: number, y: number, t: number) => {
+    if (t - zoomLast > ZOOM_GESTURE_IDLE) {
+      zoomAmount = 0;
+      zoomAsked = 0;
+    }
+    zoomLast = t;
+    zoomAmount += delta;
+    if (zoomAsked !== 0 && Math.sign(zoomAmount) === zoomAsked) zoomAmount = 0;
+    if (Math.abs(zoomAmount) < limit) return;
+    zoomAsked = zoomAmount > 0 ? 1 : -1;
+    zoomAmount = 0;
+    zoom?.(zoomAsked, x, y, t);
+    wake();
+  };
 
   const measurePinch = () => {
     const [a, b] = [...pointers.values()];
@@ -72,9 +123,12 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
   };
 
   const onWheel = (e: WheelEvent) => {
+    // Panels over the canvas (e.g. the dev pane) keep their own scrolling; pinching there zooms nothing.
+    if (e.target instanceof Element && e.target.closest('[data-ui]')) {
+      if (e.ctrlKey || e.metaKey) e.preventDefault();
+      return;
+    }
     e.preventDefault();
-    const at = canvas(e.clientX, e.clientY);
-    focus(at.x, at.y);
     let dx = e.deltaX;
     let dy = e.deltaY;
     if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
@@ -89,8 +143,7 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
       // Safari reports its pinch as gesture events; don't count it twice.
       if (inGesture) return;
       const d = Math.max(-WHEEL_ZOOM_MAX_DELTA, Math.min(WHEEL_ZOOM_MAX_DELTA, dy));
-      physics.push(ZOOM, seconds(e), at.x, at.y, Math.exp(-d * WHEEL_ZOOM_SPEED));
-      wake();
+      zoomGesture(-d * WHEEL_ZOOM_SPEED, e.clientX, e.clientY, seconds(e));
       return;
     }
     // Windows mice: Shift turns the wheel horizontal, but not every browser swaps the axes.
@@ -105,17 +158,17 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
   const onGestureStart = (e: Event) => {
     e.preventDefault();
     inGesture = true;
-    gestureScale = 1;
+    gestureLog = 0;
+    zoomLast = Number.NEGATIVE_INFINITY;
   };
   const onGestureChange = (e: Event) => {
     e.preventDefault();
     const g = e as GestureEvent;
     if (g.scale > 0) {
-      const at = canvas(g.clientX, g.clientY);
-      physics.push(ZOOM, seconds(e), at.x, at.y, g.scale / gestureScale);
-      gestureScale = g.scale;
-      focus(at.x, at.y);
-      wake();
+      // Safari reports the gesture's total scale; feed in the change since the last event.
+      const log = Math.log(g.scale);
+      zoomGesture(log - gestureLog, g.clientX, g.clientY, seconds(e));
+      gestureLog = log;
     }
   };
   const onGestureEnd = (e: Event) => {
@@ -129,8 +182,6 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
     if (pointers.size >= 2 || (pointers.size === 1 && e.pointerType !== 'touch')) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     root.setPointerCapture(e.pointerId);
-    const at = canvas(e.clientX, e.clientY);
-    focus(at.x, at.y);
     if (pointers.size === 1) {
       mode = 'press';
       startX = e.clientX;
@@ -143,6 +194,7 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
     suppressClick = true;
     root.dataset.dragging = '';
     pinchDistance = measurePinch();
+    zoomLast = Number.NEGATIVE_INFINITY;
     const mid = canvas(midX, midY);
     physics.push(DRAG_START, seconds(e), mid.x, mid.y);
     wake();
@@ -150,13 +202,7 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
 
   const onPointerMove = (e: PointerEvent) => {
     const p = pointers.get(e.pointerId);
-    if (!p) {
-      if (e.pointerType === 'mouse') {
-        const at = canvas(e.clientX, e.clientY);
-        focus(at.x, at.y);
-      }
-      return;
-    }
+    if (!p) return;
     p.x = e.clientX;
     p.y = e.clientY;
     if (mode === 'press') {
@@ -170,15 +216,13 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
     }
     if (mode === 'drag') {
       const at = canvas(e.clientX, e.clientY);
-      focus(at.x, at.y);
       physics.push(DRAG_MOVE, seconds(e), at.x, at.y);
     } else if (mode === 'pinch') {
       const distance = measurePinch();
       const mid = canvas(midX, midY);
-      focus(mid.x, mid.y);
-      // Pan so the held world point follows the midpoint, then zoom about it.
+      // The midpoint pans; how far the fingers have spread since they landed asks for a zoom.
       physics.push(DRAG_MOVE, seconds(e), mid.x, mid.y);
-      if (pinchDistance > 0 && distance > 0) physics.push(PINCH, seconds(e), mid.x, mid.y, distance / pinchDistance);
+      if (pinchDistance > 0 && distance > 0) zoomGesture(Math.log(distance / pinchDistance), midX, midY, seconds(e));
       pinchDistance = distance;
     }
     wake();
@@ -201,6 +245,9 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
       delete root.dataset.dragging;
       physics.push(DRAG_END, seconds(e));
       wake();
+    } else if (mode === 'press' && e.type === 'pointerup' && tap) {
+      tap(e.clientX, e.clientY, seconds(e));
+      wake();
     }
     mode = 'idle';
   };
@@ -220,14 +267,18 @@ export function attachInput({ root, physics, wake, focus, metrics, toCanvas = id
     switch (e.key) {
       case '+':
       case '=':
-        physics.push(ZOOM, t, m.vw / 2, m.vh / 2, KEY_ZOOM);
+        zoom?.(1, m.vw / 2, m.vh / 2, t);
         break;
       case '-':
       case '_':
-        physics.push(ZOOM, t, m.vw / 2, m.vh / 2, 1 / KEY_ZOOM);
-        break;
       case '0':
-        physics.push(ZOOM_RESET, t, m.vw / 2, m.vh / 2);
+        zoom?.(-1, m.vw / 2, m.vh / 2, t);
+        break;
+      case ' ':
+      case 'Enter':
+        if (isControl(e.target)) return;
+        // Held down, it would flip in and out with every repeat.
+        if (!e.repeat) toggleZoom?.(t);
         break;
       case 'ArrowLeft':
       case 'ArrowRight':

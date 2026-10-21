@@ -1,18 +1,19 @@
 import { expect, test, type Page } from '@playwright/test';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
-import {
-  COLUMN_STAGGER,
-  COLUMN_STAGGER_JITTER,
-  DRAG_THRESHOLD,
-  JITTER_X,
-  JITTER_Y,
-  KEY_STEP,
-  KEY_ZOOM,
-  LEAD_MAX,
-  LONG,
-  MARGIN,
-} from '../src/canvas/config';
+import { DRAG_THRESHOLD, FADE_OPACITY, KEY_STEP, LEAD_MAX, LONG, MARGIN } from '../src/canvas/config';
+
+interface Tile {
+  i: number;
+  j: number;
+  image: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  scale: number;
+  opacity: number;
+}
 
 interface CanvasApi {
   physics: { x: number; y: number; z: number; tx: number; ty: number; vx: number; vy: number };
@@ -20,14 +21,19 @@ interface CanvasApi {
     poolSize: number;
     activeCount: number;
     zoomLaidOut: number;
-    visibleCells: () => { i: number; j: number; image: number; left: number; top: number; width: number; height: number; scale: number }[];
-    trailOffsets: () => { i: number; j: number; x: number; y: number }[];
+    visibleCells: () => Tile[];
+    rectOf: (el: Element) => unknown;
+    trailOffsets: () => { i: number; j: number; cx: number; cy: number; x: number; y: number }[];
   };
+  world: { jitterX: number; jitterY: number; maxStagger: number };
   geometry: () => { vw: number; vh: number; s: number; pitch: number };
   lens: { reach: number; params: unknown };
   /** Screen point → the unlensed canvas point the lens draws there. */
   toCanvas: (x: number, y: number) => { x: number; y: number };
   zoomLimits: () => { min: number; max: number };
+  zoomState: () => 'out' | 'in';
+  zoomInLevel: () => number;
+  activeImage: () => (Omit<Tile, 'scale' | 'opacity'>) | null;
   isSettled: () => boolean;
   domNodes: () => number;
   onFrame: (fn: () => void) => () => void;
@@ -92,8 +98,11 @@ test('the lens keeps the centre full size and shrinks images towards every edge;
   const tiles = await page.evaluate(() => window.__canvas.renderer.visibleCells());
   const distance = (t: (typeof tiles)[number]) =>
     Math.max(Math.abs(t.left + t.width / 2 - 720) / 720, Math.abs(t.top + t.height / 2 - 450) / 450);
+  // The most central tile is (nearly) full size: the lens takes scale at a tile's far corner,
+  // so one that pokes out of the full-size zone dips a little. (Exactly 1 at the very centre
+  // is checked by the click-to-centre test.)
   const centre = tiles.reduce((a, b) => (distance(a) < distance(b) ? a : b));
-  expect(centre.scale).toBe(1);
+  expect(centre.scale).toBeGreaterThan(0.95);
   for (const t of tiles) if (distance(t) > 0.9) expect(t.scale).toBeLessThan(0.75);
   // Scale falls (or holds) with distance from the centre.
   const sorted = [...tiles].sort((a, b) => distance(a) - distance(b));
@@ -114,12 +123,58 @@ test('a quick flick keeps gliding after release', async ({ page }) => {
   expect(after.x - before.x).toBeGreaterThan(400);
 });
 
-test('a press that moves less than the threshold is a click, not a drag', async ({ page }) => {
+/** A screen point with no image under it (only the canvas itself), or null. */
+const emptySpot = (page: Page) =>
+  page.evaluate(() => {
+    for (let y = 60; y < 860; y += 20) {
+      for (let x = 60; x < 1380; x += 20) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.closest('[data-canvas]') && !window.__canvas.renderer.rectOf(el)) return { x, y };
+      }
+    }
+    return null;
+  });
+
+test('a press that moves less than the threshold is a tap, not a drag', async ({ page }) => {
   await open(page);
+  const spot = (await emptySpot(page))!;
   const before = await camera(page);
-  await drag(page, DRAG_THRESHOLD - 2, 0, 3);
+  await page.mouse.move(spot.x, spot.y);
+  await page.mouse.down();
+  await page.mouse.move(spot.x + DRAG_THRESHOLD - 2, spot.y);
+  await page.mouse.up();
   await page.waitForTimeout(100);
+  // Between images, a tap does nothing.
   expect(await camera(page)).toEqual(before);
+});
+
+test('clicking an image glides it to the centre', async ({ page }) => {
+  await open(page);
+  // A tile that is fully on screen, off-centre, and the one drawn on top at its centre.
+  const target = await page.evaluate(() => {
+    const tiles = window.__canvas.renderer
+      .visibleCells()
+      .filter((t) => t.left > 20 && t.top > 20 && t.left + t.width < 1420 && t.top + t.height < 880)
+      .sort((a, b) => Math.hypot(b.left + b.width / 2 - 720, b.top + b.height / 2 - 450) - Math.hypot(a.left + a.width / 2 - 720, a.top + a.height / 2 - 450));
+    for (const t of tiles) {
+      const x = t.left + t.width / 2;
+      const y = t.top + t.height / 2;
+      if (window.__canvas.renderer.rectOf(document.elementFromPoint(x, y)!)) return { ...t, x, y };
+    }
+    return null;
+  });
+  expect(target).not.toBeNull();
+  expect(Math.hypot(target!.x - 720, target!.y - 450)).toBeGreaterThan(150);
+  await page.mouse.click(target!.x, target!.y);
+  await settled(page);
+  const after = await page.evaluate(
+    (t) => window.__canvas.renderer.visibleCells().find((c) => c.i === t.i && c.j === t.j)!,
+    target!,
+  );
+  expect(after.left + after.width / 2).toBeCloseTo(720, 2);
+  expect(after.top + after.height / 2).toBeCloseTo(450, 2);
+  // At the centre the lens leaves it full size.
+  expect(after.scale).toBe(1);
 });
 
 test('wheel pans both axes', async ({ page }) => {
@@ -133,69 +188,181 @@ test('wheel pans both axes', async ({ page }) => {
   expect(after.y - before.y).toBeCloseTo(-120, 6);
 });
 
-test('pinch (ctrl+wheel) zooms about the cursor, and the browser page never zooms', async ({ page }) => {
+/** A tile fully on screen, well off-centre, and the one drawn on top at its centre. */
+const offCentreTile = (page: Page) =>
+  page.evaluate(() => {
+    const tiles = window.__canvas.renderer
+      .visibleCells()
+      .filter((t) => t.left > 20 && t.top > 20 && t.left + t.width < 1420 && t.top + t.height < 880)
+      .sort((a, b) => Math.hypot(b.left + b.width / 2 - 720, b.top + b.height / 2 - 450) - Math.hypot(a.left + a.width / 2 - 720, a.top + a.height / 2 - 450));
+    for (const t of tiles) {
+      const x = t.left + t.width / 2;
+      const y = t.top + t.height / 2;
+      if (window.__canvas.renderer.rectOf(document.elementFromPoint(x, y)!)) return { ...t, x, y };
+    }
+    return null;
+  });
+
+/** The tile with the given cell, as drawn now. */
+const tileOf = (page: Page, t: { i: number; j: number }) =>
+  page.evaluate((t) => window.__canvas.renderer.visibleCells().find((c) => c.i === t.i && c.j === t.j)!, t);
+
+test('pinching in locks onto the image under the cursor, centred, and the browser page never zooms', async ({ page }) => {
   await open(page);
   const prevented = await page.evaluate(
     () => !window.dispatchEvent(new WheelEvent('wheel', { cancelable: true, deltaY: 0, ctrlKey: true })),
   );
   expect(prevented).toBe(true);
 
-  // Off-centre, where the lens bends things: the anchor is the canvas point drawn under the cursor.
-  const anchor = await page.evaluate(() => window.__canvas.toCanvas(400, 260));
-  const under = (c: { x: number; y: number; z: number }) => ({ x: c.x + anchor.x / c.z, y: c.y + anchor.y / c.z });
-  const before = await camera(page);
-  await pinchWheel(page, 400, 260, -15, 10);
+  const target = (await offCentreTile(page))!;
+  await pinchWheel(page, target.x, target.y, -15, 10);
   await settled(page);
-  const after = await camera(page);
-  expect(after.z).toBeGreaterThan(1.5);
-  expect(under(after).x).toBeCloseTo(under(before).x, 6);
-  expect(under(after).y).toBeCloseTo(under(before).y, 6);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('in');
+  const z = await page.evaluate(() => window.__canvas.zoomInLevel());
+  expect((await camera(page)).z).toBe(z);
+  const t = await tileOf(page, target);
+  expect(t.left + t.width / 2).toBeCloseTo(720, 1);
+  expect(t.top + t.height / 2).toBeCloseTo(450, 1);
+  // Opaque; everything else faded.
+  expect(t.opacity).toBe(1);
+  const others = (await page.evaluate(() => window.__canvas.renderer.visibleCells())).filter((c) => c.i !== t.i || c.j !== t.j);
+  expect(others.length).toBeGreaterThan(0);
+  for (const o of others) expect(o.opacity).toBeCloseTo(FADE_OPACITY, 2);
   // Tiles are laid out again at the final zoom, so they are rasterised sharp.
-  expect(await page.evaluate(() => window.__canvas.renderer.zoomLaidOut)).toBe(after.z);
+  expect(await page.evaluate(() => window.__canvas.renderer.zoomLaidOut)).toBe(z);
 });
 
-test('zoom stops at its limits', async ({ page }) => {
+test('there are only two zoom levels: more pinching stays in, pinching out goes back to 1', async ({ page }) => {
   await open(page);
-  const limits = await page.evaluate(() => window.__canvas.zoomLimits());
-  expect(limits.min).toBeLessThan(1);
-  expect(limits.max).toBeGreaterThan(1);
+  const z = await page.evaluate(() => window.__canvas.zoomInLevel());
+  expect(z).toBeGreaterThan(1.5);
   await pinchWheel(page, 720, 450, -25, 40);
   await settled(page);
-  expect((await camera(page)).z).toBe(limits.max);
-  await pinchWheel(page, 720, 450, 25, 60);
+  expect((await camera(page)).z).toBe(z);
+  await pinchWheel(page, 720, 450, -25, 40);
   await settled(page);
-  expect((await camera(page)).z).toBe(limits.min);
+  expect((await camera(page)).z).toBe(z);
+  await pinchWheel(page, 720, 450, 25, 40);
+  await settled(page);
+  expect((await camera(page)).z).toBe(1);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('out');
+  // Zoomed out, nothing is faded.
+  const tiles = await page.evaluate(() => window.__canvas.renderer.visibleCells());
+  expect(tiles.every((t) => t.opacity === 1)).toBe(true);
 });
 
-test('+ − and 0 zoom about the centre', async ({ page }) => {
+test('+ zooms in on the active image, − and 0 zoom out, and pressing again changes nothing', async ({ page }) => {
   await open(page);
+  const active = (await page.evaluate(() => window.__canvas.activeImage()))!;
+  const z = await page.evaluate(() => window.__canvas.zoomInLevel());
+  await page.keyboard.press('=');
   await page.keyboard.press('=');
   await settled(page);
-  expect((await camera(page)).z).toBeCloseTo(KEY_ZOOM, 9);
-  await page.keyboard.press('-');
+  expect((await camera(page)).z).toBe(z);
+  const centred = (await page.evaluate(() => window.__canvas.activeImage()))!;
+  expect([centred.i, centred.j]).toEqual([active.i, active.j]);
   await page.keyboard.press('-');
   await settled(page);
-  expect((await camera(page)).z).toBeCloseTo(1 / KEY_ZOOM, 9);
+  expect((await camera(page)).z).toBe(1);
+  await page.keyboard.press('=');
+  await settled(page);
   await page.keyboard.press('0');
   await settled(page);
   expect((await camera(page)).z).toBe(1);
 });
 
-test('images trail by different amounts while moving, and land exactly on the grid', async ({ page }) => {
+test('Space or Enter zooms in on the active image, and pressing again zooms back out', async ({ page }) => {
   await open(page);
-  await page.mouse.move(1000, 450);
+  const active = (await page.evaluate(() => window.__canvas.activeImage()))!;
+  await page.keyboard.press(' ');
+  await settled(page);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('in');
+  expect((await camera(page)).z).toBeCloseTo(await page.evaluate(() => window.__canvas.zoomInLevel()), 3);
+  // It's the framed image that zooms in, centred.
+  const t = await tileOf(page, active);
+  expect(t.left + t.width / 2).toBeCloseTo(720, 1);
+  expect(t.top + t.height / 2).toBeCloseTo(450, 1);
+
+  await page.keyboard.press('Enter');
+  await settled(page);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('out');
+  expect((await camera(page)).z).toBe(1);
+  await page.keyboard.press('Enter');
+  await settled(page);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('in');
+  await page.keyboard.press(' ');
+  await settled(page);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('out');
+
+  // On the focused Tweaks button, Space is the button's: it opens the pane and leaves the zoom alone.
+  await page.getByRole('button', { name: 'Tweaks' }).focus();
+  await page.keyboard.press(' ');
+  await expect(page.locator('#canvas-tweaks')).toBeVisible();
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('out');
+});
+
+test('zoomed in, a scroll moves exactly one image in its direction, however far it goes', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press('=');
+  await settled(page);
+  const start = (await page.evaluate(() => window.__canvas.activeImage()))!;
+  const g = await page.evaluate(() => ({ pitch: window.__canvas.geometry().pitch, z: window.__canvas.physics.z }));
+  const before = await camera(page);
+  await page.mouse.move(720, 450);
+  // Three pitches' worth of scroll to the right: still only one image.
+  await page.mouse.wheel(g.pitch * g.z * 3, 0);
+  await settled(page);
+  const after = await camera(page);
+  const now = (await page.evaluate(() => window.__canvas.activeImage()))!;
+  expect([now.i, now.j]).not.toEqual([start.i, start.j]);
+  expect(Math.abs(now.i - start.i)).toBe(1);
+  expect(after.x - before.x).toBeGreaterThan(g.pitch * 0.5);
+  expect(after.x - before.x).toBeLessThan(g.pitch * 1.5);
+  expect(now.left + now.width / 2).toBeCloseTo(720, 1);
+  expect(now.top + now.height / 2).toBeCloseTo(450, 1);
+  // A nudge too small to page springs back to the same image.
+  await page.mouse.wheel(g.pitch * g.z * 0.1, 0);
+  await settled(page);
+  const back = (await page.evaluate(() => window.__canvas.activeImage()))!;
+  expect([back.i, back.j]).toEqual([now.i, now.j]);
+  expect(back.left + back.width / 2).toBeCloseTo(720, 1);
+});
+
+test('zoomed in, even a long fast flick moves exactly one image, and lands centred', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press('=');
+  await settled(page);
+  const start = (await camera(page))!;
+  const g = await page.evaluate(() => ({ pitch: window.__canvas.geometry().pitch }));
+  await drag(page, -600, 0, 5);
+  await settled(page);
+  const end = await camera(page);
+  expect(end.x - start.x).toBeGreaterThan(g.pitch * 0.5);
+  expect(end.x - start.x).toBeLessThan(g.pitch * 1.5);
+  const active = (await page.evaluate(() => window.__canvas.activeImage()))!;
+  expect(active.left + active.width / 2).toBeCloseTo(720, 1);
+  expect(active.top + active.height / 2).toBeCloseTo(450, 1);
+});
+
+test('images trail most at the edge the motion leaves, least where it heads, and land exactly on the grid', async ({ page }) => {
+  await open(page);
+  await page.mouse.move(1100, 450);
   await page.mouse.down();
   for (let n = 1; n <= 12; n++) {
-    await page.mouse.move(1000 - n * 40, 450);
+    await page.mouse.move(1100 - n * 40, 450);
     await page.waitForTimeout(8);
   }
   const moving = await page.evaluate(() => window.__canvas.renderer.trailOffsets());
   await page.mouse.up();
   // Dragging left, every image trails to the right of its grid position...
   expect(moving.every((o) => o.x > 0)).toBe(true);
-  // ...but not as one block: the offsets spread out.
-  const xs = moving.map((o) => o.x);
-  expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(8);
+  // ...least at the left (leading) edge, most at the right (trailing) edge.
+  const mean = (xs: typeof moving) => xs.reduce((a, o) => a + o.x, 0) / xs.length;
+  const left = moving.filter((o) => o.cx < 480);
+  const right = moving.filter((o) => o.cx > 960);
+  expect(left.length).toBeGreaterThan(0);
+  expect(right.length).toBeGreaterThan(0);
+  expect(mean(right)).toBeGreaterThan(mean(left) * 1.4);
   await settled(page);
   const resting = await page.evaluate(() => window.__canvas.renderer.trailOffsets());
   expect(resting.every((o) => o.x === 0 && o.y === 0)).toBe(true);
@@ -272,36 +439,39 @@ test('panning 20 screens away and back is pixel-identical', async ({ page }) => 
   expect(diff).toBe(0);
 });
 
-test('zooming in and out and back to 1 puts every tile back in place', async ({ page }) => {
+test('zoomed in, the lens still shrinks images towards the edges and dragging still trails them', async ({ page }) => {
   await open(page);
-  const tiles = () =>
-    page.evaluate(() => window.__canvas.renderer.visibleCells().sort((a, b) => a.i - b.i || a.j - b.j));
-  const startTiles = await tiles();
-  const origin = await camera(page);
-  await pinchWheel(page, 300, 200, -20, 8);
-  await pinchWheel(page, 1100, 700, 20, 14);
+  await page.keyboard.press('=');
   await settled(page);
-  await page.keyboard.press('0');
+  const tiles = await page.evaluate(() => window.__canvas.renderer.visibleCells());
+  expect(tiles.some((t) => t.scale < 0.9)).toBe(true);
+  await page.mouse.move(1100, 450);
+  await page.mouse.down();
+  for (let n = 1; n <= 10; n++) {
+    await page.mouse.move(1100 - n * 30, 450);
+    await page.waitForTimeout(8);
+  }
+  const moving = await page.evaluate(() => window.__canvas.renderer.trailOffsets());
+  await page.mouse.up();
+  expect(moving.length).toBeGreaterThan(1);
+  // Dragging left, every image trails to the right of its grid position, by different amounts.
+  expect(moving.every((o) => o.x > 0)).toBe(true);
+  const xs = moving.map((o) => o.x);
+  expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(2);
   await settled(page);
-  // Zooming about different points shifts the camera; pan it back with the wheel.
-  const back = await camera(page);
-  expect(back.z).toBe(1);
-  await page.mouse.wheel(origin.x - back.x, origin.y - back.y);
+});
+
+test('zooming in on an image and back out leaves it at the centre', async ({ page }) => {
+  await open(page);
+  const target = (await offCentreTile(page))!;
+  await pinchWheel(page, target.x, target.y, -20, 8);
   await settled(page);
-  const end = await camera(page);
-  // The browser hands fractional wheel deltas over slightly rounded; 1/1000 px is invisible.
-  expect(end.x).toBeCloseTo(origin.x, 3);
-  expect(end.y).toBeCloseTo(origin.y, 3);
-  // Same cells, same images, same rectangles. (Not a pixel comparison: having zoomed in,
-  // the browser keeps the sharper variants it loaded, so tiles are now resampled from
-  // better sources, which is what you want.)
-  const endTiles = await tiles();
-  expect(endTiles.length).toBe(startTiles.length);
-  startTiles.forEach((t, n) => {
-    const e = endTiles[n]!;
-    expect([e.i, e.j, e.image]).toEqual([t.i, t.j, t.image]);
-    for (const key of ['left', 'top', 'width', 'height'] as const) expect(e[key]).toBeCloseTo(t[key], 3);
-  });
+  await pinchWheel(page, 1100, 700, 20, 8);
+  await settled(page);
+  expect((await camera(page)).z).toBe(1);
+  const t = await tileOf(page, target);
+  expect(t.left + t.width / 2).toBeCloseTo(720, 1);
+  expect(t.top + t.height / 2).toBeCloseTo(450, 1);
 });
 
 test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => {
@@ -348,19 +518,22 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
   // The pool is the most tiles ever active at once, so it can never exceed the cells the
   // loaded range covers at the smallest zoom with the full lead margin and the lens's reach.
   const bound = await page.evaluate(
-    ({ MARGIN, LEAD_MAX, LONG, JITTER_X, JITTER_Y, COLUMN_STAGGER, COLUMN_STAGGER_JITTER }) => {
-      const g = window.__canvas.geometry();
-      const z = window.__canvas.zoomLimits().min;
-      const lensReach = window.__canvas.lens.reach;
+    ({ MARGIN, LEAD_MAX, LONG }) => {
+      const c = window.__canvas;
+      const g = c.geometry();
+      const w = c.world;
+      const z = c.zoomLimits().min;
+      const lensReach = c.lens.reach;
       const span = (view: number, reach: number) =>
         Math.floor(((view * lensReach) / z + (2 * MARGIN + LEAD_MAX) * g.pitch + 2 * reach * g.s) / g.pitch) + 1;
-      return span(g.vw, LONG / 2 + JITTER_X) * span(g.vh, LONG / 2 + JITTER_Y + COLUMN_STAGGER + COLUMN_STAGGER_JITTER);
+      return span(g.vw, LONG / 2 + w.jitterX) * span(g.vh, LONG / 2 + w.jitterY + w.maxStagger);
     },
-    { MARGIN, LEAD_MAX, LONG, JITTER_X, JITTER_Y, COLUMN_STAGGER, COLUMN_STAGGER_JITTER },
+    { MARGIN, LEAD_MAX, LONG },
   );
   console.info(`pool bound ${bound}`);
   expect(after.pool).toBeLessThanOrEqual(bound);
-  expect(after.dom).toBe(after.pool * 4 + 1);
+  // Four nodes per tile, plus the layer and the focus frame with its label.
+  expect(after.dom).toBe(after.pool * 4 + 3);
   expect(afterHeap - baseHeap).toBeLessThan(1_000_000);
 });
 

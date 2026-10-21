@@ -1,10 +1,21 @@
-import { LEAD_MAX, LEAD_TIME, MARGIN, RELAYOUT_RATIO, TRAIL_MAX_OFFSET } from './config';
+import {
+  ACTIVE_SWITCH_MARGIN,
+  FADE_OPACITY,
+  FADE_TAU,
+  LEAD_MAX,
+  LEAD_TIME,
+  MARGIN,
+  RELAYOUT_RATIO,
+  TRAIL_DIRECTION_MIN_SPEED,
+  TRAIL_LAG_TAU,
+  TRAIL_MAX_OFFSET,
+} from './config';
 import { hash, unit } from './hash';
-import type { CellRange, Geometry } from './layout';
+import type { CellRange, CellRect, Geometry } from './layout';
 import { cellRange } from './layout';
 import type { Lens, LensPoint } from './lens';
 import type { Trail } from './trail';
-import { limitOffset, placeTrail, restingTrail, stepTrail, trailLag } from './trail';
+import { easeLag, limitOffset, placeTrail, restingTrail, stepTrail, taperedLag, taperWeight, zoomTaperWeight } from './trail';
 import type { Cell, World, WorldImage } from './world';
 import { emptyCell } from './world';
 
@@ -27,6 +38,33 @@ export interface CanvasData {
   images: ClientImage[];
 }
 
+/** The active image: which cell it is and where it is drawn (screen px, lens and trail included). */
+export interface ActiveImage {
+  i: number;
+  j: number;
+  image: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** The camera after one physics step, as the image trails need it. */
+export interface CameraStep {
+  x: number;
+  y: number;
+  z: number;
+  /** Pan part of the camera's velocity, world px/s (zero during a pure zoom). */
+  panVx: number;
+  panVy: number;
+  zooming: boolean;
+  /** Zoom anchor, canvas px. */
+  anchorX: number;
+  anchorY: number;
+  /** How far zoomed in, 0 (out) to 1 (in): fades every image but the active one. */
+  focus: number;
+}
+
 interface Slot {
   el: HTMLDivElement;
   source: HTMLSourceElement;
@@ -45,13 +83,19 @@ interface Slot {
   weight: number;
   lag: number;
   trail: Trail;
-  frame: number;
   loaded: boolean;
   token: number;
   /** Last values written to CSS, to skip redundant writes. */
   cssX: number;
   cssY: number;
   cssScale: number;
+  /** Drawn size, screen px, and distance from the drawn centre to the viewport centre. */
+  drawnWidth: number;
+  drawnHeight: number;
+  distance: number;
+  /** Opacity now, and the last value written to CSS. */
+  opacity: number;
+  cssOpacity: number;
 }
 
 // Cell keys pack (i, j) into one float64-safe integer; valid for |i|, |j| < 2^25.
@@ -93,7 +137,6 @@ export class Renderer {
   private readonly lensed: LensPoint = { x: 0, y: 0, scale: 1 };
   private geometry: Geometry | null = null;
   private dirty = true;
-  private frame = 0;
   private layoutZoom = 1;
   private camX = 0;
   private camY = 0;
@@ -101,14 +144,27 @@ export class Renderer {
   private stepX = Number.NaN;
   private stepY = Number.NaN;
   private stepZ = Number.NaN;
-  private focusX = 0;
-  private focusY = 0;
+  /** On-screen velocity of the images (opposite to the camera's), px/s, and its last clear direction. */
+  private motionX = 0;
+  private motionY = 0;
+  private dirX = 1;
+  private dirY = 0;
+  private zooming = false;
+  private anchorX = 0;
+  private anchorY = 0;
   private trails = true;
   private resetTrails = false;
+  private activeSlot: Slot | null = null;
+  private focus = 0;
+  /** Called after every update with the active image, e.g. to draw dev overlays on it. */
+  onDraw: ((active: ActiveImage | null) => void) | null = null;
+  /** Called with the active image's tile element whenever another image becomes active. */
+  onActiveChange: ((tile: HTMLElement | null) => void) | null = null;
+  /** Called when a tile element is about to be reused for another image. */
+  onRelease: ((tile: HTMLElement) => void) | null = null;
 
   constructor(
-    private readonly root: HTMLElement,
-    private readonly layer: HTMLElement,
+    private readonly container: HTMLElement,
     private readonly world: World,
     private readonly images: readonly ClientImage[],
     private readonly lens: Lens,
@@ -117,17 +173,9 @@ export class Renderer {
 
   setGeometry(g: Geometry): void {
     this.geometry = g;
-    this.focusX = g.vw / 2;
-    this.focusY = g.vh / 2;
     this.dirty = true;
     // S changed, so every grid position moves; restart trails there instead of springing across.
     this.resetTrails = true;
-  }
-
-  /** Where the pointer is, screen px; images near it trail least. */
-  setFocus(x: number, y: number): void {
-    this.focusX = x;
-    this.focusY = y;
   }
 
   setTrails(on: boolean): void {
@@ -135,30 +183,47 @@ export class Renderer {
     for (const slot of this.active) this.restTrail(slot);
   }
 
-  /** Advance every image's trail by one physics step to camera (x, y, z). */
-  step(x: number, y: number, z: number, h: number): void {
+  /** Advance every image's trail and fade by one physics step. */
+  step(cam: CameraStep, h: number): void {
     const g = this.geometry;
-    if (!g || !this.trails) return;
+    if (!g) return;
+    this.focus = cam.focus;
+    // Zoomed in, the active image stays opaque and the rest fade; reduced motion skips the easing.
+    const fade = this.trails ? 1 - Math.exp(-h / FADE_TAU) : 1;
+    for (const slot of this.active) {
+      const target = this.opacityTarget(slot);
+      slot.opacity = Math.abs(target - slot.opacity) < 0.002 ? target : slot.opacity + (target - slot.opacity) * fade;
+    }
+    if (!this.trails) return;
+    const { x, y, z } = cam;
     const moving = x !== this.stepX || y !== this.stepY || z !== this.stepZ;
     this.stepX = x;
     this.stepY = y;
     this.stepZ = z;
+    this.motionX = -cam.panVx * z;
+    this.motionY = -cam.panVy * z;
+    const speed = Math.hypot(this.motionX, this.motionY);
+    if (speed > TRAIL_DIRECTION_MIN_SPEED) {
+      this.dirX = this.motionX / speed;
+      this.dirY = this.motionY / speed;
+    }
+    this.zooming = cam.zooming;
+    this.anchorX = cam.anchorX;
+    this.anchorY = cam.anchorY;
     if (!moving && this.isAtRest()) return;
-    const diagonal = Math.hypot(g.vw, g.vh);
     for (const slot of this.active) {
       const gx = (slot.left - x) * z;
       const gy = (slot.top - y) * z;
-      const cx = gx + (slot.width * z) / 2 - this.focusX;
-      const cy = gy + (slot.height * z) / 2 - this.focusY;
-      slot.lag = trailLag(Math.hypot(cx, cy), diagonal, slot.weight);
+      const target = this.lagFor(slot, gx, gy, z);
+      // A resting image takes its new lag at once; a moving one eases into it.
+      slot.lag = slot.trail.resting ? target : easeLag(slot.lag, target, h, TRAIL_LAG_TAU);
       stepTrail(slot.trail, gx, gy, slot.lag, h, moving);
     }
   }
 
   /**
    * Draw the camera at (camX, camY, camZ). (vx, vy) is its velocity in world px/s, used
-   * to preload ahead and to start new tiles already trailing. `zoomAtRest` lets tiles be
-   * re-laid out sharp at the final zoom.
+   * to preload ahead. `zoomAtRest` lets tiles be re-laid out sharp at the final zoom.
    */
   update(camX: number, camY: number, camZ: number, vx: number, vy: number, zoomAtRest: boolean): void {
     const g = this.geometry;
@@ -195,12 +260,13 @@ export class Renderer {
     );
     const last = this.lastRange;
     if (this.dirty || range.i0 !== last.i0 || range.i1 !== last.i1 || range.j0 !== last.j0 || range.j1 !== last.j1) {
-      this.reassign(range, vx, vy);
+      this.reassign(range);
     }
 
     const zoomScale = camZ / this.layoutZoom;
     const maxOffset = TRAIL_MAX_OFFSET * g.s * camZ;
     const lensed = this.lensed;
+    let nearest: Slot | null = null;
     for (const slot of this.active) {
       limitOffset(slot.trail.ox, slot.trail.oy, maxOffset, this.offset);
       const w = slot.width * camZ;
@@ -213,18 +279,55 @@ export class Renderer {
       const x = hx + lensed.x - (w * lensed.scale) / 2;
       const y = hy + lensed.y - (h * lensed.scale) / 2;
       const scale = zoomScale * lensed.scale;
+      slot.drawnWidth = w * lensed.scale;
+      slot.drawnHeight = h * lensed.scale;
+      slot.distance = Math.hypot(lensed.x, lensed.y);
+      if (!nearest || slot.distance < nearest.distance) nearest = slot;
+      if (slot.opacity !== slot.cssOpacity) {
+        slot.cssOpacity = slot.opacity;
+        slot.el.style.opacity = slot.opacity === 1 ? '' : slot.opacity.toFixed(3);
+      }
       if (x === slot.cssX && y === slot.cssY && scale === slot.cssScale) continue;
       slot.cssX = x;
       slot.cssY = y;
       slot.cssScale = scale;
       slot.el.style.transform = scale === 1 ? `translate3d(${x}px, ${y}px, 0)` : `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
     }
+    // The centremost image is active; keep the current one unless another is clearly closer.
+    const current = this.activeSlot;
+    if (!current || current.key < 0 || !this.byKey.has(current.key) || (nearest && nearest.distance < current.distance - ACTIVE_SWITCH_MARGIN)) {
+      this.setActive(nearest);
+    }
+    this.onDraw?.(this.activeImage());
   }
 
-  /** True when no image is still trailing. */
+  /** The active image: the one drawn nearest the viewport centre (see ACTIVE_SWITCH_MARGIN). */
+  activeImage(): ActiveImage | null {
+    const slot = this.activeSlot;
+    if (!slot) return null;
+    return { i: slot.i, j: slot.j, image: slot.image, left: slot.cssX, top: slot.cssY, width: slot.drawnWidth, height: slot.drawnHeight };
+  }
+
+  private setActive(slot: Slot | null): void {
+    if (slot === this.activeSlot) return;
+    this.activeSlot = slot;
+    this.onActiveChange?.(slot?.el ?? null);
+  }
+
+  /** True when no image is still trailing or fading. */
   isAtRest(): boolean {
-    for (const slot of this.active) if (!slot.trail.resting) return false;
+    for (const slot of this.active) if (!slot.trail.resting || slot.opacity !== this.opacityTarget(slot)) return false;
     return true;
+  }
+
+  /** The active image's grid rectangle, world px. */
+  activeRect(): CellRect | null {
+    const s = this.activeSlot;
+    return s ? { left: s.left, top: s.top, width: s.width, height: s.height } : null;
+  }
+
+  private opacityTarget(slot: Slot): number {
+    return slot === this.activeSlot ? 1 : 1 - (1 - FADE_OPACITY) * this.focus;
   }
 
   get poolSize(): number {
@@ -239,6 +342,14 @@ export class Renderer {
     return this.layoutZoom;
   }
 
+  /** The grid rectangle (world px) of the tile that `target` is part of, if any. */
+  rectOf(target: Element): CellRect | null {
+    for (const slot of this.active) {
+      if (slot.el.contains(target)) return { left: slot.left, top: slot.top, width: slot.width, height: slot.height };
+    }
+    return null;
+  }
+
   /** True when every tile that intersects the viewport has its image decoded and shown. */
   visibleLoaded(): boolean {
     for (const c of this.visibleCells()) if (!this.byKey.get(cellKey(c.i, c.j))!.loaded) return false;
@@ -249,7 +360,7 @@ export class Renderer {
    * Cells currently on screen with their screen rectangles and lens scale (trail offsets
    * excluded), for tests and debugging.
    */
-  visibleCells(): { i: number; j: number; image: number; left: number; top: number; width: number; height: number; scale: number }[] {
+  visibleCells(): { i: number; j: number; image: number; left: number; top: number; width: number; height: number; scale: number; opacity: number }[] {
     const g = this.geometry;
     if (!g) return [];
     const z = this.camZ;
@@ -270,18 +381,46 @@ export class Renderer {
           width: w * p.scale,
           height: h * p.scale,
           scale: p.scale,
+          opacity: s.opacity,
         };
       })
       .filter((c) => c.left < g.vw && c.left + c.width > 0 && c.top < g.vh && c.top + c.height > 0);
   }
 
-  /** Trail offsets of the tiles on screen, for tests. */
-  trailOffsets(): { i: number; j: number; x: number; y: number }[] {
+  /** Trail offsets of the tiles on screen, with their unlensed on-screen centres, for tests. */
+  trailOffsets(): { i: number; j: number; cx: number; cy: number; x: number; y: number }[] {
     const on = new Set(this.visibleCells().map((c) => cellKey(c.i, c.j)));
-    return this.active.filter((s) => on.has(s.key)).map((s) => ({ i: s.i, j: s.j, x: s.trail.ox, y: s.trail.oy }));
+    const z = this.camZ;
+    return this.active
+      .filter((s) => on.has(s.key))
+      .map((s) => ({
+        i: s.i,
+        j: s.j,
+        cx: (s.left + s.width / 2 - this.camX) * z,
+        cy: (s.top + s.height / 2 - this.camY) * z,
+        x: s.trail.ox,
+        y: s.trail.oy,
+      }));
   }
 
-  private reassign(range: CellRange, vx: number, vy: number): void {
+  /**
+   * The lag an image should have now. Panning, it tapers along the direction the images
+   * move (least at the leading viewport edge, most at the trailing one); zooming, it
+   * grows with distance from the zoom anchor. (gx, gy) is the tile's grid corner on screen.
+   */
+  private lagFor(slot: Slot, gx: number, gy: number, z: number): number {
+    const g = this.geometry!;
+    const hx = g.vw / 2;
+    const hy = g.vh / 2;
+    const cx = gx + (slot.width * z) / 2;
+    const cy = gy + (slot.height * z) / 2;
+    const taper = this.zooming
+      ? zoomTaperWeight(Math.hypot(cx - this.anchorX, cy - this.anchorY), Math.hypot(hx, hy))
+      : taperWeight(cx - hx, cy - hy, this.dirX, this.dirY, hx, hy);
+    return taperedLag(taper, slot.weight);
+  }
+
+  private reassign(range: CellRange): void {
     const last = this.lastRange;
     last.i0 = range.i0;
     last.i1 = range.i1;
@@ -291,32 +430,34 @@ export class Renderer {
     const resetTrails = this.resetTrails;
     this.dirty = false;
     this.resetTrails = false;
-    this.frame++;
     if (relayout) {
-      this.root.style.setProperty('--tile-radius', `${this.geometry!.radius * this.layoutZoom}px`);
+      // On the canvas root, so overlays on top of the tiles (the focus frame) can match it.
+      (this.container.parentElement ?? this.container).style.setProperty('--tile-radius', `${this.geometry!.radius * this.layoutZoom}px`);
+    }
+    // Release the tiles that left the range first, so their elements go to the ones arriving
+    // and the pool never holds both sets at once.
+    for (let n = this.active.length - 1; n >= 0; n--) {
+      const slot = this.active[n]!;
+      if (slot.i >= range.i0 && slot.i <= range.i1 && slot.j >= range.j0 && slot.j <= range.j1) continue;
+      this.active[n] = this.active[this.active.length - 1]!;
+      this.active.pop();
+      this.byKey.delete(slot.key);
+      if (slot === this.activeSlot) this.setActive(null);
+      this.onRelease?.(slot.el);
+      slot.el.hidden = true;
+      this.free.push(slot);
     }
     for (let i = range.i0; i <= range.i1; i++) {
       for (let j = range.j0; j <= range.j1; j++) {
         const key = cellKey(i, j);
-        let slot = this.byKey.get(key);
+        const slot = this.byKey.get(key);
         if (!slot) {
-          slot = this.acquire(key);
-          this.assign(slot, key, i, j, true, vx, vy);
+          this.assign(this.acquire(key), key, i, j, true);
         } else if (relayout) {
-          this.assign(slot, key, i, j, false, vx, vy);
+          this.assign(slot, key, i, j, false);
           if (resetTrails) this.restTrail(slot);
         }
-        slot.frame = this.frame;
       }
-    }
-    for (let n = this.active.length - 1; n >= 0; n--) {
-      const slot = this.active[n]!;
-      if (slot.frame === this.frame) continue;
-      this.active[n] = this.active[this.active.length - 1]!;
-      this.active.pop();
-      this.byKey.delete(slot.key);
-      slot.el.hidden = true;
-      this.free.push(slot);
     }
   }
 
@@ -355,7 +496,7 @@ export class Renderer {
       label.className = 'absolute top-1 left-1 rounded bg-black/70 px-1 font-mono text-[10px] leading-4 text-white';
       el.append(label);
     }
-    this.layer.append(el);
+    this.container.append(el);
     const slot: Slot = {
       el,
       source,
@@ -372,18 +513,22 @@ export class Renderer {
       weight: 0,
       lag: 0,
       trail: restingTrail(),
-      frame: 0,
       loaded: false,
       token: 0,
       cssX: Number.NaN,
       cssY: Number.NaN,
       cssScale: Number.NaN,
+      drawnWidth: 0,
+      drawnHeight: 0,
+      distance: Number.POSITIVE_INFINITY,
+      opacity: 1,
+      cssOpacity: 1,
     };
     this.slots.push(slot);
     return slot;
   }
 
-  private assign(slot: Slot, key: number, i: number, j: number, fresh: boolean, vx: number, vy: number): void {
+  private assign(slot: Slot, key: number, i: number, j: number, fresh: boolean): void {
     const g = this.geometry!;
     const cell = this.world.cell(i, j, this.cell);
     const width = cell.w * g.s;
@@ -407,17 +552,16 @@ export class Renderer {
     slot.el.style.zIndex = String(cell.z);
     slot.cssScale = Number.NaN;
     if (fresh) {
+      // Arrive already faded (or not), like the tiles around it.
+      slot.opacity = this.opacityTarget(slot);
       slot.weight = unit(hash(i, j, this.world.seed, SALT_WEIGHT));
       if (this.trails) {
         // Start already trailing as its neighbours do, so a tile entering mid-fling never pops.
         const z = this.camZ;
         const gx = (slot.left - this.camX) * z;
         const gy = (slot.top - this.camY) * z;
-        const diagonal = Math.hypot(g.vw, g.vh);
-        const cx = gx + (width * z) / 2 - this.focusX;
-        const cy = gy + (height * z) / 2 - this.focusY;
-        slot.lag = trailLag(Math.hypot(cx, cy), diagonal, slot.weight);
-        placeTrail(slot.trail, gx, gy, -vx * z, -vy * z, slot.lag);
+        slot.lag = this.lagFor(slot, gx, gy, z);
+        placeTrail(slot.trail, gx, gy, this.motionX, this.motionY, slot.lag);
       } else {
         placeTrail(slot.trail, 0, 0, 0, 0, 0);
       }
@@ -425,15 +569,15 @@ export class Renderer {
     if (slot.label) slot.label.textContent = `${i},${j} #${cell.image}`;
     if (slot.image === cell.image) return;
 
-    const image = this.images[cell.image]!;
+    const source = this.images[cell.image]!;
     slot.image = cell.image;
     slot.loaded = false;
-    slot.el.style.backgroundColor = image.color;
-    slot.img.alt = image.alt;
+    slot.el.style.backgroundColor = source.color;
+    slot.img.alt = source.alt;
     slot.img.dataset.loading = '';
-    slot.source.srcset = image.avif;
-    slot.img.srcset = image.webp;
-    slot.img.src = image.src;
+    slot.source.srcset = source.avif;
+    slot.img.srcset = source.webp;
+    slot.img.src = source.src;
     const token = ++slot.token;
     const reveal = () => {
       if (slot.token !== token) return;

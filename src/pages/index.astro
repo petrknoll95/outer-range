@@ -56,6 +56,14 @@ const data = JSON.stringify({ sharpEdge, images, projects } satisfies CanvasData
 ---
 
 <Layout title="Petr Knoll" description="An infinite canvas of images.">
+  <!--
+    The wordmark, fixed at the top centre in line with the tweaks button. White with a difference
+    blend, so it reads on the light or dark canvas and over any image passing under it. It takes no
+    pointer events: dragging or scrolling across it moves the canvas.
+  -->
+  <header class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference select-none">
+    <h1 class="text-2xl leading-none font-medium tracking-[-0.02em] text-white">Petr Knoll</h1>
+  </header>
   <main
     data-canvas
     aria-label="Image canvas. Drag, scroll or use the arrow keys to move around; pinch, ctrl-scroll or plus and minus to zoom."

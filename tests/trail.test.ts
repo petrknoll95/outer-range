@@ -1,7 +1,16 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { STEP, TRAIL_LAG_MAX, TRAIL_LAG_MIN } from '../src/canvas/config';
-import { limitOffset, placeTrail, restingTrail, stepTrail, trailLag } from '../src/canvas/trail';
+import {
+  easeLag,
+  limitOffset,
+  placeTrail,
+  restingTrail,
+  stepTrail,
+  taperedLag,
+  taperWeight,
+  zoomTaperWeight,
+} from '../src/canvas/trail';
 
 /** Move the grid position at (ux, uy) px/s for `seconds`, then hold it still for `rest` seconds. */
 function simulate(lag: number, ux: number, uy: number, seconds: number, rest = 0) {
@@ -74,13 +83,6 @@ describe('image trail', () => {
     expect(t.ox).toBeCloseTo(before, 6);
   });
 
-  it('lags more far from the pointer, within the configured range', () => {
-    const diagonal = 1700;
-    expect(trailLag(0, diagonal, 0)).toBeCloseTo(TRAIL_LAG_MIN, 12);
-    expect(trailLag(5000, diagonal, 0.999999)).toBeCloseTo(TRAIL_LAG_MAX, 6);
-    expect(trailLag(800, diagonal, 0.5)).toBeGreaterThan(trailLag(100, diagonal, 0.5));
-  });
-
   it('soft-limits large offsets and leaves small ones alone', () => {
     const out = { x: 0, y: 0 };
     limitOffset(2, -1, 40, out);
@@ -90,5 +92,65 @@ describe('image trail', () => {
     expect(Math.hypot(out.x, out.y)).toBeLessThanOrEqual(40);
     expect(Math.hypot(out.x, out.y)).toBeGreaterThan(39.9);
     expect(out.y / out.x).toBeCloseTo(4 / 3, 9);
+  });
+});
+
+describe('taper along the direction of motion', () => {
+  const hx = 720;
+  const hy = 450;
+
+  it('is weakest at the edge the images move toward and strongest at the opposite edge', () => {
+    // Moving left: left edge leads, right edge trails.
+    expect(taperWeight(-hx, 0, -1, 0, hx, hy)).toBe(0);
+    expect(taperWeight(hx, 0, -1, 0, hx, hy)).toBe(1);
+    expect(taperWeight(0, 0, -1, 0, hx, hy)).toBe(0.5);
+    // Moving up: top leads.
+    expect(taperWeight(0, -hy, 0, -1, hx, hy)).toBe(0);
+    expect(taperWeight(0, hy, 0, -1, hx, hy)).toBe(1);
+    // Position across the motion doesn't matter.
+    expect(taperWeight(-300, -hy, -1, 0, hx, hy)).toBe(taperWeight(-300, hy, -1, 0, hx, hy));
+  });
+
+  it('runs corner to corner for diagonal motion', () => {
+    fc.assert(
+      fc.property(fc.double({ min: 0, max: 2 * Math.PI, noNaN: true }), (angle) => {
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+        // The corner the motion heads into leads; the opposite corner trails.
+        const lx = Math.sign(dx) * hx;
+        const ly = Math.sign(dy) * hy;
+        expect(taperWeight(lx, ly, dx, dy, hx, hy)).toBeCloseTo(0, 9);
+        expect(taperWeight(-lx, -ly, dx, dy, hx, hy)).toBeCloseTo(1, 9);
+        expect(taperWeight(0, 0, dx, dy, hx, hy)).toBeCloseTo(0.5, 9);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('clamps images beyond the viewport to the edge values', () => {
+    expect(taperWeight(-3 * hx, 0, -1, 0, hx, hy)).toBe(0);
+    expect(taperWeight(3 * hx, 0, -1, 0, hx, hy)).toBe(1);
+  });
+
+  it('holds the image under the zoom anchor and grows with distance from it', () => {
+    expect(zoomTaperWeight(0, 850)).toBe(0);
+    expect(zoomTaperWeight(425, 850)).toBe(0.5);
+    expect(zoomTaperWeight(5000, 850)).toBe(1);
+  });
+
+  it('maps taper and own weight onto the lag range', () => {
+    expect(taperedLag(0, 0, 0.85)).toBeCloseTo(TRAIL_LAG_MIN, 12);
+    expect(taperedLag(1, 1, 0.85)).toBeCloseTo(TRAIL_LAG_MAX, 12);
+    expect(taperedLag(1, 0, 0.85)).toBeGreaterThan(taperedLag(0, 1, 0.85));
+  });
+
+  it('eases a lag toward its new target without jumping', () => {
+    let lag = TRAIL_LAG_MIN;
+    const first = easeLag(lag, TRAIL_LAG_MAX, STEP, 0.12);
+    expect(first).toBeGreaterThan(TRAIL_LAG_MIN);
+    expect(first).toBeLessThan(TRAIL_LAG_MIN + (TRAIL_LAG_MAX - TRAIL_LAG_MIN) * 0.05);
+    for (let n = 0; n < 480; n++) lag = easeLag(lag, TRAIL_LAG_MAX, STEP, 0.12);
+    expect(lag).toBeCloseTo(TRAIL_LAG_MAX, 6);
+    expect(easeLag(TRAIL_LAG_MIN, TRAIL_LAG_MAX, STEP, 0)).toBe(TRAIL_LAG_MAX);
   });
 });

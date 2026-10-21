@@ -1,4 +1,4 @@
-import { CELLS_PER_VIEWPORT, LENS_REPEAT_SHARE, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_MAX, ZOOM_MIN, ZOOM_MIN_S_PX } from './config';
+import { CELLS_PER_VIEWPORT, LENS_REPEAT_SHARE, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_IN_FILL, ZOOM_MAX } from './config';
 import type { Cell, World } from './world';
 import { emptyCell } from './world';
 
@@ -60,16 +60,13 @@ export function computeGeometry(vw: number, vh: number, world: World, reach = 1)
 }
 
 /**
- * Zoom range for a geometry. Zooming in stops at ZOOM_MAX or where the on-screen short
- * edge in device pixels reaches `sharpEdge` (beyond it images go soft), whichever is
- * first, but never below 1. Zooming out stops at ZOOM_MIN or where the short edge would
- * shrink below ZOOM_MIN_S_PX, but never above 1.
+ * The zoomed-in zoom for a geometry: a portrait image's long edge fills ZOOM_IN_FILL of
+ * the viewport's short side, unless images would go soft first (the on-screen short edge
+ * in device pixels reaching `sharpEdge`) or ZOOM_MAX is reached. Never below 1.
  */
-export function zoomLimits(g: Geometry, dpr: number, sharpEdge: number): { min: number; max: number } {
-  return {
-    min: Math.min(1, Math.max(ZOOM_MIN, ZOOM_MIN_S_PX / g.s)),
-    max: Math.max(1, Math.min(ZOOM_MAX, sharpEdge / (g.s * dpr))),
-  };
+export function zoomInLevel(g: Geometry, dpr: number, sharpEdge: number): number {
+  const fill = (ZOOM_IN_FILL * Math.min(g.vw, g.vh)) / (LONG * g.s);
+  return Math.max(1, Math.min(ZOOM_MAX, sharpEdge / (g.s * dpr), fill));
 }
 
 /** Pixel rectangle of a cell's image in world space. */
