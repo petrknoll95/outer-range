@@ -1,5 +1,13 @@
 [
   {
+    "file": "3d-icons.webp",
+    "aspect": "landscape",
+    "width": 3200,
+    "height": 2400,
+    "color": "#b8b8b8",
+    "source": "3d-icons.webp"
+  },
+  {
     "file": "atomsai-1.webp",
     "aspect": "square",
     "width": 3200,
@@ -22,6 +30,70 @@
     "height": 3200,
     "color": "#080808",
     "source": "atomsai-3.png"
+  },
+  {
+    "file": "bettermint-chill.webp",
+    "aspect": "square",
+    "width": 2048,
+    "height": 2048,
+    "color": "#d8c8b8",
+    "source": "bettermint-chill.jpg"
+  },
+  {
+    "file": "bettermint-go.webp",
+    "aspect": "square",
+    "width": 3276,
+    "height": 3276,
+    "color": "#b8b8b8",
+    "source": "bettermint-go.jpg"
+  },
+  {
+    "file": "bettermint-tubes.webp",
+    "aspect": "square",
+    "width": 1920,
+    "height": 1920,
+    "color": "#b8c8d8",
+    "source": "bettermint-tubes.jpg"
+  },
+  {
+    "file": "ditto-bluetooth.webp",
+    "aspect": "square",
+    "width": 1520,
+    "height": 1520,
+    "color": "#080808",
+    "source": "ditto-bluetooth.png"
+  },
+  {
+    "file": "ditto-guidelines.webp",
+    "aspect": "landscape",
+    "width": 1525,
+    "height": 1144,
+    "color": "#d8d8d8",
+    "source": "ditto-guidelines.webp"
+  },
+  {
+    "file": "ditto-mark.webp",
+    "aspect": "square",
+    "width": 1520,
+    "height": 1520,
+    "color": "#e8f808",
+    "source": "ditto-mark.png"
+  },
+  {
+    "file": "ditto-website.webp",
+    "aspect": "landscape",
+    "width": 1525,
+    "height": 1144,
+    "color": "#080808",
+    "source": "ditto-website.webp"
+  },
+  {
+    "file": "flex-posters.webp",
+    "aspect": "landscape",
+    "width": 1777,
+    "height": 1333,
+    "color": "#98d868",
+    "source": "flex-posters.webp"
   },
   {
     "file": "gridbank-onboarding.webp",
@@ -48,11 +120,59 @@
     "source": "offmenu-breakfast.png"
   },
   {
+    "file": "resonant-dashboard.webp",
+    "aspect": "landscape",
+    "width": 2000,
+    "height": 1500,
+    "color": "#281818",
+    "source": "resonant-dashboard.png"
+  },
+  {
+    "file": "resonant-mark.webp",
+    "aspect": "square",
+    "width": 1600,
+    "height": 1600,
+    "color": "#281818",
+    "source": "resonant-mark.png"
+  },
+  {
     "file": "spring-1.webp",
     "aspect": "landscape",
     "width": 3200,
     "height": 2400,
     "color": "#080808",
     "source": "spring-1.png"
+  },
+  {
+    "file": "tangent-footer.webp",
+    "aspect": "landscape",
+    "width": 2600,
+    "height": 1950,
+    "color": "#081818",
+    "source": "tangent-footer.webp"
+  },
+  {
+    "file": "tenacity-card.webp",
+    "aspect": "landscape",
+    "width": 1500,
+    "height": 1125,
+    "color": "#d8d8e8",
+    "source": "tenacity-card.webp"
+  },
+  {
+    "file": "tenacity-mark.webp",
+    "aspect": "landscape",
+    "width": 1011,
+    "height": 758,
+    "color": "#080808",
+    "source": "tenacity-mark.png"
+  },
+  {
+    "file": "tenacity-phone.webp",
+    "aspect": "landscape",
+    "width": 1789,
+    "height": 1342,
+    "color": "#182818",
+    "source": "tenacity-phone.webp"
   }
 ]

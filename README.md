@@ -111,16 +111,16 @@ Projects group images: every image belongs to exactly one project, and the image
 - **Validated** when the page builds. The collection schema requires at least 3 images per project. [`resolveProjects`](src/canvas/projects.ts) then fails the build if an id repeats, an image id doesn't exist, or an image is in two projects or none.
 - **Shipped** to the canvas in the page data as `projects`, with images as indices into `images`. `createProjectIndex` turns that into lookups: an image's project, its siblings, a project by id.
 
-The current 19 projects are samples with invented names; the last two, Off Menu and AtomsAI, hold the videos and the work images. They group images by dominant colour into runs of 3–9, so each looks like one body of work. Replace them by hand with real projects; re-run `npm run placeholders:projects` only while they're still samples.
+The current 23 projects are samples with invented names, but for the last six: Off Menu (most of the videos and the work without a project of its own), AtomsAI, Tenacity Capital, Ditto, Explorations and Bettermint. They group images by dominant colour into runs of 3–9, so each looks like one body of work. Replace them by hand with real projects; re-run `npm run placeholders:projects` only while they're still samples.
 
 ## Work images
 
 `src/assets/work/` holds real work: images exported from Figma, each with a line in its `manifest.json`. [`src/assets/media.ts`](src/assets/media.ts) lists them after the placeholder images.
 
-- **Built** by `npm run work:build -- <folder>` ([`scripts/work/build-work.mjs`](scripts/work/build-work.mjs)) from every PNG or JPEG in the folder. Draw the artboards at a tile shape (4:3, 3:4 or 1:1; anything else is cropped about its centre to the nearest) and export them large: the current seven are exported at 4× (the most Figma allows), 3200–6400 px on the long edge. Each becomes a lossless WebP that keeps its colour profile (Figma exports Display P3). The build replaces the folder.
+- **Built** by `npm run work:build -- <folder>` ([`scripts/work/build-work.mjs`](scripts/work/build-work.mjs)) from every PNG, JPEG or WebP in the folder. Draw the artboards at a tile shape (4:3, 3:4 or 1:1; anything else is cropped to the nearest, about its centre unless the script's `ANCHOR` says otherwise) and export them large (the case-study images are about 2000 px; the Figma ones are exported at 4× (the most Figma allows), 3200–6400 px on the long edge). Each becomes a lossless WebP that keeps its colour profile (Figma exports Display P3). The build replaces the folder.
 - **Served** like every other image: the page builds AVIF and WebP variants from the master at each standard size (`VARIANT_SHORT_EDGES` in `config.ts`, 256 to 2880 px on the short edge) and converts them to sRGB. Unlike photos (AVIF 55, WebP 76), work is encoded at AVIF 75 and WebP 90, since compression shows around fine type and flat colour (`detail` in `media.ts`). The focused view on a 2× screen loads the 1024 px variant, about 40 KB; the largest variants, 2880 px, come to 140–730 KB and load only when a tile is drawn that large.
 
-The current seven are AtomsAI (a billboard, the wordmark and the mark's construction), Spring (habit charts), an Off Menu breakfast page and GridBank (two sets of app screens). They replaced seven placeholders, which `build-placeholders.mjs` now leaves out (`REPLACED`).
+The current 17 are AtomsAI (a billboard, the wordmark and the mark's construction), Spring (habit charts), an Off Menu breakfast page, GridBank (two sets of app screens), Flex (a poster photo, cropped from 3:2 at its left edge), Tenacity Capital (three), Ditto (four), Resonant (two), the Tangent footer, 3D audio icons and Bettermint (three renders). With the four newer videos, they replaced 26 placeholders, which `build-placeholders.mjs` now leaves out (`REPLACED`).
 
 ## Videos
 
@@ -130,14 +130,14 @@ The current seven are AtomsAI (a billboard, the wordmark and the mark's construc
 - **On the canvas** a video's tile is an image tile built from its poster frame, with the same variants, placeholder colour and alt text, and the video plays over it, muted and looping ([`renderer.ts`](src/canvas/renderer.ts)). It fades in once it is actually playing, so a tile never flashes black.
 - **Playing** only while its tile is on screen (an IntersectionObserver), and only on the canvas: on the about view, off screen or with reduced motion, it holds its frame. It loads nothing until it first plays (`preload="none"`).
 
-The current five are Off Menu work: the site, its menu, two interaction experiments and a can render. Their sources are about 6.4 MB; encoded, they come to about 3.6 MB, and each loads only once its tile is on screen.
+The current nine are the Off Menu site, its menu and a reel of it, two interaction experiments, a can render, a Crocs product render, the Remi logo and the Tangent site. Their sources are about 48 MB; encoded, they come to about 6 MB, and each loads only once its tile is on screen.
 
 ## Placeholder images
 
-`src/assets/placeholders/` holds 84 images from the Cosmos collection [Social Tonic](https://www.cosmos.so/petrknoll/social-tonic): 79 images plus the poster frames of 5 videos. One 360×450 image was too small and was left out, and seven were replaced by work images.
+`src/assets/placeholders/` holds 65 images from the Cosmos collection [Social Tonic](https://www.cosmos.so/petrknoll/social-tonic): 60 images plus the poster frames of 5 videos. One 360×450 image was too small and was left out, and 26 were replaced by work images and videos.
 
-Each image is cropped to whichever of 4:3, 3:4 or 1:1 loses least, and the shapes are then evened out where that costs at most 30% more of the picture. Most of the collection is 4:5 posts, so it ended up 15 landscape, 38 portrait and 38 square, and, less the seven replaced, is now 11, 36 and 37.
+Each image is cropped to whichever of 4:3, 3:4 or 1:1 loses least, and the shapes are then evened out where that costs at most 30% more of the picture. Most of the collection is 4:5 posts, so it ended up 15 landscape, 38 portrait and 38 square, and, less the 26 replaced, is now 4, 36 and 25.
 
-The manifest records each image's crop, credit, Cosmos element URL and source file. Run `npm run placeholders:collect && npm run placeholders:build` after the collection changes. If it shrinks below 72 images, reduce `REPEAT_COLS`/`REPEAT_ROWS` in `config.ts` so every class keeps at least two.
+The manifest records each image's crop, credit, Cosmos element URL and source file. Run `npm run placeholders:collect && npm run placeholders:build` after the collection changes. If the canvas as a whole (placeholders, work and videos, 96 now) shrinks below 72 images, reduce `REPEAT_COLS`/`REPEAT_ROWS` in `config.ts` so every class keeps at least two.
 
 **The images belong to their authors. Placeholders only: do not publish them.**

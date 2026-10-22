@@ -4,11 +4,9 @@
     "title": "Low Tide Seltzer",
     "year": 2025,
     "images": [
-      "overtone-pattern-wall",
       "swirl-wine-cans",
       "fomo-juggle",
       "revivo-can-render",
-      "ghia-fridge",
       "jubi-cans-on-black"
     ]
   },
@@ -39,7 +37,6 @@
     "title": "Copper & Clove",
     "year": 2023,
     "images": [
-      "can-with-apple-and-cucumber",
       "padre-on-a-green-car",
       "yellow-can-by-the-bath",
       "made-clean-poster",
@@ -55,7 +52,6 @@
     "title": "Field Notes Kombucha",
     "year": 2021,
     "images": [
-      "white-can-with-juices",
       "cha-with-ginger",
       "fuel-cans-in-a-row",
       "black-can-on-stone"
@@ -70,8 +66,6 @@
       "script-can-stack",
       "mango-can-mockup",
       "three-flavour-render",
-      "nova-on-raspberries",
-      "laper-label",
       "cadence-vertical-type"
     ]
   },
@@ -83,12 +77,10 @@
       "clean-cause-on-terrazzo",
       "olura-glasses",
       "lettered-cans-on-cloth",
-      "zona-range",
       "ghia-bottle-with-berries",
       "huel-greens-render",
       "fire-bottle-neck",
-      "watermelon-squeeze",
-      "figlia-with-red-cocktail"
+      "watermelon-squeeze"
     ]
   },
   {
@@ -98,8 +90,7 @@
     "images": [
       "partake-pour",
       "oraa-wordmark",
-      "fuel-can-held-up",
-      "nova-stick-pack"
+      "fuel-can-held-up"
     ]
   },
   {
@@ -109,8 +100,7 @@
     "images": [
       "cadence-spec-views",
       "journee-flat-lay",
-      "ghia-can-stack",
-      "spritz-with-fruit"
+      "ghia-can-stack"
     ]
   },
   {
@@ -119,7 +109,6 @@
     "year": 2023,
     "images": [
       "huel-packshot",
-      "moment-lineup",
       "ghia-ribbed-can",
       "moth-negroni"
     ]
@@ -129,7 +118,6 @@
     "title": "Slow Pour",
     "year": 2024,
     "images": [
-      "ghia-flare",
       "ghia-bottle-cap",
       "figlia-pour",
       "hiyo-shadows"
@@ -142,7 +130,6 @@
     "images": [
       "cans-on-a-deck",
       "blue-ghia-with-cocktail",
-      "heywell-set",
       "good-twin-table"
     ]
   },
@@ -151,11 +138,8 @@
     "title": "Glasshouse Gin",
     "year": 2024,
     "images": [
-      "green-bottles-on-gold",
       "can-underwater",
       "revivo-on-court",
-      "nowadays-wordmark",
-      "lemonade-on-teal",
       "electrolyte-poster"
     ]
   },
@@ -165,7 +149,6 @@
     "year": 2024,
     "images": [
       "junday-with-lemons",
-      "moment-banner",
       "moozy-in-ice",
       "adapt-cans-floating"
     ]
@@ -197,8 +180,6 @@
     "images": [
       "striped-wine-labels",
       "cadence-on-blue",
-      "kin-bottle-in-water",
-      "bloom-banner",
       "padre-on-a-pink-car"
     ]
   },
@@ -215,7 +196,13 @@
       "experimental-button",
       "spring-habits",
       "gridbank-onboarding",
-      "gridbank-teams"
+      "gridbank-teams",
+      "flex-posters",
+      "resonant-dashboard",
+      "resonant-mark",
+      "offmenu-website-reel",
+      "tangent",
+      "tangent-footer"
     ]
   },
   {
@@ -226,6 +213,47 @@
       "atomsai-billboard",
       "atomsai-wordmark",
       "atomsai-construction"
+    ]
+  },
+  {
+    "id": "tenacity-capital",
+    "title": "Tenacity Capital",
+    "year": 2025,
+    "images": [
+      "tenacity-card",
+      "tenacity-mark",
+      "tenacity-phone"
+    ]
+  },
+  {
+    "id": "ditto",
+    "title": "Ditto",
+    "year": 2024,
+    "images": [
+      "ditto-website",
+      "ditto-mark",
+      "ditto-guidelines",
+      "ditto-bluetooth"
+    ]
+  },
+  {
+    "id": "explorations",
+    "title": "Explorations",
+    "year": 2025,
+    "images": [
+      "crocs-rnd",
+      "remi-logo",
+      "3d-icons"
+    ]
+  },
+  {
+    "id": "bettermint",
+    "title": "Bettermint",
+    "year": 2022,
+    "images": [
+      "bettermint-go",
+      "bettermint-chill",
+      "bettermint-tubes"
     ]
   }
 ]
