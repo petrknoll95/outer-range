@@ -38,7 +38,7 @@ test('Timeless Sans is the page font, and the wordmark is set in its medium weig
   expect(fonts.loaded).toContain('500');
 });
 
-test('Timeless Serif is there to use, upright and italic, and loads only when asked for', async ({ page }) => {
+test('Timeless Serif is there to use, upright and italic, each weight loading only when asked for', async ({ page }) => {
   await open(page);
   const serif = await page.evaluate(async () => {
     await document.fonts.ready;
@@ -51,8 +51,10 @@ test('Timeless Serif is there to use, upright and italic, and loads only when as
     return { family, before, after: loaded() };
   });
   expect(serif.family).toMatch(/^"Timeless Serif/);
-  expect(serif.before).toEqual([]);
-  expect(serif.after).toEqual(expect.arrayContaining(['400 normal', '400 italic']));
+  // The about text sets its statement in the upright; nothing uses the italic until asked.
+  expect(serif.before).toContain('400 normal');
+  expect(serif.before).not.toContain('400 italic');
+  expect(serif.after).toContain('400 italic');
 });
 
 test('dragging across the wordmark moves the canvas', async ({ page }) => {

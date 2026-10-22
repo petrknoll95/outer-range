@@ -9,7 +9,7 @@ import type { ClientProject } from '../canvas/projects';
 import { resolveProjects } from '../canvas/projects';
 import type { CanvasData, ClientImage } from '../canvas/renderer';
 import type { Aspect } from '../canvas/world';
-import { Content as About, frontmatter as about } from '../content/about.md';
+import { compiledContent, frontmatter as about } from '../content/about.md';
 import Header from './Header.astro';
 
 /**
@@ -67,6 +67,9 @@ const data = JSON.stringify({ sharpEdge, images, projects } satisfies CanvasData
   /</g,
   '\\u003c',
 );
+
+// The about text, split where it places the services list (`<!-- services -->` in about.md).
+const [aboutBefore, aboutAfter = ''] = (await compiledContent()).split('<!-- services -->');
 ---
 
 <Header route={route} />
@@ -90,11 +93,10 @@ const data = JSON.stringify({ sharpEdge, images, projects } satisfies CanvasData
   inert={route !== 'about'}
   class="about-view fixed inset-0 z-0 overflow-y-auto overscroll-contain"
 >
-  <div data-about-layer class="about-layer flex min-h-full items-center justify-center px-6 pt-28 pb-24">
+  <div data-about-layer class="about-layer flex min-h-full items-center justify-center px-6 pt-40 pb-24">
     <article class="about w-full max-w-[34rem]">
-      <About />
-      <section class="services" aria-labelledby="services">
-        <h2 id="services">Services</h2>
+      <Fragment set:html={aboutBefore} />
+      <section class="services" aria-label="Services">
         <div class="services-groups">
           {
             (about.services as { group: string; items: string[] }[]).map(({ group, items }) => (
@@ -109,6 +111,27 @@ const data = JSON.stringify({ sharpEdge, images, projects } satisfies CanvasData
             ))
           }
         </div>
+      </section>
+      <Fragment set:html={aboutAfter} />
+      <section class="list" aria-labelledby="awards">
+        <h2 id="awards">Awards</h2>
+        <ul>
+          {(about.awards as string[]).map((award) => (
+            <li>{award}</li>
+          ))}
+        </ul>
+      </section>
+      <section class="list" aria-labelledby="social">
+        <h2 id="social">Social</h2>
+        <ul>
+          {(about.social as { name: string; url: string }[]).map(({ name, url }) => (
+            <li>
+              <a href={url} target="_blank" rel="me noopener">
+                {name}
+              </a>
+            </li>
+          ))}
+        </ul>
       </section>
     </article>
   </div>

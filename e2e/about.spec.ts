@@ -44,28 +44,60 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   await page.goto('/about');
   await page.evaluate(() => document.fonts.ready);
   const article = page.locator('article.about');
-  // The statement (under the wordmark, the page's h1), the line under it, then five sections.
+  // The statement (under the wordmark, the page's h1), the line under it, then four chapters.
   await expect(article.locator(':scope > h2')).toHaveText('Good design gives you something to feel, something to recognize, and very little to figure out.');
   await expect(article.locator(':scope > h2 + p')).toHaveText('Currently at Off Menu');
-  await expect(article.locator(':scope > h3')).toHaveText(['I. On simplicity', 'II. On aesthetics', 'III. On the small things', 'IV. On intention', 'V. On making']);
+  // Each numeral is dead centre, in the statement's serif and size, with "Chapter" on its left and its title on its right.
+  await expect(article.locator(':scope > h3 .numeral')).toHaveText(['I', 'II', 'III', 'IV']);
+  await expect(article.locator(':scope > h3')).toHaveText(['I On Intent', 'II On Philosophy', 'III On Process', 'IV On Ethics']);
+  const type = await article.evaluate((el) => {
+    const s = (sel: string) => getComputedStyle(el.querySelector(sel)!);
+    const column = el.getBoundingClientRect();
+    return {
+      statement: [s(':scope > h2').fontFamily, s(':scope > h2').fontSize],
+      numeral: [s(':scope > h3 .numeral').fontFamily, s(':scope > h3 .numeral').fontSize],
+      title: s(':scope > h3').fontFamily,
+      sections: [...el.querySelectorAll(':scope > h3')].map((h) => {
+        const n = h.querySelector('.numeral')!.getBoundingClientRect();
+        const t = h.querySelector('.title')!.getBoundingClientRect();
+        return {
+          offCentre: Math.abs((n.left + n.right) / 2 - (column.left + column.right) / 2),
+          rightOf: t.left >= n.right,
+          offMiddle: Math.abs((t.top + t.bottom) / 2 - (n.top + n.bottom) / 2),
+          before: getComputedStyle(h, '::before').content,
+        };
+      }),
+    };
+  });
+  expect(type.statement[0]).toMatch(/^"Timeless Serif/);
+  expect(type.numeral).toEqual(type.statement);
+  expect(type.title).toMatch(/^"Timeless Sans/);
+  for (const section of type.sections) {
+    expect(section.offCentre).toBeLessThan(1);
+    expect(section.rightOf).toBe(true);
+    expect(section.offMiddle).toBeLessThan(2);
+    expect(section.before).toBe('"Chapter"');
+  }
   const sections = article.locator(':scope > h3 + p');
-  await expect(sections).toHaveCount(5);
-  await expect(sections.first()).toContainText('Simplicity takes judgment.');
-  await expect(sections.nth(1)).toContainText('How something looks shapes how it’s understood.');
-  await expect(sections.nth(2)).toContainText('when it’s time to close the file.');
-  await expect(sections.nth(3)).toContainText('A familiar pattern should earn its place as much as an unusual one.');
-  await expect(sections.last()).toContainText('enough openness to discover a better idea along the way.');
+  await expect(sections).toHaveCount(4);
+  await expect(sections.first()).toContainText('Knowing what the work needs to do gives you room to experiment.');
+  await expect(sections.nth(1)).toContainText('Clarity can have character.');
+  await expect(sections.nth(2)).toContainText('The challenge is keeping sight of the whole while giving the details their due.');
+  await expect(sections.last()).toContainText('without having to become suspicious first.');
   // Centred, all of it.
   expect(await article.evaluate((el) => getComputedStyle(el).textAlign)).toBe('center');
-  // Then the services: a heading, and a group per column, in order.
+  // The services, between the statement and the chapters: a group per column, in order.
   const services = article.getByRole('region', { name: 'Services' });
+  expect(await services.evaluate((s) => [s.previousElementSibling!.textContent, s.nextElementSibling!.textContent])).toEqual([
+    'Currently at Off Menu',
+    'I On Intent',
+  ]);
   await expect(services.getByRole('heading', { level: 3 })).toHaveText(['Digital Design', 'Branding', 'Print Design']);
   await expect(services.getByRole('listitem')).toHaveText([
     'UX/UI Design',
     'Motion Design',
     '3D Design',
     'Social Media',
-    'Tone of Voice',
     'Identity Design',
     'Art Direction',
     'Brand Guidelines',
@@ -75,6 +107,15 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
     'Wayfinding',
     'Signage',
   ]);
+  // After the chapters, the awards: a title over the list, in the serif.
+  const awards = article.getByRole('region', { name: 'Awards' });
+  await expect(awards.getByRole('listitem')).toHaveText(['Awwwards x4', 'DDA x2', 'CSSDA x2', 'The FWA x2']);
+  expect(await awards.getByRole('list').evaluate((l) => getComputedStyle(l).fontFamily)).toMatch(/^"Timeless Serif/);
+  // Last, the social links, listed the same way.
+  const social = article.getByRole('region', { name: 'Social' });
+  expect(await social.evaluate((s) => s === s.parentElement!.lastElementChild && s.previousElementSibling!.matches('[aria-labelledby="awards"]'))).toBe(true);
+  await expect(social.getByRole('link')).toHaveText(['LinkedIn', 'Instagram', 'X']);
+  expect(await social.getByRole('list').evaluate((l) => getComputedStyle(l).fontFamily)).toMatch(/^"Timeless Serif/);
   // Side by side: the three groups start on one line.
   const tops = await services.getByRole('heading', { level: 3 }).evaluateAll((hs) => hs.map((h) => Math.round(h.getBoundingClientRect().top)));
   expect(new Set(tops).size).toBe(1);
@@ -82,6 +123,10 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   // Narrow (34 rem), centred across the window; taller than it, so it starts clear of the header and scrolls.
   expect(box.width).toBeLessThanOrEqual(34 * 16);
   expect(box.x + box.width / 2).toBeCloseTo(1440 / 2, 0);
+  // The statement alone runs 65% wider, centred on the column.
+  const statement = (await article.locator(':scope > h2').boundingBox())!;
+  expect(statement.width).toBeCloseTo(box.width * 1.65, 0);
+  expect(statement.x + statement.width / 2).toBeCloseTo(1440 / 2, 0);
   expect(box.y).toBeGreaterThan(100);
   expect(await page.locator('[data-about]').evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
   // The canvas behind is flown past and inert.
@@ -163,13 +208,23 @@ test('on a small screen the text scrolls on its own', async ({ page }) => {
   expect(await view.evaluate((el) => getComputedStyle(el).maskImage)).toMatch(/linear-gradient/);
 });
 
-test('on a narrow screen the services groups wrap instead of squeezing', async ({ page }) => {
+test('on a narrow screen the services groups wrap instead of squeezing, a lone last one centred', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto('/about');
   const groups = page.locator('.services-groups > div');
-  const boxes = await groups.evaluateAll((gs) => gs.map((g) => g.getBoundingClientRect()).map((r) => ({ top: Math.round(r.top), width: r.width })));
+  const boxes = await groups.evaluateAll((gs) =>
+    gs.map((g) => {
+      const r = g.getBoundingClientRect();
+      const name = g.querySelector('h3')!.getBoundingClientRect();
+      return { top: Math.round(r.top), width: r.width, centre: (name.left + name.right) / 2 };
+    }),
+  );
   // Not all on one line, and none narrower than its minimum.
   expect(new Set(boxes.map((b) => b.top)).size).toBeGreaterThan(1);
   for (const b of boxes) expect(b.width).toBeGreaterThanOrEqual(9.5 * 16 - 1);
+  // A group alone on the last line sits centred in the window.
+  const last = boxes.at(-1)!;
+  expect(boxes.filter((b) => b.top === last.top)).toHaveLength(1);
+  expect(last.centre).toBeCloseTo(390 / 2, 0);
 });
 
