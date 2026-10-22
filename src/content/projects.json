@@ -31,8 +31,7 @@
       "cans-on-a-shipping-box",
       "havv-cans-in-hand",
       "nobu-lineup",
-      "gin-bottle-in-water",
-      "kombucha-time-outdoors"
+      "gin-bottle-in-water"
     ]
   },
   {
@@ -111,7 +110,6 @@
       "cadence-spec-views",
       "journee-flat-lay",
       "ghia-can-stack",
-      "goodrays-hero",
       "spritz-with-fruit"
     ]
   },
@@ -154,7 +152,6 @@
     "year": 2024,
     "images": [
       "green-bottles-on-gold",
-      "marin-matcha-bottle",
       "can-underwater",
       "revivo-on-court",
       "nowadays-wordmark",
@@ -210,12 +207,15 @@
     "title": "Off Menu",
     "year": 2026,
     "images": [
+      "offmenu-breakfast",
       "offmenu-website",
       "offmenu-navigation",
       "subzero-cans",
       "experimental-navigation",
       "experimental-button",
-      "spring-habits"
+      "spring-habits",
+      "gridbank-onboarding",
+      "gridbank-teams"
     ]
   },
   {

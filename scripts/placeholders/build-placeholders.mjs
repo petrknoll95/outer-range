@@ -50,6 +50,9 @@ const REPLACED = new Set([
   '447bb97a-98da-4907-9d9c-8611c6ee2336',
   'b2d9ac4f-f543-48fa-ad1a-43ceaa8558e2',
   '1d45ceb7-d2bf-4d4a-917e-11943414be7a',
+  '54152d80-a001-4b83-9e8f-154344242929',
+  'fb58c8f2-33e2-4aaf-9b48-c89cc2b75f69',
+  'd7778fb1-016a-455d-8b79-b216c7ca2eb6',
 ]);
 const candidates = JSON.parse(readFileSync(CANDIDATES, 'utf8'))
   .filter((c) => !REPLACED.has(c.cdnId))

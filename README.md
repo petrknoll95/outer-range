@@ -117,10 +117,10 @@ The current 19 projects are samples with invented names; the last two, Off Menu 
 
 `src/assets/work/` holds real work: images exported from Figma, each with a line in its `manifest.json`. [`src/assets/media.ts`](src/assets/media.ts) lists them after the placeholder images.
 
-- **Built** by `npm run work:build -- <folder>` ([`scripts/work/build-work.mjs`](scripts/work/build-work.mjs)) from every PNG or JPEG in the folder. Draw the artboards at a tile shape (4:3, 3:4 or 1:1; anything else is cropped about its centre to the nearest) and export them large: the current four are 4× exports, 3200 px on the long edge. Each becomes a lossless WebP that keeps its colour profile (Figma exports Display P3). The build replaces the folder.
-- **Served** like every other image: the page builds AVIF and WebP variants from the master at each standard size and at full size, converted to sRGB. The full-size variants come to 45–190 KB.
+- **Built** by `npm run work:build -- <folder>` ([`scripts/work/build-work.mjs`](scripts/work/build-work.mjs)) from every PNG or JPEG in the folder. Draw the artboards at a tile shape (4:3, 3:4 or 1:1; anything else is cropped about its centre to the nearest) and export them large: the current seven are exported at 4× (the most Figma allows), 3200–6400 px on the long edge. Each becomes a lossless WebP that keeps its colour profile (Figma exports Display P3). The build replaces the folder.
+- **Served** like every other image: the page builds AVIF and WebP variants from the master at each standard size (`VARIANT_SHORT_EDGES` in `config.ts`, 256 to 2880 px on the short edge) and converts them to sRGB. Unlike photos (AVIF 55, WebP 76), work is encoded at AVIF 75 and WebP 90, since compression shows around fine type and flat colour (`detail` in `media.ts`). The focused view on a 2× screen loads the 1024 px variant, about 40 KB; the largest variants, 2880 px, come to 140–730 KB and load only when a tile is drawn that large.
 
-The current four are AtomsAI (a billboard, the wordmark and the mark's construction) and Spring (habit charts). They replaced four placeholders, which `build-placeholders.mjs` now leaves out (`REPLACED`).
+The current seven are AtomsAI (a billboard, the wordmark and the mark's construction), Spring (habit charts), an Off Menu breakfast page and GridBank (two sets of app screens). They replaced seven placeholders, which `build-placeholders.mjs` now leaves out (`REPLACED`).
 
 ## Videos
 
@@ -134,9 +134,9 @@ The current five are Off Menu work: the site, its menu, two interaction experime
 
 ## Placeholder images
 
-`src/assets/placeholders/` holds 87 images from the Cosmos collection [Social Tonic](https://www.cosmos.so/petrknoll/social-tonic): 82 images plus the poster frames of 5 videos. One 360×450 image was too small and was left out, and four were replaced by work images.
+`src/assets/placeholders/` holds 84 images from the Cosmos collection [Social Tonic](https://www.cosmos.so/petrknoll/social-tonic): 79 images plus the poster frames of 5 videos. One 360×450 image was too small and was left out, and seven were replaced by work images.
 
-Each image is cropped to whichever of 4:3, 3:4 or 1:1 loses least, and the shapes are then evened out where that costs at most 30% more of the picture. Most of the collection is 4:5 posts, so it ended up 15 landscape, 38 portrait and 38 square, and, less the four replaced, is now 13, 37 and 37.
+Each image is cropped to whichever of 4:3, 3:4 or 1:1 loses least, and the shapes are then evened out where that costs at most 30% more of the picture. Most of the collection is 4:5 posts, so it ended up 15 landscape, 38 portrait and 38 square, and, less the seven replaced, is now 11, 36 and 37.
 
 The manifest records each image's crop, credit, Cosmos element URL and source file. Run `npm run placeholders:collect && npm run placeholders:build` after the collection changes. If it shrinks below 72 images, reduce `REPEAT_COLS`/`REPEAT_ROWS` in `config.ts` so every class keeps at least two.
 

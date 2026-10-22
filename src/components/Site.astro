@@ -27,11 +27,13 @@ const files = import.meta.glob<{ default: ImageMetadata }>(['../assets/placehold
   eager: true,
 });
 const videos = import.meta.glob<string>('../assets/videos/*.mp4', { eager: true, query: '?url', import: 'default' });
-const QUALITY = { avif: 55, webp: 76 } as const;
+// Photos hide compression well; designed work (fine type, flat colour) shows it, so it gets more.
+const QUALITY = { photo: { avif: 55, webp: 76 }, detail: { avif: 75, webp: 90 } } as const;
 
 /** One srcset per format, with a variant at each short edge the master can supply. */
-async function srcset(src: ImageMetadata, format: 'avif' | 'webp', widths: number[]): Promise<string> {
-  const urls = await Promise.all(widths.map((width) => getImage({ src, width, format, quality: QUALITY[format] })));
+async function srcset(src: ImageMetadata, format: 'avif' | 'webp', widths: number[], detail: boolean): Promise<string> {
+  const quality = QUALITY[detail ? 'detail' : 'photo'][format];
+  const urls = await Promise.all(widths.map((width) => getImage({ src, width, format, quality })));
   return urls.map((img, n) => `${img.src} ${widths[n]}w`).join(', ');
 }
 
@@ -46,10 +48,12 @@ const images: ClientImage[] = await Promise.all(
     // A video's tile is built like an image's from its poster frame, and plays the video over it.
     const src = files[`../assets/${m.still}`]!.default;
     const short = Math.min(m.width, m.height);
-    // Every standard size the master can supply, topped with the master itself.
-    const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < short * 0.9), short];
+    // Every standard size the master can supply, topped with the master itself (or the largest standard size, if it is bigger).
+    const top = Math.min(short, VARIANT_SHORT_EDGES.at(-1)!);
+    const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < top * 0.9), top];
     const widths = edges.map((e) => Math.round((m.width * e) / short));
-    const [avif, webp] = await Promise.all([srcset(src, 'avif', widths), srcset(src, 'webp', widths)]);
+    const detail = m.detail ?? false;
+    const [avif, webp] = await Promise.all([srcset(src, 'avif', widths, detail), srcset(src, 'webp', widths, detail)]);
     const { title, category, alt } = content[n]!;
     const video = m.video ? videos[`../assets/${m.video}`]! : undefined;
     return { aspect: m.aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, video, title, category, alt };

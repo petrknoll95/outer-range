@@ -24,6 +24,30 @@
     "source": "atomsai-3.png"
   },
   {
+    "file": "gridbank-onboarding.webp",
+    "aspect": "portrait",
+    "width": 3600,
+    "height": 4800,
+    "color": "#380808",
+    "source": "gridbank-onboarding.png"
+  },
+  {
+    "file": "gridbank-teams.webp",
+    "aspect": "landscape",
+    "width": 6400,
+    "height": 4800,
+    "color": "#380808",
+    "source": "gridbank-teams.png"
+  },
+  {
+    "file": "offmenu-breakfast.webp",
+    "aspect": "landscape",
+    "width": 3840,
+    "height": 2880,
+    "color": "#f8e8d8",
+    "source": "offmenu-breakfast.png"
+  },
+  {
     "file": "spring-1.webp",
     "aspect": "landscape",
     "width": 3200,

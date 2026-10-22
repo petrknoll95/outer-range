@@ -312,5 +312,8 @@ export const MARGIN = 0.5;
 /** Extra margin in the direction of travel: speed × LEAD_TIME, capped at LEAD_MAX pitches. */
 export const LEAD_TIME = 0.35;
 export const LEAD_MAX = 2;
-/** Short edges of the build-time image variants, px. The master's own size is added on top. */
-export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024] as const;
+/**
+ * Short edges of the build-time image variants, px. The master's own size is added on top, up
+ * to the last of these: no tile is ever drawn larger than that, even zoomed in on a 4K screen.
+ */
+export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as const;
