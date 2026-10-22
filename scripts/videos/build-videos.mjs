@@ -5,6 +5,8 @@
 // 1. Picks its aspect class (4:3, 3:4, 1:1): the one nearest its ratio, unless ASPECT says otherwise.
 // 2. Crops it to that ratio about the centre, scales it to at most MAX_SHORT_EDGE, drops the
 //    audio and encodes H.264 for the web (faststart, so it starts playing before it has all loaded).
+//    A second, SMALL_SHORT_EDGE copy is for tiles drawn small: decoding the full one for a
+//    thumbnail costs every frame.
 // 3. Takes a poster frame from the encoded video (at POSTER, as a fraction of its length): the
 //    tile shows it until the video plays, and it is what the page builds image variants from.
 // 4. Records size, dominant colour and length in src/assets/videos/manifest.json.
@@ -18,6 +20,7 @@ import { basename, join } from 'node:path';
 
 const OUT = fileURLToPath(new URL('../../src/assets/videos/', import.meta.url));
 const MAX_SHORT_EDGE = 1080;
+const SMALL_SHORT_EDGE = 360;
 const RATIOS = { landscape: 4 / 3, portrait: 3 / 4, square: 1 };
 /** Videos whose subject the nearest crop would cut. */
 const ASPECT = { 'subzero-cans': 'portrait' };
@@ -65,13 +68,22 @@ for (const name of readdirSync(source).filter((f) => f.endsWith('.mp4')).sort())
   ]);
   const { duration } = probe(join(OUT, video));
 
+  const small = `${id}-small.mp4`;
+  const k = SMALL_SHORT_EDGE / Math.min(out.w, out.h);
+  run('ffmpeg', [
+    '-v', 'error', '-y', '-i', join(OUT, video),
+    '-vf', `scale=${even(out.w * k)}:${even(out.h * k)}:flags=lanczos`,
+    '-an', '-c:v', 'libx264', '-preset', 'slow', '-crf', '26', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+    join(OUT, small),
+  ]);
+
   const poster = `${id}.jpg`;
   const at = (POSTER[id] ?? 1 / 3) * duration;
   run('ffmpeg', ['-v', 'error', '-y', '-ss', at.toFixed(3), '-i', join(OUT, video), '-frames:v', '1', '-q:v', '2', join(OUT, poster)]);
   const { dominant } = await sharp(join(OUT, poster)).stats();
   const color = '#' + [dominant.r, dominant.g, dominant.b].map((n) => n.toString(16).padStart(2, '0')).join('');
 
-  manifest.push({ file: video, poster, aspect, width: out.w, height: out.h, color, duration: Math.round(duration * 100) / 100, source: name });
+  manifest.push({ file: video, small, poster, aspect, width: out.w, height: out.h, color, duration: Math.round(duration * 100) / 100, source: name });
   console.log(`${video}: ${aspect} ${out.w}×${out.h}, ${duration.toFixed(1)} s`);
 }
 

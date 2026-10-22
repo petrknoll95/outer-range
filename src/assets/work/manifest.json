@@ -56,6 +56,14 @@
     "source": "bettermint-tubes.jpg"
   },
   {
+    "file": "chill-pill-vial.webp",
+    "aspect": "square",
+    "width": 1254,
+    "height": 1254,
+    "color": "#c8b8b8",
+    "source": "chill-pill-vial.png"
+  },
+  {
     "file": "ditto-bluetooth.webp",
     "aspect": "square",
     "width": 1520,
@@ -110,14 +118,6 @@
     "height": 4800,
     "color": "#380808",
     "source": "gridbank-teams.png"
-  },
-  {
-    "file": "offmenu-breakfast.webp",
-    "aspect": "landscape",
-    "width": 3840,
-    "height": 2880,
-    "color": "#f8e8d8",
-    "source": "offmenu-breakfast.png"
   },
   {
     "file": "resonant-dashboard.webp",

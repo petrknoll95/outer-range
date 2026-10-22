@@ -416,8 +416,12 @@ test('the page never rubber-bands or swipes back', async ({ page }) => {
 
 test('panning 20 screens away and back is pixel-identical', async ({ page }) => {
   await open(page);
-  // Videos play on: their frames differ between any two shots, so leave them out (video.spec.ts covers them).
-  await page.addStyleTag({ content: '[data-canvas-layer] video { visibility: hidden }' });
+  // Videos play on: their frames differ between any two shots, so leave them out (video.spec.ts covers them),
+  // and with them what a shown video clears under it: every tile shows its poster, on no colour.
+  await page.addStyleTag({
+    content:
+      '[data-canvas-layer] video { visibility: hidden } [data-canvas-layer] picture { visibility: visible !important } [data-canvas-layer] > div { background-color: transparent !important }',
+  });
   const shoot = async () => PNG.sync.read(await page.screenshot({ animations: 'disabled' }));
   const tiles = () =>
     page.evaluate(() => window.__canvas.renderer.visibleCells().sort((a, b) => a.i - b.i || a.j - b.j));

@@ -9,6 +9,7 @@ import {
   TRAIL_DIRECTION_MIN_SPEED,
   TRAIL_LAG_TAU,
   TRAIL_MAX_OFFSET,
+  VIDEO_SMALL_EDGE,
 } from './config';
 import type { FlightView } from './flight';
 import { flightDepth, flightView } from './flight';
@@ -29,8 +30,9 @@ export interface ClientImage extends WorldImage {
   webp: string;
   /** Fallback src (smallest WebP). */
   src: string;
-  /** A video to play over the image (its poster frame), or none. */
+  /** A video to play over the image (its poster frame), or none, and a small copy of it for tiles drawn small. */
   video?: string;
+  videoSmall?: string;
   /** From the image's content entry: shown under the focused view, and the alt text set on every tile. */
   title: string;
   category: string;
@@ -75,8 +77,9 @@ interface Slot {
   el: HTMLDivElement;
   source: HTMLSourceElement;
   img: HTMLImageElement;
-  /** Made the first time the tile shows a video, then kept (empty) for the next. */
+  /** Made the first time the tile shows a video, then kept (empty) for the next; and what it plays. */
   video: HTMLVideoElement | null;
+  videoSrc: string | null;
   /** On screen, as the IntersectionObserver last reported. */
   visible: boolean;
   label: HTMLSpanElement | null;
@@ -126,6 +129,8 @@ const IMG_CLASS =
 // Over the image (its poster frame), shown once it is actually playing so it never flashes black.
 const VIDEO_CLASS =
   'pointer-events-none absolute inset-0 size-full object-cover transition-opacity duration-[240ms] ease-out data-waiting:opacity-0 data-waiting:transition-none motion-reduce:transition-none';
+/** VIDEO_CLASS's fade in, ms. */
+const VIDEO_FADE = 240;
 
 /**
  * Keeps a pool of tile elements on the cells around the viewport.
@@ -146,7 +151,9 @@ const VIDEO_CLASS =
  *
  * Video: a video's tile is an image tile (its poster frame) with the video playing over it,
  * muted and looping. It plays only while the tile is on screen and videos are on (setVideos):
- * off screen, or with videos off, it holds its frame and downloads nothing more.
+ * off screen, or with videos off, it holds its frame and downloads nothing more. A tile laid
+ * out small plays the small copy, and swaps to the full one (at the same moment) when it is
+ * laid out large, as the one zoomed into is.
  */
 export class Renderer {
   private readonly slots: Slot[] = [];
@@ -449,7 +456,10 @@ export class Renderer {
    */
   prepare(rect: CellRect, z: number): void {
     const slot = this.active.find((s) => s.left === rect.left && s.top === rect.top);
-    if (slot && slot.layout !== z) this.layOut(slot, z);
+    if (slot && slot.layout !== z) {
+      this.layOut(slot, z);
+      this.fitVideo(slot);
+    }
   }
 
   /** Size a tile in CSS for zoom `layout`; the browser picks an image to fit. */
@@ -626,6 +636,7 @@ export class Renderer {
       source,
       img,
       video: null,
+      videoSrc: null,
       visible: false,
       label,
       key: -1,
@@ -657,9 +668,36 @@ export class Renderer {
     return slot;
   }
 
-  /** Show `src` playing over the tile's image, or (null) no video. */
-  private setVideo(slot: Slot, src: string | null): void {
+  /** The copy of the tile's video that fits the size it is laid out at, or null if it has none. */
+  private videoFor(slot: Slot): string | null {
+    const { video, videoSmall } = this.images[slot.image]!;
+    if (!video) return null;
+    const edge = Math.min(slot.width, slot.height) * slot.layout * devicePixelRatio;
+    return videoSmall && edge <= VIDEO_SMALL_EDGE * 1.25 ? videoSmall : video;
+  }
+
+  /** Laid out at another size: swap to the copy of its video that fits, carrying on from the same moment. */
+  private fitVideo(slot: Slot): void {
+    const want = this.videoFor(slot);
+    if (want && slot.videoSrc && want !== slot.videoSrc) this.setVideo(slot, want, slot.video!.currentTime);
+  }
+
+  /**
+   * With its video shown, a tile has nothing under it: no poster frame, no placeholder colour.
+   * Under a different frame (a light poster, a dark scene playing) they bleed through the
+   * anti-aliased edge of its rounded clip as a fringe. Uncovered, they are back for whenever
+   * the video isn't showing.
+   */
+  private cover(slot: Slot, covered: boolean): void {
+    slot.img.parentElement!.style.visibility = covered ? 'hidden' : '';
+    slot.el.style.backgroundColor = covered ? 'transparent' : this.images[slot.image]!.color;
+  }
+
+  /** Show `src` playing over the tile's image (from `at` seconds in), or (null) no video. */
+  private setVideo(slot: Slot, src: string | null, at = 0): void {
     let video = slot.video;
+    slot.videoSrc = src;
+    if (video?.src || src) this.cover(slot, false);
     if (!src) {
       if (!video?.src) return;
       video.pause();
@@ -679,12 +717,20 @@ export class Renderer {
       // Nothing loads until the tile is on screen and it plays.
       video.preload = 'none';
       video.setAttribute('aria-hidden', 'true');
-      video.addEventListener('playing', () => delete video!.dataset.waiting);
+      video.addEventListener('playing', () => {
+        delete video!.dataset.waiting;
+        // Faded in: clear what is under it (see cover).
+        const src = slot.videoSrc;
+        setTimeout(() => {
+          if (slot.videoSrc === src && video!.dataset.waiting === undefined && !video!.hidden) this.cover(slot, true);
+        }, VIDEO_FADE);
+      });
       slot.el.append(video);
     }
     video.hidden = false;
     video.dataset.waiting = '';
     video.src = src;
+    if (at) video.currentTime = at;
     this.syncVideo(slot);
   }
 
@@ -719,7 +765,7 @@ export class Renderer {
       }
     }
     if (slot.label) slot.label.textContent = `${i},${j} #${cell.image}`;
-    if (slot.image === cell.image) return;
+    if (slot.image === cell.image) return this.fitVideo(slot);
 
     const source = this.images[cell.image]!;
     slot.image = cell.image;
@@ -730,7 +776,7 @@ export class Renderer {
     slot.source.srcset = source.avif;
     slot.img.srcset = source.webp;
     slot.img.src = source.src;
-    this.setVideo(slot, source.video ?? null);
+    this.setVideo(slot, this.videoFor(slot));
     const token = ++slot.token;
     const reveal = () => {
       if (slot.token !== token) return;

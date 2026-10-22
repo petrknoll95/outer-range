@@ -44,7 +44,8 @@ async function dHash(file) {
 }
 const hamming = (a, b) => [...(a ^ b).toString(2)].filter((c) => c === '1').length;
 
-// Placeholders since replaced by real work (scripts/work): left out so a rebuild doesn't bring them back.
+// Placeholders since replaced by real work (scripts/work, scripts/videos) or dropped to make room for it:
+// left out so a rebuild doesn't bring them back.
 const REPLACED = new Set([
   '229f2c3f-4120-4a41-9dd3-c395617e495d',
   '447bb97a-98da-4907-9d9c-8611c6ee2336',
@@ -72,6 +73,35 @@ const REPLACED = new Set([
   '2a1ad221-d956-4019-8b1a-08994bd755c4',
   '01a11c45-d66c-715c-9322-bec91c470d16',
   'f9d4b7a5-607d-4e1d-a7af-c3ecd38fc2a4',
+  'ce1f62ef-1712-4523-a320-d9ddc5ddefc8',
+  'e9cea093-f4a4-4fad-9262-037ec671c271',
+  'f945658b-9ad4-4867-8cc8-6dd854b9cb67',
+  '825ceb00-d141-43c3-9589-24952ff72c80',
+  'fae1a5d5-1c6f-4400-8e8c-b9cdd01f822f',
+  'c75327ca-1de4-418f-a515-bf3d387f69b8',
+  '4d267767-dbf2-4605-bdf0-11253e4f0a75',
+  '1ef40c60-b7bc-44a7-8d7e-814244ec5cab',
+  'ffc27b71-4f4c-47ac-bd47-ae51afe059e2',
+  '092daf3a-33ac-4379-aba1-b5e5c186d3ac',
+  '1a4fdb0d-32db-4844-8730-d2c578483e1c',
+  '774ac344-964b-441f-9c3b-be87cc624eb8',
+  'fce07ba2-32b7-480b-89d9-9fda1ce45a02',
+  '58a51dba-8178-4f7a-880c-bf03a5abf833',
+  '69c2e0dd-b9c5-492b-bf7a-1c3c9c3e0cb3',
+  '01a1066c-6146-7010-bfa2-519a378861b9',
+  '01a11b53-f0bf-70a5-a0e7-43060306ad35',
+  '2d17828d-41ed-47dd-808f-77fff263410e',
+  '7f110282-bf91-478e-8ac5-815d66da8128',
+  '98c20287-623b-47ee-9eaa-718dfdaf7bb4',
+  '99f540ce-05af-4c07-9734-1cc399f5de7d',
+  'd2b8f20f-a6e1-4d30-97fc-fb2793c75390',
+  'd977ad56-3e71-476d-aac1-66bd7a8991c8',
+  'e37ca3e7-04fe-4eba-a25b-debf220731d5',
+  '09f2240b-20d2-42b7-bc94-28c5fc0684db',
+  '01a11b53-6dcb-742f-ae61-cbd91cc43bd8',
+  '97b4dd2f-52ad-487d-bc7e-fde96d84e9ec',
+  'f0a894cc-3725-4327-93dc-71e7bb3c7630',
+  '3f088709-3840-4748-ad0b-453e805416cb',
 ]);
 const candidates = JSON.parse(readFileSync(CANDIDATES, 'utf8'))
   .filter((c) => !REPLACED.has(c.cdnId))

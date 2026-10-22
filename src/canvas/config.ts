@@ -45,11 +45,12 @@ export const COLUMN_STAGGER_JITTER = 0.12;
  *
  * Each of the COLS×ROWS classes draws from its own slice of the images, so the image
  * count sets the trade-off: a bigger lattice allows smaller images on screen, but leaves
- * fewer images per class and repeats each class's choices more visibly. 6×6 with the
- * 91 Social Tonic images gives every class 2–3 images.
+ * fewer images per class and repeats each class's choices more visibly. 6×5 with the
+ * 67 canvas images gives every class 2–3. Five rows rather than six only matters on a
+ * portrait screen, where the rows set S: there tiles come out a little larger.
  */
 export const REPEAT_COLS = 6;
-export const REPEAT_ROWS = 6;
+export const REPEAT_ROWS = 5;
 
 // ── Sizing (pixels) ─────────────────────────────────────────────────────────
 
@@ -316,4 +317,6 @@ export const LEAD_MAX = 2;
  * Short edges of the build-time image variants, px. The master's own size is added on top, up
  * to the last of these: no tile is ever drawn larger than that, even zoomed in on a 4K screen.
  */
+/** Short edge of the small copy of each video (scripts/videos), px: a tile drawn up to 1.25× that plays it instead of the full one. */
+export const VIDEO_SMALL_EDGE = 360;
 export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as const;

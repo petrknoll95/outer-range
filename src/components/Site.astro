@@ -56,7 +56,8 @@ const images: ClientImage[] = await Promise.all(
     const [avif, webp] = await Promise.all([srcset(src, 'avif', widths, detail), srcset(src, 'webp', widths, detail)]);
     const { title, category, alt } = content[n]!;
     const video = m.video ? videos[`../assets/${m.video}`]! : undefined;
-    return { aspect: m.aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, video, title, category, alt };
+    const videoSmall = m.videoSmall ? videos[`../assets/${m.videoSmall}`]! : undefined;
+    return { aspect: m.aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, video, videoSmall, title, category, alt };
   }),
 );
 

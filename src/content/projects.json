@@ -4,7 +4,6 @@
     "title": "Low Tide Seltzer",
     "year": 2025,
     "images": [
-      "swirl-wine-cans",
       "fomo-juggle",
       "revivo-can-render",
       "jubi-cans-on-black"
@@ -21,33 +20,6 @@
     ]
   },
   {
-    "id": "night-swim",
-    "title": "Night Swim",
-    "year": 2026,
-    "images": [
-      "epicone-bottle",
-      "cans-on-a-shipping-box",
-      "havv-cans-in-hand",
-      "nobu-lineup",
-      "gin-bottle-in-water"
-    ]
-  },
-  {
-    "id": "copper-and-clove",
-    "title": "Copper & Clove",
-    "year": 2023,
-    "images": [
-      "padre-on-a-green-car",
-      "yellow-can-by-the-bath",
-      "made-clean-poster",
-      "hiyo-with-passion-fruit",
-      "cans-on-crushed-ice",
-      "padre-ice-bucket",
-      "altitude-carousel",
-      "cadence-motion-render"
-    ]
-  },
-  {
     "id": "field-notes-kombucha",
     "title": "Field Notes Kombucha",
     "year": 2021,
@@ -55,32 +27,6 @@
       "cha-with-ginger",
       "fuel-cans-in-a-row",
       "black-can-on-stone"
-    ]
-  },
-  {
-    "id": "paper-moon-soda",
-    "title": "Paper Moon Soda",
-    "year": 2025,
-    "images": [
-      "white-can-with-green-juice",
-      "script-can-stack",
-      "mango-can-mockup",
-      "three-flavour-render",
-      "cadence-vertical-type"
-    ]
-  },
-  {
-    "id": "salt-and-stone",
-    "title": "Salt & Stone",
-    "year": 2025,
-    "images": [
-      "clean-cause-on-terrazzo",
-      "olura-glasses",
-      "lettered-cans-on-cloth",
-      "ghia-bottle-with-berries",
-      "huel-greens-render",
-      "fire-bottle-neck",
-      "watermelon-squeeze"
     ]
   },
   {
@@ -174,21 +120,10 @@
     ]
   },
   {
-    "id": "tall-grass",
-    "title": "Tall Grass",
-    "year": 2021,
-    "images": [
-      "striped-wine-labels",
-      "cadence-on-blue",
-      "padre-on-a-pink-car"
-    ]
-  },
-  {
     "id": "off-menu",
     "title": "Off Menu",
     "year": 2026,
     "images": [
-      "offmenu-breakfast",
       "offmenu-website",
       "offmenu-navigation",
       "subzero-cans",
@@ -243,7 +178,8 @@
     "images": [
       "crocs-rnd",
       "remi-logo",
-      "3d-icons"
+      "3d-icons",
+      "chill-pill-vial"
     ]
   },
   {

@@ -1,6 +1,7 @@
 [
   {
     "file": "crocs-rnd.mp4",
+    "small": "crocs-rnd-small.mp4",
     "poster": "crocs-rnd.jpg",
     "aspect": "square",
     "width": 1080,
@@ -11,6 +12,7 @@
   },
   {
     "file": "experimental-button-1.mp4",
+    "small": "experimental-button-1-small.mp4",
     "poster": "experimental-button-1.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -21,6 +23,7 @@
   },
   {
     "file": "experimental-navigation-1.mp4",
+    "small": "experimental-navigation-1-small.mp4",
     "poster": "experimental-navigation-1.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -31,6 +34,7 @@
   },
   {
     "file": "offmenu-navigation.mp4",
+    "small": "offmenu-navigation-small.mp4",
     "poster": "offmenu-navigation.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -41,6 +45,7 @@
   },
   {
     "file": "offmenu-website-reel.mp4",
+    "small": "offmenu-website-reel-small.mp4",
     "poster": "offmenu-website-reel.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -51,6 +56,7 @@
   },
   {
     "file": "offmenu-website.mp4",
+    "small": "offmenu-website-small.mp4",
     "poster": "offmenu-website.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -61,6 +67,7 @@
   },
   {
     "file": "remi-logo.mp4",
+    "small": "remi-logo-small.mp4",
     "poster": "remi-logo.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -71,6 +78,7 @@
   },
   {
     "file": "subzero-cans.mp4",
+    "small": "subzero-cans-small.mp4",
     "poster": "subzero-cans.jpg",
     "aspect": "portrait",
     "width": 1080,
@@ -81,6 +89,7 @@
   },
   {
     "file": "tangent.mp4",
+    "small": "tangent-small.mp4",
     "poster": "tangent.jpg",
     "aspect": "landscape",
     "width": 1440,

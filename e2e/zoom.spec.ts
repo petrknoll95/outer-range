@@ -3,10 +3,20 @@ import { expect, test, type Page } from '@playwright/test';
 interface Api {
   isSettled: () => boolean;
   zoomState: () => 'out' | 'in';
+  renderer: { setVideos: (on: boolean) => void };
 }
 
 const settled = (page: Page) =>
   page.waitForFunction(() => (window as unknown as { __canvas?: Api }).__canvas?.isSettled(), null, { timeout: 30_000 });
+
+// Videos hold still here (video.spec.ts covers them): once the zoom lands, if only a video
+// changes on screen, Chrome lowers the frame rate to the video's (30 fps), which would read
+// as slow frames in the recording that runs on past the zoom.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    addEventListener('load', () => (window as unknown as { __canvas: Api }).__canvas.renderer.setVideos(false));
+  });
+});
 
 interface Zoom {
   /** Long animation frames, ms, and the longest gap between frames. */

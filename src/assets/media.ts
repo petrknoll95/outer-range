@@ -13,8 +13,9 @@ export interface MediaFile {
   width: number;
   height: number;
   color: string;
-  /** A video to play over the still, as a path under src/assets. */
+  /** A video to play over the still, as a path under src/assets, and a small copy of it for tiles drawn small. */
   video?: string;
+  videoSmall?: string;
   /** Designed work (fine type, flat colour): its variants are served at a higher quality than photos'. */
   detail?: boolean;
 }
@@ -27,10 +28,11 @@ export interface MediaFile {
 export const media: MediaFile[] = [
   ...images.map(({ file, aspect, width, height, color }) => ({ file, still: `placeholders/${file}`, aspect: aspect as Aspect, width, height, color })),
   ...work.map(({ file, aspect, width, height, color }) => ({ file, still: `work/${file}`, detail: true, aspect: aspect as Aspect, width, height, color })),
-  ...videos.map(({ file, poster, aspect, width, height, color }) => ({
+  ...videos.map(({ file, small, poster, aspect, width, height, color }) => ({
     file,
     still: `videos/${poster}`,
     video: `videos/${file}`,
+    videoSmall: `videos/${small}`,
     aspect: aspect as Aspect,
     width,
     height,
