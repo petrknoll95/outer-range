@@ -416,6 +416,8 @@ test('the page never rubber-bands or swipes back', async ({ page }) => {
 
 test('panning 20 screens away and back is pixel-identical', async ({ page }) => {
   await open(page);
+  // Videos play on: their frames differ between any two shots, so leave them out (video.spec.ts covers them).
+  await page.addStyleTag({ content: '[data-canvas-layer] video { visibility: hidden }' });
   const shoot = async () => PNG.sync.read(await page.screenshot({ animations: 'disabled' }));
   const tiles = () =>
     page.evaluate(() => window.__canvas.renderer.visibleCells().sort((a, b) => a.i - b.i || a.j - b.j));
@@ -493,7 +495,12 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
     return (await cdp.send('Runtime.getHeapUsage')).usedSize;
   };
   await page.mouse.move(720, 450);
-  const sample = async () => page.evaluate(() => ({ dom: window.__canvas.domNodes(), pool: window.__canvas.renderer.poolSize }));
+  const sample = async () =>
+    page.evaluate(() => ({
+      dom: window.__canvas.domNodes(),
+      pool: window.__canvas.renderer.poolSize,
+      videos: document.querySelectorAll('[data-canvas-layer] video').length,
+    }));
 
   // Warm up: zoom all the way out and back, and one lap in every direction, so the pool reaches its working size.
   await pinchWheel(page, 720, 450, 25, 40);
@@ -542,8 +549,9 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
   );
   console.info(`pool bound ${bound}`);
   expect(after.pool).toBeLessThanOrEqual(bound);
-  // Four nodes per tile, plus the layer and the focus frame.
-  expect(after.dom).toBe(after.pool * 4 + 2);
+  // Four nodes per tile, one more for a tile that has shown a video, plus the layer and the focus frame.
+  expect(after.videos).toBeLessThanOrEqual(after.pool);
+  expect(after.dom).toBe(after.pool * 4 + after.videos + 2);
   expect(afterHeap - baseHeap).toBeLessThan(1_000_000);
 });
 

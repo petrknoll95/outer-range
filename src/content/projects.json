@@ -72,7 +72,6 @@
       "mango-can-mockup",
       "three-flavour-render",
       "nova-on-raspberries",
-      "ghia-on-lilac",
       "laper-label",
       "cadence-vertical-type"
     ]
@@ -99,7 +98,6 @@
     "year": 2022,
     "images": [
       "partake-pour",
-      "victor-from-below",
       "oraa-wordmark",
       "fuel-can-held-up",
       "nova-stick-pack"
@@ -144,12 +142,10 @@
     "title": "Quiet Hour",
     "year": 2024,
     "images": [
-      "altitude-split-layout",
       "cans-on-a-deck",
       "blue-ghia-with-cocktail",
       "heywell-set",
-      "good-twin-table",
-      "figlia-wordmark-crop"
+      "good-twin-table"
     ]
   },
   {
@@ -207,6 +203,29 @@
       "kin-bottle-in-water",
       "bloom-banner",
       "padre-on-a-pink-car"
+    ]
+  },
+  {
+    "id": "off-menu",
+    "title": "Off Menu",
+    "year": 2026,
+    "images": [
+      "offmenu-website",
+      "offmenu-navigation",
+      "subzero-cans",
+      "experimental-navigation",
+      "experimental-button",
+      "spring-habits"
+    ]
+  },
+  {
+    "id": "atoms-ai",
+    "title": "AtomsAI",
+    "year": 2026,
+    "images": [
+      "atomsai-billboard",
+      "atomsai-wordmark",
+      "atomsai-construction"
     ]
   }
 ]

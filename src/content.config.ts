@@ -5,14 +5,14 @@ import { CATEGORIES, ID_PATTERN } from './canvas/images';
 import { MIN_PROJECT_IMAGES } from './canvas/projects';
 
 /**
- * Images, one Markdown file each, named by the image's id (see src/canvas/images.ts). The
+ * Images and videos, one Markdown file each, named by the image's id (see src/canvas/images.ts). The
  * schema checks each entry; the rule across entries (every manifest image described
  * exactly once) is checked by resolveImages when the page is built.
  */
 const images = defineCollection({
   loader: glob({ pattern: '*.md', base: 'src/content/images' }),
   schema: z.object({
-    file: z.string().regex(/\.jpg$/),
+    file: z.string().regex(/\.(jpg|webp|mp4)$/),
     title: z.string().trim().min(1).max(80),
     category: z.enum(CATEGORIES),
     alt: z.string().trim().min(1).max(200),

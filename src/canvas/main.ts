@@ -274,7 +274,10 @@ const applyMotion = () => {
   renderer.setTrails(!reducedMotion.matches);
 };
 applyMotion();
-reducedMotion.addEventListener('change', applyMotion);
+reducedMotion.addEventListener('change', () => {
+  applyMotion();
+  playVideos();
+});
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) sleep();
@@ -297,6 +300,12 @@ const ROUTES: Record<Route, { path: string; title: string; link: { href: string;
 const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' ? 'about' : 'home');
 let route: Route = routeAt(location.pathname);
 
+/** Videos play on the canvas, unless motion is to be reduced: then each holds its poster frame. */
+function playVideos(): void {
+  renderer.setVideos(!reducedMotion.matches && route !== 'about');
+}
+playVideos();
+
 /** How far the flight has got, 0 (the canvas) to 1 (every image flown past), and which way it is going. */
 interface Flight {
   u: number;
@@ -311,6 +320,7 @@ function go(next: Route): void {
   document.title = ROUTES[next].title;
   showLink(next);
   showAbout(next === 'about');
+  playVideos();
   if (next === 'about') leaveCanvas();
   else if (flight) turn(0);
 }

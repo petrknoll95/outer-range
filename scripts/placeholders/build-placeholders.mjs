@@ -44,7 +44,15 @@ async function dHash(file) {
 }
 const hamming = (a, b) => [...(a ^ b).toString(2)].filter((c) => c === '1').length;
 
+// Placeholders since replaced by real work (scripts/work): left out so a rebuild doesn't bring them back.
+const REPLACED = new Set([
+  '229f2c3f-4120-4a41-9dd3-c395617e495d',
+  '447bb97a-98da-4907-9d9c-8611c6ee2336',
+  'b2d9ac4f-f543-48fa-ad1a-43ceaa8558e2',
+  '1d45ceb7-d2bf-4d4a-917e-11943414be7a',
+]);
 const candidates = JSON.parse(readFileSync(CANDIDATES, 'utf8'))
+  .filter((c) => !REPLACED.has(c.cdnId))
   .sort((a, b) => a.cdnId.localeCompare(b.cdnId));
 
 mkdirSync(CACHE, { recursive: true });

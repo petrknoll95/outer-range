@@ -1,0 +1,34 @@
+[
+  {
+    "file": "atomsai-1.webp",
+    "aspect": "square",
+    "width": 3200,
+    "height": 3200,
+    "color": "#b8b8b8",
+    "source": "atomsai-1.png"
+  },
+  {
+    "file": "atomsai-2.webp",
+    "aspect": "landscape",
+    "width": 3200,
+    "height": 2400,
+    "color": "#283818",
+    "source": "atomsai-2.png"
+  },
+  {
+    "file": "atomsai-3.webp",
+    "aspect": "portrait",
+    "width": 2400,
+    "height": 3200,
+    "color": "#080808",
+    "source": "atomsai-3.png"
+  },
+  {
+    "file": "spring-1.webp",
+    "aspect": "landscape",
+    "width": 3200,
+    "height": 2400,
+    "color": "#080808",
+    "source": "spring-1.png"
+  }
+]

@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import manifest from '../src/assets/placeholders/manifest.json';
+import { media as manifest } from '../src/assets/media';
 import type { ImageEntry } from '../src/canvas/images';
 import { CATEGORIES, ID_PATTERN, resolveImages } from '../src/canvas/images';
 import { readImageEntries } from './entries';

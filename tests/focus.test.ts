@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import manifest from '../src/assets/placeholders/manifest.json';
+import { media as manifest } from '../src/assets/media';
 import { FOCUS_MAX_DURATION, FOCUS_MIN_DURATION, PAGE_REACH } from '../src/canvas/config';
 import { centerDelta, cubicBezier, focusDuration, nearestImageCentre, smoothstep, startSlope } from '../src/canvas/focus';
 import { cellRect, computeGeometry } from '../src/canvas/layout';

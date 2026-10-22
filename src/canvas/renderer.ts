@@ -29,6 +29,8 @@ export interface ClientImage extends WorldImage {
   webp: string;
   /** Fallback src (smallest WebP). */
   src: string;
+  /** A video to play over the image (its poster frame), or none. */
+  video?: string;
   /** From the image's content entry: shown under the focused view, and the alt text set on every tile. */
   title: string;
   category: string;
@@ -73,6 +75,10 @@ interface Slot {
   el: HTMLDivElement;
   source: HTMLSourceElement;
   img: HTMLImageElement;
+  /** Made the first time the tile shows a video, then kept (empty) for the next. */
+  video: HTMLVideoElement | null;
+  /** On screen, as the IntersectionObserver last reported. */
+  visible: boolean;
   label: HTMLSpanElement | null;
   key: number;
   i: number;
@@ -117,6 +123,9 @@ const TILE_CLASS =
   'absolute top-0 left-0 origin-top-left overflow-hidden will-change-transform [contain:strict]';
 const IMG_CLASS =
   'block size-full object-cover select-none [-webkit-user-drag:none] transition-opacity duration-[240ms] ease-out data-loading:opacity-0 data-loading:transition-none motion-reduce:transition-none';
+// Over the image (its poster frame), shown once it is actually playing so it never flashes black.
+const VIDEO_CLASS =
+  'pointer-events-none absolute inset-0 size-full object-cover transition-opacity duration-[240ms] ease-out data-waiting:opacity-0 data-waiting:transition-none motion-reduce:transition-none';
 
 /**
  * Keeps a pool of tile elements on the cells around the viewport.
@@ -134,6 +143,10 @@ const IMG_CLASS =
  * Lens: last of all, each tile's centre goes through the lens (lens.ts), which pulls it
  * towards the viewport centre and scales the tile down near the edges. Because the lens
  * squeezes extra world into the viewport, cells are loaded out to `lens.reach`.
+ *
+ * Video: a video's tile is an image tile (its poster frame) with the video playing over it,
+ * muted and looping. It plays only while the tile is on screen and videos are on (setVideos):
+ * off screen, or with videos off, it holds its frame and downloads nothing more.
  */
 export class Renderer {
   private readonly slots: Slot[] = [];
@@ -175,6 +188,15 @@ export class Renderer {
   /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began. */
   private flight: { slot: Slot; x: number; y: number; scale: number; opacity: number; depth: number }[] | null = null;
   private readonly view: FlightView = { scale: 1, opacity: 1, blur: 0 };
+  private videos = true;
+  private readonly slotOf = new Map<Element, Slot>();
+  private readonly visibility = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const slot = this.slotOf.get(entry.target)!;
+      slot.visible = entry.isIntersecting;
+      this.syncVideo(slot);
+    }
+  });
 
   constructor(
     private readonly container: HTMLElement,
@@ -189,6 +211,24 @@ export class Renderer {
     this.dirty = true;
     // S changed, so every grid position moves; restart trails there instead of springing across.
     this.resetTrails = true;
+  }
+
+  /** Let videos play (on screen), or hold every one on its frame. */
+  setVideos(on: boolean): void {
+    if (on === this.videos) return;
+    this.videos = on;
+    for (const slot of this.active) this.syncVideo(slot);
+  }
+
+  /** Play a tile's video if it has one, is on screen and videos are on; otherwise hold it. */
+  private syncVideo(slot: Slot): void {
+    const video = slot.video;
+    if (!video?.src) return;
+    if (this.videos && slot.visible && !slot.el.hidden) {
+      if (video.paused) video.play().catch(() => {});
+    } else if (!video.paused) {
+      video.pause();
+    }
   }
 
   setTrails(on: boolean): void {
@@ -528,6 +568,7 @@ export class Renderer {
       if (slot === this.activeSlot) this.setActive(null);
       this.onRelease?.(slot.el);
       slot.el.hidden = true;
+      slot.video?.pause();
       this.free.push(slot);
     }
     for (let i = range.i0; i <= range.i1; i++) {
@@ -584,6 +625,8 @@ export class Renderer {
       el,
       source,
       img,
+      video: null,
+      visible: false,
       label,
       key: -1,
       i: 0,
@@ -609,7 +652,40 @@ export class Renderer {
       cssOpacity: 1,
     };
     this.slots.push(slot);
+    this.slotOf.set(el, slot);
+    this.visibility.observe(el);
     return slot;
+  }
+
+  /** Show `src` playing over the tile's image, or (null) no video. */
+  private setVideo(slot: Slot, src: string | null): void {
+    let video = slot.video;
+    if (!src) {
+      if (!video?.src) return;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.hidden = true;
+      return;
+    }
+    if (!video) {
+      video = slot.video = document.createElement('video');
+      video.className = VIDEO_CLASS;
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.disablePictureInPicture = true;
+      video.disableRemotePlayback = true;
+      // Nothing loads until the tile is on screen and it plays.
+      video.preload = 'none';
+      video.setAttribute('aria-hidden', 'true');
+      video.addEventListener('playing', () => delete video!.dataset.waiting);
+      slot.el.append(video);
+    }
+    video.hidden = false;
+    video.dataset.waiting = '';
+    video.src = src;
+    this.syncVideo(slot);
   }
 
   private assign(slot: Slot, key: number, i: number, j: number, fresh: boolean): void {
@@ -654,6 +730,7 @@ export class Renderer {
     slot.source.srcset = source.avif;
     slot.img.srcset = source.webp;
     slot.img.src = source.src;
+    this.setVideo(slot, source.video ?? null);
     const token = ++slot.token;
     const reveal = () => {
       if (slot.token !== token) return;

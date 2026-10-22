@@ -1,0 +1,52 @@
+[
+  {
+    "file": "experimental-button-1.mp4",
+    "poster": "experimental-button-1.jpg",
+    "aspect": "landscape",
+    "width": 1440,
+    "height": 1080,
+    "color": "#e8e8e8",
+    "duration": 15.48,
+    "source": "experimental-button-1.mp4"
+  },
+  {
+    "file": "experimental-navigation-1.mp4",
+    "poster": "experimental-navigation-1.jpg",
+    "aspect": "landscape",
+    "width": 1440,
+    "height": 1080,
+    "color": "#f8f8f8",
+    "duration": 20.3,
+    "source": "experimental-navigation-1.mp4"
+  },
+  {
+    "file": "offmenu-navigation.mp4",
+    "poster": "offmenu-navigation.jpg",
+    "aspect": "landscape",
+    "width": 1440,
+    "height": 1080,
+    "color": "#181818",
+    "duration": 31.12,
+    "source": "offmenu-navigation.mp4"
+  },
+  {
+    "file": "offmenu-website.mp4",
+    "poster": "offmenu-website.jpg",
+    "aspect": "landscape",
+    "width": 1440,
+    "height": 1080,
+    "color": "#e8e8e8",
+    "duration": 20,
+    "source": "offmenu-website.mp4"
+  },
+  {
+    "file": "subzero-cans.mp4",
+    "poster": "subzero-cans.jpg",
+    "aspect": "portrait",
+    "width": 1080,
+    "height": 1440,
+    "color": "#080808",
+    "duration": 4,
+    "source": "subzero-cans.mp4"
+  }
+]

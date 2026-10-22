@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import manifest from '../src/assets/placeholders/manifest.json';
+import { media as manifest } from '../src/assets/media';
 import { OVERLAP_BUDGET } from '../src/canvas/config';
 import { computeGeometry, forEachCellIn, sizingReach } from '../src/canvas/layout';
 import { DEFAULT_LENS, Lens, type LensPoint } from '../src/canvas/lens';

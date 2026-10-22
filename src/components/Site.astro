@@ -2,13 +2,12 @@
 import type { ImageMetadata } from 'astro';
 import { getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
-import manifest from '../assets/placeholders/manifest.json';
+import { media } from '../assets/media';
 import { VARIANT_SHORT_EDGES } from '../canvas/config';
 import { resolveImages } from '../canvas/images';
 import type { ClientProject } from '../canvas/projects';
 import { resolveProjects } from '../canvas/projects';
 import type { CanvasData, ClientImage } from '../canvas/renderer';
-import type { Aspect } from '../canvas/world';
 import { compiledContent, frontmatter as about } from '../content/about.md';
 import Header from './Header.astro';
 
@@ -24,7 +23,10 @@ interface Props {
 
 const { route } = Astro.props;
 
-const files = import.meta.glob<{ default: ImageMetadata }>('../assets/placeholders/*.jpg', { eager: true });
+const files = import.meta.glob<{ default: ImageMetadata }>(['../assets/placeholders/*.jpg', '../assets/work/*.webp', '../assets/videos/*.jpg'], {
+  eager: true,
+});
+const videos = import.meta.glob<string>('../assets/videos/*.mp4', { eager: true, query: '?url', import: 'default' });
 const QUALITY = { avif: 55, webp: 76 } as const;
 
 /** One srcset per format, with a variant at each short edge the master can supply. */
@@ -33,27 +35,29 @@ async function srcset(src: ImageMetadata, format: 'avif' | 'webp', widths: numbe
   return urls.map((img, n) => `${img.src} ${widths[n]}w`).join(', ');
 }
 
-// Each image's content entry, in manifest order. Fails the build if an image has none or two.
+// Each image's (or video's) content entry, in media order. Fails the build if one has none or two.
 const content = resolveImages(
   (await getCollection('images')).map((entry) => ({ id: entry.id, ...entry.data })),
-  manifest.map((m) => m.file),
+  media.map((m) => m.file),
 );
 
 const images: ClientImage[] = await Promise.all(
-  manifest.map(async (m, n) => {
-    const src = files[`../assets/placeholders/${m.file}`]!.default;
+  media.map(async (m, n) => {
+    // A video's tile is built like an image's from its poster frame, and plays the video over it.
+    const src = files[`../assets/${m.still}`]!.default;
     const short = Math.min(m.width, m.height);
     // Every standard size the master can supply, topped with the master itself.
     const edges = [...VARIANT_SHORT_EDGES.filter((e) => e < short * 0.9), short];
     const widths = edges.map((e) => Math.round((m.width * e) / short));
     const [avif, webp] = await Promise.all([srcset(src, 'avif', widths), srcset(src, 'webp', widths)]);
     const { title, category, alt } = content[n]!;
-    return { aspect: m.aspect as Aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, title, category, alt };
+    const video = m.video ? videos[`../assets/${m.video}`]! : undefined;
+    return { aspect: m.aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, video, title, category, alt };
   }),
 );
 
 // Zooming in stops where images would go soft; use the short edge three quarters of them reach.
-const shortEdges = manifest.map((m) => Math.min(m.width, m.height)).sort((a, b) => a - b);
+const shortEdges = media.map((m) => Math.min(m.width, m.height)).sort((a, b) => a - b);
 const sharpEdge = shortEdges[Math.floor(shortEdges.length * 0.25)]!;
 
 // Projects associate images. Fails the build if any image is in no project or two.

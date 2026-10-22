@@ -17,10 +17,12 @@ Needs Node ≥ 22.22 (`.nvmrc` pins 24).
 | `npm run dev` | Dev server. Add `?debug` to the URL for the lattice, tile labels, frame-time graph and pool stats. |
 | `npm run build` / `npm run preview` | Production build (generates every image variant). |
 | `npm test` | Property tests for the world model, camera physics, image trail, click glide, lens, image content and projects (Vitest + fast-check). |
-| `npm run test:e2e` | Playwright against the production build: input, zoom, click-to-centre, trail, lens, focus frame, caption, the flight to and from /about (motion sampled per frame, a screencast checking the clear canvas stays pixel-identical, Back and the history buttons returning the exact view, turning round mid-flight, opening and reloading /about), round trips, memory, frame timing, alt text. |
+| `npm run test:e2e` | Playwright against the production build: input, zoom, video playback, click-to-centre, trail, lens, focus frame, caption, the flight to and from /about (motion sampled per frame, a screencast checking the clear canvas stays pixel-identical, Back and the history buttons returning the exact view, turning round mid-flight, opening and reloading /about), round trips, memory, frame timing, alt text. |
 | `npm run check` | Type check. |
 | `npm run placeholders:collect` / `placeholders:build` | Re-collect candidates from Cosmos / re-crop them and rewrite the manifest. |
 | `npm run placeholders:projects` | Regenerate the sample projects in `src/content/projects.json`. |
+| `npm run work:build -- <folder>` | Turn a folder of exported work images (Figma PNGs) into lossless WebP masters and their manifest. |
+| `npm run videos:build -- <folder>` | Re-encode the videos in a folder for the canvas, with poster frames and their manifest (needs ffmpeg). |
 
 ## How it works
 
@@ -92,14 +94,14 @@ Optional write-up, in Markdown.
 ```
 
 - **The file name is the image's id** (lowercase words joined by hyphens). Projects refer to images by id, so re-cropping or replacing an image file only changes `file`.
-- **Fields.** `file` is the image's name in the manifest. `title` (up to 80 characters), `category` and `alt` are required. `caption` (up to 160) and `notes` are optional. `alt` (up to 200) says what the image shows. `notes` are private and the body is a write-up; neither is shipped to the page.
+- **Fields.** `file` is the image's (or video's) name in its manifest. `title` (up to 80 characters), `category` and `alt` are required. `caption` (up to 160) and `notes` are optional. `alt` (up to 200) says what the image shows. `notes` are private and the body is a write-up; neither is shipped to the page.
 - **Categories** are `Brand` (product and campaign photography), `Logo` (the mark or wordmark is the subject), `Website` (layouts for screens: heroes, banners, product grids) and `Development` (mockups, renders, spec views, packshots). They're listed in [`src/canvas/images.ts`](src/canvas/images.ts).
 - **Validated** when the page builds. The collection schema checks each file, and the error names the file and the field. [`resolveImages`](src/canvas/images.ts) then fails the build if a manifest image has no entry, an entry names a file that isn't in the manifest, or two entries describe the same image.
 - **Shipped:** only `alt` reaches the page. It is in the page data and set on every tile. Everything else is available at build time through `getCollection('images')` for whatever UI needs it.
 
-Adding an image: add it to the manifest, then create `src/content/images/<id>.md` with its `file`, `title`, `category` and `alt`, and list the id in a project.
+Adding an image: add it to the manifest, then create `src/content/images/<id>.md` with its `file`, `title`, `category` and `alt`, and list the id in a project. A video is added the same way, with its `.mp4` as `file` (see Videos).
 
-The current 91 entries are samples: the alt text describes each placeholder, but titles, captions, notes and write-ups are invented.
+The current 96 entries are samples: the alt text describes each image and video, but titles, captions, notes and write-ups are invented.
 
 ## Projects
 
@@ -109,13 +111,32 @@ Projects group images: every image belongs to exactly one project, and the image
 - **Validated** when the page builds. The collection schema requires at least 3 images per project. [`resolveProjects`](src/canvas/projects.ts) then fails the build if an id repeats, an image id doesn't exist, or an image is in two projects or none.
 - **Shipped** to the canvas in the page data as `projects`, with images as indices into `images`. `createProjectIndex` turns that into lookups: an image's project, its siblings, a project by id.
 
-The current 17 projects are samples with invented names. They group images by dominant colour into runs of 3–9, so each looks like one body of work. Replace them by hand with real projects; re-run `npm run placeholders:projects` only while they're still samples.
+The current 19 projects are samples with invented names; the last two, Off Menu and AtomsAI, hold the videos and the work images. They group images by dominant colour into runs of 3–9, so each looks like one body of work. Replace them by hand with real projects; re-run `npm run placeholders:projects` only while they're still samples.
+
+## Work images
+
+`src/assets/work/` holds real work: images exported from Figma, each with a line in its `manifest.json`. [`src/assets/media.ts`](src/assets/media.ts) lists them after the placeholder images.
+
+- **Built** by `npm run work:build -- <folder>` ([`scripts/work/build-work.mjs`](scripts/work/build-work.mjs)) from every PNG or JPEG in the folder. Draw the artboards at a tile shape (4:3, 3:4 or 1:1; anything else is cropped about its centre to the nearest) and export them large: the current four are 4× exports, 3200 px on the long edge. Each becomes a lossless WebP that keeps its colour profile (Figma exports Display P3). The build replaces the folder.
+- **Served** like every other image: the page builds AVIF and WebP variants from the master at each standard size and at full size, converted to sRGB. The full-size variants come to 45–190 KB.
+
+The current four are AtomsAI (a billboard, the wordmark and the mark's construction) and Spring (habit charts). They replaced four placeholders, which `build-placeholders.mjs` now leaves out (`REPLACED`).
+
+## Videos
+
+`src/assets/videos/` holds the canvas videos, each with a poster frame and a line in its `manifest.json`. [`src/assets/media.ts`](src/assets/media.ts) puts them after the placeholder images in one list, the order the page and the content entries resolve.
+
+- **Built** by `npm run videos:build -- <folder>` ([`scripts/videos/build-videos.mjs`](scripts/videos/build-videos.mjs)) from every `.mp4` in the folder. Each is cropped about its centre to the nearest of 4:3, 3:4 or 1:1 (or the one set for it in the script's `ASPECT`, where the nearest would cut the subject), scaled to at most 1080 px on its short edge, stripped of audio and encoded as H.264 with faststart. The poster frame is taken a third of the way in, or where the script's `POSTER` says. The build replaces the folder.
+- **On the canvas** a video's tile is an image tile built from its poster frame, with the same variants, placeholder colour and alt text, and the video plays over it, muted and looping ([`renderer.ts`](src/canvas/renderer.ts)). It fades in once it is actually playing, so a tile never flashes black.
+- **Playing** only while its tile is on screen (an IntersectionObserver), and only on the canvas: on the about view, off screen or with reduced motion, it holds its frame. It loads nothing until it first plays (`preload="none"`).
+
+The current five are Off Menu work: the site, its menu, two interaction experiments and a can render. Their sources are about 6.4 MB; encoded, they come to about 3.6 MB, and each loads only once its tile is on screen.
 
 ## Placeholder images
 
-`src/assets/placeholders/` holds 91 images from the Cosmos collection [Social Tonic](https://www.cosmos.so/petrknoll/social-tonic): 86 images plus the poster frames of 5 videos. One 360×450 image was too small and was left out.
+`src/assets/placeholders/` holds 87 images from the Cosmos collection [Social Tonic](https://www.cosmos.so/petrknoll/social-tonic): 82 images plus the poster frames of 5 videos. One 360×450 image was too small and was left out, and four were replaced by work images.
 
-Each image is cropped to whichever of 4:3, 3:4 or 1:1 loses least, and the shapes are then evened out where that costs at most 30% more of the picture. Most of the collection is 4:5 posts, so it ends up 15 landscape, 38 portrait and 38 square.
+Each image is cropped to whichever of 4:3, 3:4 or 1:1 loses least, and the shapes are then evened out where that costs at most 30% more of the picture. Most of the collection is 4:5 posts, so it ended up 15 landscape, 38 portrait and 38 square, and, less the four replaced, is now 13, 37 and 37.
 
 The manifest records each image's crop, credit, Cosmos element URL and source file. Run `npm run placeholders:collect && npm run placeholders:build` after the collection changes. If it shrinks below 72 images, reduce `REPEAT_COLS`/`REPEAT_ROWS` in `config.ts` so every class keeps at least two.
 

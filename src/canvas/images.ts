@@ -14,7 +14,7 @@ export const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /** An image entry as authored. */
 export interface ImageEntry {
   id: string;
-  /** Image file name in the placeholder manifest. */
+  /** Image or video file name in the media list (src/assets/media.ts). */
   file: string;
   title: string;
   category: Category;
