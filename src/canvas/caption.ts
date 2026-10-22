@@ -7,10 +7,15 @@ export interface CaptionContent {
   alt: string;
 }
 
-const LINES = ['category', 'title', 'alt'] as const;
+/** Top to bottom, the order they rise in; the title sits above the image, the rest below. */
+const LINES = ['title', 'category', 'alt'] as const;
+const ABOVE: readonly (typeof LINES)[number][] = ['title'];
 
 /**
- * The focused image's category, title and alt text, small at the bottom left.
+ * The focused image's title, centred above it, and its category and alt text centred below.
+ * Both are anchored to the focus frame (`.focus-caption` in global.css), so they sit round
+ * whichever image it frames; leaving, they are pinned where they are drawn first, so they
+ * never ride along with the frame as the view moves on.
  *
  * Each line sits in its own mask and rises into view, one after another. Switching to
  * another image first sends the lines out upwards, quicker, then brings the new ones in
@@ -20,6 +25,7 @@ const LINES = ['category', 'title', 'alt'] as const;
 export class FocusCaption {
   readonly el: HTMLDivElement;
   private readonly lines = new Map<(typeof LINES)[number], HTMLSpanElement>();
+  private readonly groups: HTMLDivElement[];
   /** What should show, and what the lines hold now. */
   private target: CaptionContent | null = null;
   private shown: CaptionContent | null = null;
@@ -36,15 +42,21 @@ export class FocusCaption {
     this.el.style.setProperty('--caption-out', `${CAPTION_OUT}s`);
     this.el.style.setProperty('--caption-out-stagger', `${CAPTION_OUT_STAGGER}s`);
     this.el.hidden = true;
+    const above = document.createElement('div');
+    above.className = 'focus-caption-above';
+    const below = document.createElement('div');
+    below.className = 'focus-caption-below';
     LINES.forEach((name, n) => {
       const line = document.createElement('p');
       line.className = `focus-caption-${name}`;
       line.style.setProperty('--line', String(n));
       const text = document.createElement('span');
       line.append(text);
-      this.el.append(line);
+      (ABOVE.includes(name) ? above : below).append(line);
       this.lines.set(name, text);
     });
+    this.el.append(above, below);
+    this.groups = [above, below];
     parent.append(this.el);
   }
 
@@ -62,7 +74,8 @@ export class FocusCaption {
       return;
     }
     if (this.shown) {
-      // Out first; whatever is wanted by then comes in after.
+      // Out first, where it stands; whatever is wanted by then comes in after.
+      this.pin();
       this.el.dataset.state = 'out';
       const last = CAPTION_OUT + (LINES.length - 1) * CAPTION_OUT_STAGGER;
       this.leaving = window.setTimeout(() => {
@@ -74,11 +87,25 @@ export class FocusCaption {
     }
     const next = this.target!;
     this.shown = next;
+    this.unpin();
     for (const name of LINES) this.lines.get(name)!.textContent = next[name];
     this.el.hidden = false;
     // Below their masks, without a transition, then rising from there.
     this.el.dataset.state = 'below';
     void this.el.offsetWidth;
     this.el.dataset.state = 'in';
+  }
+
+  /** Pin each group where it is drawn now, off the frame's anchor. */
+  private pin(): void {
+    for (const group of this.groups) {
+      const r = group.getBoundingClientRect();
+      Object.assign(group.style, { top: `${r.top}px`, left: `${r.left}px`, width: `${r.width}px`, bottom: 'auto', justifySelf: 'auto' });
+    }
+  }
+
+  /** Back on the frame's anchor. */
+  private unpin(): void {
+    for (const group of this.groups) group.removeAttribute('style');
   }
 }

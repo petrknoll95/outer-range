@@ -9,10 +9,35 @@ export function smoothstep(u: number): number {
   return u * u * (3 - 2 * u);
 }
 
-/** Ease-out cubic: leaves at three times the average speed and slows to rest with no jolt. */
-export function easeOutCubic(u: number): number {
-  const r = 1 - u;
-  return 1 - r * r * r;
+/**
+ * A CSS cubic-bezier(x1, y1, x2, y2) timing function: progress for time u in [0, 1]. The
+ * x(t) it inverts is monotonic for 0 ≤ x1, x2 ≤ 1, so a few Newton steps (falling back to
+ * bisection) find t to well under a pixel.
+ */
+export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (u: number) => number {
+  const at = (a: number, b: number, t: number) => 3 * (1 - t) * (1 - t) * t * a + 3 * (1 - t) * t * t * b + t * t * t;
+  const slope = (a: number, b: number, t: number) => 3 * (1 - t) * (1 - t) * a + 6 * (1 - t) * t * (b - a) + 3 * t * t * (1 - b);
+  return (u: number) => {
+    if (u <= 0) return 0;
+    if (u >= 1) return 1;
+    let t = u;
+    for (let n = 0; n < 8; n++) {
+      const dx = at(x1, x2, t) - u;
+      if (Math.abs(dx) < 1e-7) return at(y1, y2, t);
+      const d = slope(x1, x2, t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= dx / d;
+    }
+    let lo = 0;
+    let hi = 1;
+    t = u;
+    for (let n = 0; n < 40; n++) {
+      if (at(x1, x2, t) < u) lo = t;
+      else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return at(y1, y2, t);
+  };
 }
 
 /**

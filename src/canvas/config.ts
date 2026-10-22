@@ -95,8 +95,13 @@ export const SETTLE_DISTANCE = 0.05;
  */
 export const ZOOM_IN_FILL = 0.7;
 export const ZOOM_MAX = 2.5;
-/** Time to move between the two zoom states, s; eased out, like a page move of about the same length. */
+/** Time to move between the two zoom states, s. */
 export const ZOOM_DURATION = 0.7;
+/**
+ * The zoom's ease, as a CSS cubic-bezier: it sets off gently (no jolt on the first frame),
+ * is quickly up to speed, and spends the rest slowing smoothly into place.
+ */
+export const ZOOM_EASE = [0.2, 0, 0, 1] as const;
 /**
  * A pinch or ctrl/⌘ + scroll switches state once it has zoomed this far (as a ratio)
  * in one direction, and the rest of that gesture is ignored. A gesture ends after
@@ -210,41 +215,49 @@ export const ACTIVE_SWITCH_MARGIN = 12;
 export const FOCUS_FRAME_PADDING = 8;
 /** Time for the focus frame to move from one image to the next, s. */
 export const FOCUS_FRAME_DURATION = 0.45;
+/** Zooming onto another image, the frame fades out this fast first, s, and moves only once out of sight. */
+export const FOCUS_FRAME_CONCEAL = 0.12;
 
 // ── Leaving the canvas ─────────────────────────────────────────────────────
 
 /**
- * Following a link out of the canvas, the camera flies on into it (flight.ts). Each image
+ * Going to the about view, the camera flies on into the canvas (flight.ts). Each image
  * gets a depth for the flight only, 1 to 1 + FLIGHT_DEPTH_SPREAD (the camera starts at 0),
  * and as the camera travels forward each is drawn 1 / (1 − travel / depth) times bigger,
  * moving outward from the screen centre: nearer images grow and leave first. Each fades
  * out between FLIGHT_FADE_FROM and FLIGHT_FADE_TO of the way to it, and the camera travels
- * until the farthest has faded, over FLIGHT_DURATION s.
+ * until the farthest has faded, over FLIGHT_DURATION s. Nearing the camera, each blurs too,
+ * as if leaving the focal plane, up to FLIGHT_BLUR screen px.
  */
-export const FLIGHT_DURATION = 1.1;
-export const FLIGHT_DEPTH_SPREAD = 1.5;
+export const FLIGHT_DURATION = 0.8;
+export const FLIGHT_DEPTH_SPREAD = 2;
 export const FLIGHT_FADE_FROM = 0.45;
 export const FLIGHT_FADE_TO = 0.8;
-/** The camera leaves at this share of its average speed and speeds up (0: from rest, 1: steady). */
-export const FLIGHT_START_SPEED = 0.35;
-/** Coming back to the canvas (Back), the flight plays in reverse over this long, s. */
-export const FLIGHT_RETURN_DURATION = 0.9;
+/**
+ * The camera's travel over the flight's time, as a CSS cubic-bezier: it sets off gently,
+ * rushes, and eases off as the last images go. Coming back it runs in reverse, so the
+ * images arrive gently from the camera and settle softly into place.
+ */
+export const FLIGHT_EASE = [0.5, 0, 0.25, 1] as const;
+export const FLIGHT_BLUR = 16;
+/** Coming back to the canvas, the flight plays in reverse over this long, s: images rush in from the camera and settle. */
+export const FLIGHT_RETURN_DURATION = 0.75;
 /** With reduced motion there is no flight, just a fade this long, s. */
 export const FLIGHT_REDUCED_DURATION = 0.3;
 
 // ── Caption (zoomed in) ────────────────────────────────────────────────────
 
 /**
- * The focused image's caption rises in line by line, each over CAPTION_IN s and
- * CAPTION_STAGGER s after the one before, and leaves upwards, quicker: CAPTION_OUT s,
- * CAPTION_OUT_STAGGER s apart.
+ * The focused image's caption rises in slowly, line by line, each over CAPTION_IN s and
+ * CAPTION_STAGGER s after the one before, once the view is still; it leaves upwards fast,
+ * CAPTION_OUT s, CAPTION_OUT_STAGGER s apart, the moment anything moves.
  */
-export const CAPTION_IN = 0.6;
-export const CAPTION_STAGGER = 0.07;
-export const CAPTION_OUT = 0.22;
-export const CAPTION_OUT_STAGGER = 0.03;
-/** Zooming in, the caption starts rising this far through the zoom, as the image is nearly there. */
-export const CAPTION_ZOOM_DELAY = 0.4;
+export const CAPTION_IN = 0.9;
+export const CAPTION_STAGGER = 0.1;
+export const CAPTION_OUT = 0.14;
+export const CAPTION_OUT_STAGGER = 0.02;
+/** Zooming onto another image, the frame that stepped aside comes back this far through the zoom. */
+export const FOCUS_FRAME_RETURN = 0.4;
 
 // ── Input ──────────────────────────────────────────────────────────────────
 

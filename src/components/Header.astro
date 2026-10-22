@@ -1,0 +1,36 @@
+---
+/**
+ * The site header: the wordmark at the top centre and one link at the top right, set alike.
+ * White with a difference blend, so they read on the light or dark canvas and over any image
+ * passing under them. Only the link takes pointer events: dragging or scrolling across the
+ * rest moves the canvas.
+ *
+ * The link is About on the canvas and Back on the about view; main.ts swaps it as the route
+ * changes, its label sliding through the mask it sits in. The header stays put through the
+ * flight between the two.
+ */
+interface Props {
+  route: 'home' | 'about';
+}
+
+const { route } = Astro.props;
+const type = 'text-2xl leading-none font-medium tracking-[-0.02em] text-white';
+---
+
+<header class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference select-none">
+  <h1 class={type}>Petr Knoll</h1>
+  <nav class="absolute inset-y-0 right-6 flex items-center">
+    <a
+      href={route === 'about' ? '/' : '/about'}
+      data-route-link
+      class:list={[
+        type,
+        // A mask with a little room above and below the letters, for the label to slide through.
+        'pointer-events-auto -my-[0.15em] overflow-hidden rounded-sm py-[0.15em]',
+        'transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white',
+        // Mid-flight it doesn't stay dimmed under the pointer.
+        '[html[data-leaving]_&]:opacity-100',
+      ]}><span class="block">{route === 'about' ? 'Back' : 'About'}</span></a
+    >
+  </nav>
+</header>

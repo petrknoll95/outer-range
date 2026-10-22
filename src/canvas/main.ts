@@ -1,6 +1,6 @@
 import { gsap } from 'gsap';
 import { FocusCaption } from './caption';
-import { CAPTION_ZOOM_DELAY, FLIGHT_DURATION, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, STEP, ZOOM_DURATION } from './config';
+import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, STEP, ZOOM_DURATION } from './config';
 import { flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
@@ -29,12 +29,13 @@ physics.snapper = (x, y, z) => snapper(x, y, z);
 const renderer = new Renderer(layer, world, data.images, lens, debug);
 // The frame around the active image, on top of the tiles; it follows the active image as it changes.
 const frame = new FocusFrame(root);
-// Zoomed in, the active image's category, title and alt text at the bottom left.
+// Zoomed in, the active image's title above it, and its category and alt text below.
 const caption = new FocusCaption(document.body);
 renderer.onActiveChange = (tile) => {
   frame.focus(tile);
   updateCaption();
 };
+frame.onSettle = () => updateCaption();
 renderer.onRelease = (tile) => frame.release(tile);
 
 // How much world the no-repeat sizing counts as visible; see LENS_REPEAT_SHARE.
@@ -50,14 +51,20 @@ renderer.setGeometry(geometry);
 let zoomState: 'out' | 'in' = 'out';
 let zoomIn = 1;
 
-/** Zoomed in, and far enough into the zoom that the caption shows. */
-let captionOn = false;
-let captionTimer = 0;
-
+/**
+ * The caption shows only while the view rests on an image: zoomed in, landed, nothing
+ * moving and the frame done handing over. The moment anything moves (a drag, a scroll, a
+ * key, a zoom, a flight) it leaves, where it stands (see FocusCaption), so it is never seen
+ * riding along with the frame; it comes back once all is still again.
+ */
 function updateCaption(): void {
-  const active = captionOn ? renderer.activeImage() : null;
+  const still = zoomState === 'in' && !flight && physics.isStill() && renderer.isAtRest() && !frame.moving;
+  const active = still ? renderer.activeImage() : null;
   caption.show(active ? data.images[active.image]! : null);
 }
+
+/** Zooming onto another image, when the frame that stepped aside comes back. */
+let frameTimer = 0;
 
 /** 0 zoomed out to 1 zoomed in, from the actual zoom, so the fade follows the animation. */
 const focusAt = (z: number) => (zoomIn > 1 ? Math.min(1, Math.max(0, (z - 1) / (zoomIn - 1))) : 0);
@@ -101,7 +108,9 @@ let awake = false;
 const listeners = new Set<() => void>();
 
 function draw(vx: number, vy: number, zoomAtRest: boolean): void {
-  renderer.update(physics.renderX, physics.renderY, physics.renderZ, vx, vy, zoomAtRest);
+  // Mid zoom-to, tiles keep their layout until it lands.
+  renderer.update(physics.renderX, physics.renderY, physics.renderZ, vx, vy, zoomAtRest, physics.zoomingTo);
+  frame.setRadius(geometry.radius * physics.renderZ);
 }
 
 /** At rest: no motion, no image still trailing, fading or still to be snapped to. */
@@ -113,7 +122,10 @@ function tick(): void {
     return;
   }
   physics.advance(now());
-  draw(physics.stepVx, physics.stepVy, physics.z === physics.tz);
+  // Before anything is drawn moved, so a caption leaving stays where it was.
+  updateCaption();
+  // (A zoom-to keeps its zoom and target equal at every step; it's at rest only once it lands.)
+  draw(physics.stepVx, physics.stepVy, physics.z === physics.tz && !physics.zoomingTo);
   for (const fn of listeners) fn();
   if (atRest() && listeners.size === 0) {
     // One last update so tiles are laid out sharp at the final zoom, then sleep.
@@ -159,20 +171,17 @@ function zoomInOn(rect: CellRect | null, t: number): void {
   zoomState = 'in';
   // Zoomed in, the view pages from image to image, one neighbour per gesture.
   physics.setPaging(geometry.pitch);
+  // Sharp all the way in, its full-size image loading on the way.
+  renderer.prepare(rect, zoomIn);
+  // Onto another image than the framed one: the frame steps aside rather than chase it, and
+  // comes back round it as it arrives.
+  const active = renderer.activeRect();
+  if (!active || active.left !== rect.left || active.top !== rect.top) {
+    frame.conceal();
+    clearTimeout(frameTimer);
+    frameTimer = window.setTimeout(() => frame.reveal(), reducedMotion.matches ? 0 : ZOOM_DURATION * FOCUS_FRAME_RETURN * 1000);
+  }
   physics.push(ZOOM_TO, t, rect.left + rect.width / 2, rect.top + rect.height / 2, zoomIn, ZOOM_DURATION);
-  revealCaption();
-}
-
-/** Show the caption once a zoom-in is nearly there (it eases out), or at once if there's no zoom to wait for. */
-function revealCaption(zooming = true): void {
-  clearTimeout(captionTimer);
-  captionTimer = window.setTimeout(
-    () => {
-      captionOn = true;
-      updateCaption();
-    },
-    zooming && !reducedMotion.matches ? ZOOM_DURATION * CAPTION_ZOOM_DELAY * 1000 : 0,
-  );
 }
 
 /** Zoom back out, keeping whatever is centred in place. */
@@ -181,9 +190,9 @@ function zoomOut(t: number): void {
   zoomState = 'out';
   physics.setPaging(0);
   physics.push(ZOOM_TO, t, physics.tx + geometry.vw / 2 / physics.tz, physics.ty + geometry.vh / 2 / physics.tz, 1, ZOOM_DURATION);
-  captionOn = false;
-  clearTimeout(captionTimer);
   updateCaption();
+  clearTimeout(frameTimer);
+  frame.reveal();
 }
 
 /** Switch zoom state. Zooming in locks onto the image under (x, y), or the active one if there's none there. */
@@ -268,51 +277,74 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /**
- * Leaving for another page (links marked `data-fly-out`): the camera flies on into the
- * canvas, each image growing towards it at its own depth and fading (flight.ts), and the
- * page changes on the frame the canvas is clear. If the browser brings this page back from
- * its back/forward cache, the flight plays in reverse and browsing picks up where it was.
+ * Two views of one document: the canvas (`/`) and the about view (`/about`, blank for now).
+ * Going to the about view the camera flies on into the canvas, each image growing towards
+ * it at its own depth and fading (flight.ts), until only the header is left; coming back the
+ * flight runs in reverse, and browsing picks up exactly where it was. The view lives in the
+ * URL (History API), so the browser's back and forward buttons run the same flight, and a
+ * change of mind mid-flight turns it round from wherever it has got to.
  */
+type Route = 'home' | 'about';
+const ROUTES: Record<Route, { path: string; title: string; link: { href: string; label: string } }> = {
+  home: { path: '/', title: 'Petr Knoll', link: { href: '/about', label: 'About' } },
+  about: { path: '/about', title: 'About · Petr Knoll', link: { href: '/', label: 'Back' } },
+};
+const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' ? 'about' : 'home');
+let route: Route = routeAt(location.pathname);
+
+/** How far the flight has got, 0 (the canvas) to 1 (every image flown past), and which way it is going. */
 interface Flight {
-  href: string;
-  start: number;
-  duration: number;
-  back: boolean;
-  /** Reduced motion: a fade, nothing moves. */
-  still: boolean;
+  u: number;
+  to: 0 | 1;
+  last: number;
 }
 let flight: Flight | null = null;
 
-function flyOut(href: string): void {
-  if (flight) return;
+function go(next: Route): void {
+  if (next === route) return;
+  route = next;
+  document.title = ROUTES[next].title;
+  showLink(next);
+  if (next === 'about') leaveCanvas();
+  else if (flight) turn(0);
+}
+
+/** Send the flight on (1) or back (0) from wherever it has got to. */
+function turn(to: 0 | 1): void {
+  flight!.to = to;
+  flight!.last = now();
+  wake();
+}
+
+function leaveCanvas(): void {
+  if (flight) return turn(1);
   // Hold the camera where it is drawn; nothing else moves while the flight plays.
   physics.halt();
-  captionOn = false;
-  clearTimeout(captionTimer);
-  updateCaption();
+  saveView();
   document.documentElement.dataset.leaving = '';
   renderer.beginFlight();
-  const still = reducedMotion.matches;
-  flight = { href, start: now(), duration: still ? FLIGHT_REDUCED_DURATION : FLIGHT_DURATION, back: false, still };
+  flight = { u: 0, to: 1, last: now() };
+  updateCaption();
   wake();
 }
 
 function stepFlight(): void {
   const f = flight!;
-  const u = Math.min(1, (now() - f.start) / f.duration);
-  renderer.drawFlight(flightTravel(f.back ? 1 - u : u), f.still);
-  if (u < 1) return;
-  if (!f.back) {
-    // The canvas is clear: change page on this frame. Prerendered, the new page is already there.
-    sleep();
-    location.assign(f.href);
-    return;
-  }
+  const t = now();
+  const still = reducedMotion.matches;
+  const duration = still ? FLIGHT_REDUCED_DURATION : f.to === 1 ? FLIGHT_DURATION : FLIGHT_RETURN_DURATION;
+  f.u = Math.min(1, Math.max(0, f.u + ((f.to === 1 ? 1 : -1) * (t - f.last)) / duration));
+  f.last = t;
+  renderer.drawFlight(flightTravel(f.u), still);
+  if (f.u !== f.to) return;
+  // Flown past: only the header is left, and nothing to draw until it turns back.
+  if (f.to === 1) return sleep();
   // Back where it was: browse on from exactly here.
   renderer.endFlight();
   flight = null;
+  delete document.documentElement.dataset.leaving;
   relayout();
-  resettle(now());
+  resettle(t);
 }
 
 /** Back from a flight: finish settling into the zoom state, on an image's centre when zoomed in. */
@@ -322,51 +354,100 @@ function resettle(t: number): void {
   const cy = physics.y + geometry.vh / 2 / physics.z;
   if (zoomState === 'in') nearestImageCentre(world, geometry, cx, cy, nearest);
   const [px, py] = zoomState === 'in' ? [nearest.x, nearest.y] : [cx, cy];
-  const moving = z !== physics.z || px !== cx || py !== cy;
-  if (moving) physics.push(ZOOM_TO, t, px, py, z, ZOOM_DURATION);
-  if (zoomState === 'in') revealCaption(moving);
+  if (z !== physics.z || px !== cx || py !== cy) physics.push(ZOOM_TO, t, px, py, z, ZOOM_DURATION);
 }
 
-window.addEventListener('pageshow', (e) => {
-  if (!e.persisted || !flight) return;
-  delete document.documentElement.dataset.leaving;
-  flight = { ...flight, start: now(), duration: flight.still ? FLIGHT_REDUCED_DURATION : FLIGHT_RETURN_DURATION, back: true };
-  wake();
-});
+/**
+ * The view the canvas was left in, kept for this tab: where its centre was (in units of S, so
+ * it survives a resize) and the zoom state. A reload of the about view, or a reloaded tab
+ * going back to the canvas, comes back to it.
+ */
+const VIEW_KEY = 'canvas:view';
+function saveView(): void {
+  const cx = (physics.x + geometry.vw / 2 / physics.z) / geometry.s;
+  const cy = (physics.y + geometry.vh / 2 / physics.z) / geometry.s;
+  try {
+    sessionStorage.setItem(VIEW_KEY, JSON.stringify({ cx, cy, zoom: zoomState }));
+  } catch {
+    // Storage blocked: a reload just starts from the default view.
+  }
+}
+function restoreView(): boolean {
+  let view: { cx: number; cy: number; zoom: 'in' | 'out' } | null = null;
+  try {
+    view = JSON.parse(sessionStorage.getItem(VIEW_KEY) ?? 'null');
+  } catch {
+    return false;
+  }
+  if (!view) return false;
+  zoomState = view.zoom;
+  const z = zoomState === 'in' ? zoomIn : 1;
+  physics.jumpTo(view.cx * geometry.s - geometry.vw / 2 / z, view.cy * geometry.s - geometry.vh / 2 / z, z);
+  if (zoomState === 'in') physics.setPaging(geometry.pitch);
+  return true;
+}
 
-/** The fly-out link an event came from, if any. */
-const flyOutLink = (e: Event) => (e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[data-fly-out]') : null);
+// The header link: About on the canvas, Back on the about view.
+const link = document.querySelector<HTMLAnchorElement>('a[data-route-link]')!;
 
-// A plain click or Enter flies there; modified clicks (new tab, new window) open the link as usual.
-document.addEventListener('click', (e) => {
-  const link = flyOutLink(e);
-  if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+/** Point the link at the other view; its old label slides up out of the mask and the new one up in. */
+function showLink(r: Route): void {
+  link.href = ROUTES[r].link.href;
+  const text = link.firstElementChild as HTMLElement;
+  for (const a of text.getAnimations()) a.cancel();
+  if (reducedMotion.matches) {
+    text.textContent = ROUTES[r].link.label;
+    return;
+  }
+  const out = text.animate([{ transform: 'translateY(-110%)', opacity: 0 }], { duration: 140, easing: 'cubic-bezier(0.55, 0, 1, 0.45)', fill: 'forwards' });
+  out.finished.then(
+    () => {
+      // Whatever the route is by now.
+      text.textContent = ROUTES[route].link.label;
+      out.cancel();
+      text.animate([{ transform: 'translateY(110%)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 320, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+    },
+    // Cancelled by a newer change.
+    () => {},
+  );
+}
+
+// Plain clicks and Enter go between the views; modified ones (new tab, new window) open the link as usual.
+link.addEventListener('click', (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
-  prefetch(link.href);
-  flyOut(link.href);
+  // (Any query, like ?debug or ?flat, carries over.)
+  if (route === 'home') {
+    history.pushState({ canvas: true }, '', ROUTES.about.path + location.search);
+    go('about');
+  } else if ((history.state as { canvas?: boolean } | null)?.canvas) {
+    // Arrived here from the canvas: Back is going back in history, so Forward comes here again.
+    history.back();
+  } else {
+    history.pushState({ canvas: true }, '', ROUTES.home.path + location.search);
+    go('home');
+  }
 });
+// The browser's back and forward buttons, including back after a reload of the about view.
+window.addEventListener('popstate', () => go(routeAt(location.pathname)));
 
-// Where Speculation Rules can't prerender the page (see index.astro), fetch it early instead.
-const speculates = HTMLScriptElement.supports?.('speculationrules') ?? false;
-const prefetched = new Set<string>();
-function prefetch(href: string): void {
-  if (speculates || prefetched.has(href)) return;
-  prefetched.add(href);
-  const hint = document.createElement('link');
-  hint.rel = 'prefetch';
-  hint.href = href;
-  document.head.append(hint);
-}
-for (const type of ['pointerover', 'focusin'] as const) {
-  document.addEventListener(type, (e) => {
-    const link = flyOutLink(e);
-    if (link) prefetch(link.href);
-  });
-}
+const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+// Opened on the about view, or a reloaded tab coming back to the canvas: start flown past, in the view it was left in.
+const arriving = route === 'home' && navigation?.type === 'back_forward' && restoreView();
+if (route === 'about') restoreView();
+if (route === 'about' || arriving) document.documentElement.dataset.leaving = '';
 
 // First frame now, so tiles are in place before the first paint.
 draw(0, 0, true);
-wake();
+if (route === 'about' || arriving) {
+  renderer.beginFlight();
+  flight = { u: 1, to: 1, last: now() };
+  renderer.drawFlight(flightTravel(1), reducedMotion.matches);
+  // Coming back to the canvas: fly in.
+  if (arriving) turn(0);
+} else {
+  wake();
+}
 
 if (debug || params.has('test')) {
   const api = {
@@ -383,8 +464,9 @@ if (debug || params.has('test')) {
     zoomState: () => zoomState,
     zoomInLevel: () => zoomIn,
     zoomLimits: () => ({ min: physics.zoomMin, max: physics.zoomMax }),
-    /** Leaving (or coming back to) the canvas, or null. */
-    flight: () => (flight ? { back: flight.back } : null),
+    /** The view, and the flight between the two, or null. */
+    route: () => route,
+    flight: () => (flight ? { u: flight.u, to: flight.to } : null),
     activeImage: () => renderer.activeImage(),
     /** At rest, every image back on its grid position, and every on-screen image decoded. */
     isSettled: () => atRest() && renderer.visibleLoaded(),

@@ -18,9 +18,12 @@ import {
   STOP_SPEED,
   VELOCITY_WINDOW,
   WHEEL_TAU,
+  ZOOM_EASE,
   ZOOM_TAU,
 } from './config';
-import { easeOutCubic, focusDuration, smoothstep, startSlope } from './focus';
+import { cubicBezier, focusDuration, smoothstep, startSlope } from './focus';
+
+const zoomEase = cubicBezier(...ZOOM_EASE);
 
 /** Input kinds. Plain numbers so they fit the typed-array queue. */
 export const WHEEL = 0; // a, b = screen delta, px
@@ -239,6 +242,28 @@ export class CameraPhysics {
     );
   }
 
+  /**
+   * Nothing moving the view, and nothing about to: like isAtRest, except that the rest of
+   * a scroll that has already paged (trackpad momentum, ignored) doesn't count.
+   */
+  isStill(): boolean {
+    return (
+      this.queueLength === 0 &&
+      !this.dragging &&
+      this.glideDuration === 0 &&
+      this.zoomToDuration === 0 &&
+      !(this.scrollPending && !this.pageAbsorb) &&
+      this.vx === 0 &&
+      this.vy === 0 &&
+      this.x === this.tx &&
+      this.y === this.ty &&
+      this.z === this.tz &&
+      this.prevX === this.x &&
+      this.prevY === this.y &&
+      this.prevZ === this.z
+    );
+  }
+
   /** Stop dead where the camera is drawn, dropping anything in progress or queued. */
   halt(): void {
     this.queueLength = 0;
@@ -338,7 +363,7 @@ export class CameraPhysics {
     if (this.zoomToDuration > 0) {
       // Its zoom still reaches its level (there are only two), eased about the view centre.
       this.zoomToDuration = 0;
-      this.zoomAbout(this.centreX, this.centreY, this.zoomToTarget / this.tz);
+      this.zoomAt(this.centreX, this.centreY, this.zoomToTarget);
       this.setTaus(this.panTau, ZOOM_TAU);
     }
     this.scrollPending = false;
@@ -571,9 +596,14 @@ export class CameraPhysics {
    * screen point (ax, ay) stays there, and anchor the eased zoom on that point.
    */
   private zoomAbout(ax: number, ay: number, factor: number): void {
+    this.zoomAt(ax, ay, this.tz * factor);
+  }
+
+  /** Set the target zoom to `to` (clamped to the limits), keeping the world point under screen point (ax, ay) there. */
+  private zoomAt(ax: number, ay: number, to: number): void {
     const wx = this.tx + ax / this.tz;
     const wy = this.ty + ay / this.tz;
-    const z = Math.min(this.zoomMax, Math.max(this.zoomMin, this.tz * factor));
+    const z = Math.min(this.zoomMax, Math.max(this.zoomMin, to));
     this.tz = z;
     this.tx = wx - ax / z;
     this.ty = wy - ay / z;
@@ -697,14 +727,13 @@ export class CameraPhysics {
   }
 
   /**
-   * One step of a ZOOM_TO: zoom eases out in log space while the point's screen position
-   * eases out from where it was to the view centre, and the camera follows exactly. The
+   * One step of a ZOOM_TO: zoom eases (ZOOM_EASE) in log space while the point's screen
+   * position eases from where it was to the view centre, and the camera follows exactly. The
    * point stays under that moving screen position, so trails see a pure zoom about it.
    */
   private stepZoomTo(t: number): void {
     const u = this.reducedMotion ? 1 : Math.min(1, (t - this.zoomToStart) / this.zoomToDuration);
-    // Eased out like the glides, so zooming in or out feels like paging.
-    const e = easeOutCubic(u);
+    const e = zoomEase(u);
     const z0 = this.z;
     const z = u >= 1 ? this.zoomToTarget : this.zoomToFrom * Math.pow(this.zoomToTarget / this.zoomToFrom, e);
     const px = this.zoomToPx + (this.centreX - this.zoomToPx) * e;

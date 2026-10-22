@@ -1,6 +1,9 @@
 ---
-// Blank for now: the canvas's flight out (main.ts) lands on this empty page of the same colour.
+// Blank for now: the canvas flown out of view, under the header (see Site.astro).
 import Layout from '../layouts/Layout.astro';
+import Site from '../components/Site.astro';
 ---
 
-<Layout title="About · Petr Knoll" description="About Petr Knoll." />
+<Layout title="About · Petr Knoll" description="About Petr Knoll.">
+  <Site route="about" />
+</Layout>

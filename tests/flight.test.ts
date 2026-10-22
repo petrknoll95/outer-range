@@ -1,9 +1,9 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { FLIGHT_DEPTH_SPREAD, FLIGHT_FADE_FROM, FLIGHT_START_SPEED, SEED } from '../src/canvas/config';
+import { FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_FADE_FROM, SEED } from '../src/canvas/config';
 import { FLIGHT_TRAVEL, flightDepth, flightTravel, flightView } from '../src/canvas/flight';
 
-const view = (depth: number, u: number) => flightView(depth, flightTravel(u), { scale: 0, opacity: 0 });
+const view = (depth: number, u: number) => flightView(depth, flightTravel(u), { scale: 0, opacity: 0, blur: 0 });
 const depth = fc.double({ min: 1, max: 1 + FLIGHT_DEPTH_SPREAD, maxExcluded: true, noNaN: true });
 const progress = fc.double({ min: 0, max: 1, noNaN: true });
 
@@ -11,7 +11,7 @@ describe('the flight out of the canvas', () => {
   it('starts from the canvas exactly as drawn', () => {
     fc.assert(
       fc.property(depth, (d) => {
-        expect(view(d, 0)).toEqual({ scale: 1, opacity: 1 });
+        expect(view(d, 0)).toEqual({ scale: 1, opacity: 1, blur: 0 });
       }),
     );
   });
@@ -62,17 +62,26 @@ describe('the flight out of the canvas', () => {
     expect(1 - 1 / view(1, 0.2).scale).toBeLessThan(FLIGHT_FADE_FROM);
   });
 
-  it('the camera sets off at once and speeds up, ending exactly at its full travel', () => {
+  it('the camera eases: setting off gently, rushing, and easing off, ending exactly at its full travel', () => {
     expect(flightTravel(0)).toBe(0);
     expect(flightTravel(1)).toBe(FLIGHT_TRAVEL);
-    const h = 1e-6;
-    expect(flightTravel(h) / h).toBeCloseTo(FLIGHT_TRAVEL * FLIGHT_START_SPEED, 3);
-    let last = 0;
-    for (let u = 0.01; u <= 1; u += 0.01) {
-      const step = flightTravel(u) - flightTravel(u - 0.01);
-      expect(step).toBeGreaterThan(last);
-      last = step;
-    }
+    const h = 1e-4;
+    const average = FLIGHT_TRAVEL;
+    // Gentle at both ends, much faster than average in between.
+    expect(flightTravel(h) / h).toBeLessThan(average * 0.05);
+    expect((FLIGHT_TRAVEL - flightTravel(1 - h)) / h).toBeLessThan(average * 0.05);
+    expect((flightTravel(0.5) - flightTravel(0.5 - h)) / h).toBeGreaterThan(average * 1.3);
+  });
+
+  it('blurs an image more the nearer it comes, from sharp to FLIGHT_BLUR', () => {
+    fc.assert(
+      fc.property(depth, progress, progress, (d, a, b) => {
+        const [u0, u1] = a <= b ? [a, b] : [b, a];
+        expect(view(d, u1).blur).toBeGreaterThanOrEqual(view(d, u0).blur);
+      }),
+    );
+    expect(view(1.5, 0).blur).toBe(0);
+    expect(view(1.5, 1).blur).toBeCloseTo(FLIGHT_BLUR, 9);
   });
 
   it('gives every cell its own depth, the same every time, spread over the whole range', () => {

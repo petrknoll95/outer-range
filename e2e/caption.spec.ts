@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { CAPTION_IN, CAPTION_OUT, CAPTION_OUT_STAGGER, CAPTION_STAGGER } from '../src/canvas/config';
+import { CAPTION_IN, CAPTION_OUT, CAPTION_OUT_STAGGER, CAPTION_STAGGER, ZOOM_DURATION } from '../src/canvas/config';
 
 interface Api {
   isSettled: () => boolean;
@@ -33,14 +33,44 @@ const shown = (page: Page): Promise<Content> =>
     const el = document.querySelector<HTMLElement>('.focus-caption')!;
     const spans = [...el.querySelectorAll('span')];
     if (el.hidden || el.dataset.state !== 'in' || spans.some((s) => getComputedStyle(s).opacity !== '1')) return null;
-    const [category, title, alt] = spans.map((s) => s.textContent);
-    return { category, title, alt };
+    const text = (line: string) => el.querySelector(`.focus-caption-${line} span`)!.textContent;
+    return { category: text('category'), title: text('title'), alt: text('alt') };
   }).then((h) => h.jsonValue() as Promise<Content>);
 
 const done = (CAPTION_IN + 2 * CAPTION_STAGGER) * 1000 + 100;
 const gone = (CAPTION_OUT + 2 * CAPTION_OUT_STAGGER) * 1000 + 100;
 
-test('zoomed out there is no caption; zoomed in, the focused image’s category, title and alt rise in at the bottom left', async ({ page }) => {
+/** Where the caption's lines are drawn, against the focus frame around the focused image. */
+const layout = (page: Page) =>
+  page.evaluate(() => {
+    const box = (sel: string) => {
+      const r = document.querySelector(sel)!.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, centre: (r.left + r.right) / 2 };
+    };
+    const size = (sel: string) => getComputedStyle(document.querySelector(sel)!).fontSize;
+    return {
+      frame: box('.focus-frame'),
+      title: box('.focus-caption-title span'),
+      category: box('.focus-caption-category span'),
+      alt: box('.focus-caption-alt'),
+      sizes: [size('.focus-caption-title'), size('.focus-caption-category'), size('.focus-caption-alt')],
+      align: getComputedStyle(document.querySelector('.focus-caption-alt')!).textAlign,
+    };
+  });
+
+/** The title centred above the frame, the category centred below it, and the alt text centred just under that. */
+function expectAroundFrame(l: Awaited<ReturnType<typeof layout>>): void {
+  for (const line of [l.title, l.category, l.alt]) expect(Math.abs(line.centre - l.frame.centre)).toBeLessThan(1);
+  expect(l.frame.top - l.title.bottom).toBeGreaterThan(8);
+  expect(l.frame.top - l.title.bottom).toBeLessThan(20);
+  expect(l.category.top - l.frame.bottom).toBeGreaterThan(8);
+  expect(l.category.top - l.frame.bottom).toBeLessThan(20);
+  expect(l.alt.top - l.category.bottom).toBeGreaterThanOrEqual(4);
+  expect(l.alt.top - l.category.bottom).toBeLessThan(10);
+  expect(l.align).toBe('center');
+}
+
+test('zoomed out there is no caption; zoomed in, the title rises in centred above the image, the category and alt centred below', async ({ page }) => {
   await open(page);
   const caption = page.locator('.focus-caption');
   await expect(caption).toBeHidden();
@@ -48,11 +78,19 @@ test('zoomed out there is no caption; zoomed in, the focused image’s category,
   await page.keyboard.press(' ');
   await settled(page);
   expect(await shown(page)).toEqual(await activeContent(page));
-  const box = (await caption.boundingBox())!;
-  expect(box.x).toBeCloseTo(24, 0);
-  expect(box.y + box.height).toBeCloseTo(900 - 24, 0);
+  const l = await layout(page);
+  expectAroundFrame(l);
+  // The sizes they had: title 15 px, category 11 px, alt 13 px.
+  expect(l.sizes).toEqual(['15px', '11px', '13px']);
   // It takes no pointer events: what's under it is the canvas.
-  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('.focus-caption') === null, [box.x + 10, box.y + box.height - 10])).toBe(true);
+  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('.focus-caption') === null, [l.title.centre, (l.title.top + l.title.bottom) / 2])).toBe(true);
+
+  // Paging, it moves with the frame to the next image, and stays centred on it.
+  await page.keyboard.press('ArrowDown');
+  await settled(page);
+  await page.waitForTimeout(done);
+  expect(await shown(page)).toEqual(await activeContent(page));
+  expectAroundFrame(await layout(page));
 
   await page.keyboard.press(' ');
   await page.waitForTimeout(gone);
@@ -68,12 +106,12 @@ test('the lines rise in one after another, each easing in through every opacity'
     const t0 = performance.now();
     const tick = () => {
       w.__rise.push([performance.now() - t0, ...spans.map((s) => Number(getComputedStyle(s).opacity))]);
-      if (performance.now() - t0 < 1800) requestAnimationFrame(tick);
+      if (performance.now() - t0 < 3000) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   });
   await page.keyboard.press(' ');
-  await page.waitForTimeout(1900);
+  await page.waitForTimeout(3100);
   const rise = await page.evaluate(() => (window as unknown as { __rise: number[][] }).__rise);
   // When each line first shows at all, and is half in.
   const first = (line: number, above: number) => rise.find((r) => r[line]! > above)?.[0] ?? Infinity;
@@ -83,8 +121,59 @@ test('the lines rise in one after another, each easing in through every opacity'
   }
   expect(first(1, 0.5)).toBeLessThan(first(2, 0.5));
   expect(first(2, 0.5)).toBeLessThan(first(3, 0.5));
-  // Not before the image is nearly there.
-  expect(first(1, 0.01)).toBeGreaterThan(150);
+  // Not before the zoom has landed: it never rides along with the image.
+  expect(first(1, 0.01)).toBeGreaterThan(ZOOM_DURATION * 1000);
+});
+
+test('the moment the view moves the caption leaves, where it stands, fast; once still it comes back, slowly', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press(' ');
+  await settled(page);
+  await shown(page);
+  // Every frame from here: where the title's line (its mask) is drawn and how visible each line is.
+  await page.evaluate(() => {
+    const w = window as unknown as { __caption: number[][] };
+    w.__caption = [];
+    const title = document.querySelector('.focus-caption-title')!;
+    const spans = [...document.querySelectorAll('.focus-caption span')];
+    const t0 = performance.now();
+    const tick = () => {
+      const r = title.getBoundingClientRect();
+      w.__caption.push([performance.now() - t0, r.left, r.top, ...spans.map((s) => Number(getComputedStyle(s).opacity))]);
+      if (performance.now() - t0 < 4000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  // A drag that pulls the image well aside, held, then let go (it springs back).
+  await page.mouse.move(720, 450);
+  await page.mouse.down();
+  for (let n = 1; n <= 10; n++) {
+    await page.mouse.move(720 - n * 6, 450 - n * 4);
+    await page.waitForTimeout(16);
+  }
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  await settled(page);
+  await page.waitForTimeout(done);
+  const rows = await page.evaluate(() => (window as unknown as { __caption: number[][] }).__caption);
+  const [, x0, y0] = rows[0]!;
+  // Whenever any of it can be seen, the title is exactly where it was: it never moves with the frame...
+  const seen = rows.filter((r) => r.slice(3).some((o) => o > 0.02));
+  for (const [, x, y] of seen) {
+    expect(x).toBeCloseTo(x0!, 1);
+    expect(y).toBeCloseTo(y0!, 1);
+  }
+  // ...it goes fast: gone within a few frames of the pull starting...
+  const goneAt = rows.findIndex((r) => r.slice(3).every((o) => o < 0.02));
+  const leaving = rows.findIndex((r) => r.slice(3).some((o) => o < 0.99));
+  expect(goneAt).toBeGreaterThan(-1);
+  expect(rows[goneAt]![0]! - rows[leaving]![0]!).toBeLessThan((CAPTION_OUT + 2 * CAPTION_OUT_STAGGER) * 1000 + 60);
+  // ...and comes back slowly, once the view is still again.
+  const back = rows.slice(goneAt);
+  const from = back.findIndex((r) => r.slice(3).some((o) => o > 0.02));
+  const full = back.findIndex((r) => r.slice(3).every((o) => o > 0.99));
+  expect(from).toBeGreaterThan(-1);
+  expect(back[full]![0]! - back[from]![0]!).toBeGreaterThan(CAPTION_IN * 1000 * 0.8);
 });
 
 test('paging to another image switches the caption: out, then the new one in', async ({ page }) => {

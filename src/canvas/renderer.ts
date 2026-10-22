@@ -78,6 +78,8 @@ interface Slot {
   i: number;
   j: number;
   image: number;
+  /** The zoom it is laid out (sized in CSS, so rasterised) at; drawn scaled by zoom / layout. */
+  layout: number;
   /** Image rectangle in world px at zoom 1. */
   left: number;
   top: number;
@@ -112,7 +114,7 @@ const SALT_WEIGHT = 7;
 const transform = (x: number, y: number, scale: number) => (scale === 1 ? `translate3d(${x}px, ${y}px, 0)` : `translate3d(${x}px, ${y}px, 0) scale(${scale})`);
 
 const TILE_CLASS =
-  'absolute top-0 left-0 origin-top-left overflow-hidden rounded-(--tile-radius) will-change-transform [contain:strict]';
+  'absolute top-0 left-0 origin-top-left overflow-hidden will-change-transform [contain:strict]';
 const IMG_CLASS =
   'block size-full object-cover select-none [-webkit-user-drag:none] transition-opacity duration-[240ms] ease-out data-loading:opacity-0 data-loading:transition-none motion-reduce:transition-none';
 
@@ -124,9 +126,10 @@ const IMG_CLASS =
  * the camera travels. Each tile adds its own trail offset (see trail.ts), so the images
  * move as a loose sheet rather than one rigid layer.
  *
- * Zoom: tiles are laid out (sized in CSS) at a layout zoom and scaled by
- * zoom / layoutZoom. They are laid out again at the current zoom when it settles or has
- * drifted by RELAYOUT_RATIO, so they are re-rasterised sharp and pick a fitting variant.
+ * Zoom: each tile is laid out (sized in CSS) at a layout zoom and scaled by zoom / layout.
+ * Tiles are laid out again at the current zoom when it settles or has drifted by
+ * RELAYOUT_RATIO, so they are re-rasterised sharp and pick a fitting variant; never while
+ * a zoom-to is in flight, for which the tile it zooms into is laid out ahead (prepare).
  *
  * Lens: last of all, each tile's centre goes through the lens (lens.ts), which pulls it
  * towards the viewport centre and scales the tile down near the edges. Because the lens
@@ -145,6 +148,8 @@ export class Renderer {
   private geometry: Geometry | null = null;
   private dirty = true;
   private layoutZoom = 1;
+  /** Mid zoom-to: no tile is laid out again until it lands (see update). */
+  private holding = false;
   private camX = 0;
   private camY = 0;
   private camZ = 1;
@@ -169,7 +174,7 @@ export class Renderer {
   onRelease: ((tile: HTMLElement) => void) | null = null;
   /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began. */
   private flight: { slot: Slot; x: number; y: number; scale: number; opacity: number; depth: number }[] | null = null;
-  private readonly view: FlightView = { scale: 1, opacity: 1 };
+  private readonly view: FlightView = { scale: 1, opacity: 1, blur: 0 };
 
   constructor(
     private readonly container: HTMLElement,
@@ -232,16 +237,20 @@ export class Renderer {
   /**
    * Draw the camera at (camX, camY, camZ). (vx, vy) is its velocity in world px/s, used
    * to preload ahead. `zoomAtRest` lets tiles be re-laid out sharp at the final zoom.
+   * `holdLayout` (a zoom-to in flight) lays nothing out again until it lands: re-laying
+   * out every tile mid-zoom costs frames and swaps their images for sharper ones mid-move.
+   * The tile it zooms into is laid out for where it lands beforehand (see prepare).
    */
-  update(camX: number, camY: number, camZ: number, vx: number, vy: number, zoomAtRest: boolean): void {
+  update(camX: number, camY: number, camZ: number, vx: number, vy: number, zoomAtRest: boolean, holdLayout = false): void {
     const g = this.geometry;
     if (!g) return;
     this.camX = camX;
     this.camY = camY;
     this.camZ = camZ;
+    this.holding = holdLayout;
 
     const drift = Math.abs(Math.log(camZ / this.layoutZoom));
-    if ((zoomAtRest && camZ !== this.layoutZoom) || drift > Math.log(RELAYOUT_RATIO)) {
+    if (!holdLayout && ((zoomAtRest && camZ !== this.layoutZoom) || drift > Math.log(RELAYOUT_RATIO))) {
       this.layoutZoom = camZ;
       this.dirty = true;
     }
@@ -271,7 +280,6 @@ export class Renderer {
       this.reassign(range);
     }
 
-    const zoomScale = camZ / this.layoutZoom;
     const maxOffset = TRAIL_MAX_OFFSET * g.s * camZ;
     const lensed = this.lensed;
     let nearest: Slot | null = null;
@@ -286,7 +294,7 @@ export class Renderer {
       // Tiles scale about their top-left corner, so place that corner for the lensed size.
       const x = hx + lensed.x - (w * lensed.scale) / 2;
       const y = hy + lensed.y - (h * lensed.scale) / 2;
-      const scale = zoomScale * lensed.scale;
+      const scale = (camZ / slot.layout) * lensed.scale;
       slot.drawnWidth = w * lensed.scale;
       slot.drawnHeight = h * lensed.scale;
       slot.distance = Math.hypot(lensed.x, lensed.y);
@@ -336,6 +344,9 @@ export class Renderer {
       const s = still ? 1 : v.scale;
       f.slot.el.style.transform = transform(cx + (f.x - cx) * s, cy + (f.y - cy) * s, f.scale * s);
       f.slot.el.style.opacity = (f.opacity * v.opacity).toFixed(3);
+      // The blur is drawn before the tile is scaled: ask for the share that comes out at v.blur on screen.
+      const blur = still ? 0 : v.blur / (f.scale * s);
+      f.slot.el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
     }
   }
 
@@ -343,6 +354,7 @@ export class Renderer {
   endFlight(): void {
     if (!this.flight) return;
     for (const { slot } of this.flight) {
+      slot.el.style.filter = '';
       slot.el.style.transform = transform(slot.cssX, slot.cssY, slot.cssScale);
       slot.el.style.opacity = slot.cssOpacity === 1 ? '' : slot.cssOpacity.toFixed(3);
     }
@@ -388,6 +400,33 @@ export class Renderer {
 
   get zoomLaidOut(): number {
     return this.layoutZoom;
+  }
+
+  /**
+   * Lay out the tile of grid rectangle `rect` for zoom `z` ahead of zooming there: it stays
+   * sharp all the way (drawn smaller until it arrives), and the image for that size is on
+   * its way while it moves.
+   */
+  prepare(rect: CellRect, z: number): void {
+    const slot = this.active.find((s) => s.left === rect.left && s.top === rect.top);
+    if (slot && slot.layout !== z) this.layOut(slot, z);
+  }
+
+  /** Size a tile in CSS for zoom `layout`; the browser picks an image to fit. */
+  private layOut(slot: Slot, layout: number): void {
+    const g = this.geometry!;
+    slot.layout = layout;
+    const cssWidth = Math.round(slot.width * layout * 100) / 100;
+    const cssHeight = Math.round(slot.height * layout * 100) / 100;
+    slot.el.style.width = `${cssWidth}px`;
+    slot.el.style.height = `${cssHeight}px`;
+    slot.el.style.borderRadius = `${Math.round(g.radius * layout * 100) / 100}px`;
+    const sizes = `${Math.round(cssWidth)}px`;
+    if (slot.img.sizes !== sizes) {
+      slot.source.sizes = sizes;
+      slot.img.sizes = sizes;
+    }
+    slot.cssScale = Number.NaN;
   }
 
   /** The grid rectangle (world px) of the tile that `target` is part of, if any. */
@@ -478,10 +517,6 @@ export class Renderer {
     const resetTrails = this.resetTrails;
     this.dirty = false;
     this.resetTrails = false;
-    if (relayout) {
-      // On the canvas root, so overlays on top of the tiles (the focus frame) can match it.
-      (this.container.parentElement ?? this.container).style.setProperty('--tile-radius', `${this.geometry!.radius * this.layoutZoom}px`);
-    }
     // Release the tiles that left the range first, so their elements go to the ones arriving
     // and the pool never holds both sets at once.
     for (let n = this.active.length - 1; n >= 0; n--) {
@@ -554,6 +589,7 @@ export class Renderer {
       i: 0,
       j: 0,
       image: -1,
+      layout: 1,
       left: 0,
       top: 0,
       width: 0,
@@ -588,17 +624,9 @@ export class Renderer {
     slot.key = key;
     slot.width = width;
     slot.height = height;
-    const cssWidth = Math.round(width * this.layoutZoom * 100) / 100;
-    const cssHeight = Math.round(height * this.layoutZoom * 100) / 100;
-    slot.el.style.width = `${cssWidth}px`;
-    slot.el.style.height = `${cssHeight}px`;
-    const sizes = `${Math.round(cssWidth)}px`;
-    if (slot.img.sizes !== sizes) {
-      slot.source.sizes = sizes;
-      slot.img.sizes = sizes;
-    }
+    // Arriving mid zoom-to, a tile is laid out for the zoom as it is now: sharp from the start.
+    this.layOut(slot, fresh && this.holding ? this.camZ : this.layoutZoom);
     slot.el.style.zIndex = String(cell.z);
-    slot.cssScale = Number.NaN;
     if (fresh) {
       // Arrive already faded (or not), like the tiles around it.
       slot.opacity = this.opacityTarget(slot);

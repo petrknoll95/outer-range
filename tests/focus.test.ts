@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import manifest from '../src/assets/placeholders/manifest.json';
 import { FOCUS_MAX_DURATION, FOCUS_MIN_DURATION, PAGE_REACH } from '../src/canvas/config';
-import { centerDelta, focusDuration, nearestImageCentre, smoothstep, startSlope } from '../src/canvas/focus';
+import { centerDelta, cubicBezier, focusDuration, nearestImageCentre, smoothstep, startSlope } from '../src/canvas/focus';
 import { cellRect, computeGeometry } from '../src/canvas/layout';
 import { CameraPhysics, DRAG_END, DRAG_MOVE, DRAG_START, GLIDE, NUDGE, WHEEL, ZOOM, ZOOM_TO } from '../src/canvas/physics';
 import type { Aspect } from '../src/canvas/world';
@@ -101,6 +101,30 @@ describe('glide', () => {
     p.advance(0.02);
     expect(p.x).toBe(500);
     expect(p.y).toBe(200);
+  });
+});
+
+describe('cubic-bezier easing', () => {
+  it('matches CSS: from 0 to 1, monotonic, and the known midpoint of ease', () => {
+    const ease = cubicBezier(0.25, 0.1, 0.25, 1);
+    expect(ease(0)).toBe(0);
+    expect(ease(1)).toBe(1);
+    // CSS `ease` is 0.8024 of the way at half time.
+    expect(ease(0.5)).toBeCloseTo(0.8024, 3);
+    fc.assert(
+      fc.property(fc.double({ min: 0, max: 1, noNaN: true }), fc.double({ min: 0, max: 1, noNaN: true }), (a, b) => {
+        const f = cubicBezier(0.2, 0, 0, 1);
+        const [lo, hi] = a <= b ? [a, b] : [b, a];
+        expect(f(hi)).toBeGreaterThanOrEqual(f(lo) - 1e-9);
+      }),
+    );
+  });
+
+  it('the zoom ease sets off with no slope and lands with none', () => {
+    const f = cubicBezier(0.2, 0, 0, 1);
+    const h = 1e-4;
+    expect(f(h) / h).toBeLessThan(0.05);
+    expect((1 - f(1 - h)) / h).toBeLessThan(0.05);
   });
 });
 
@@ -217,7 +241,7 @@ describe('zoom to a point', () => {
     );
   });
 
-  it('zooms and travels together, easing out: fastest at the start, slowing smoothly to rest', () => {
+  it('zooms and travels together, setting off gently and slowing smoothly to rest', () => {
     const p = zoomable();
     p.jumpTo(0, 0, 1);
     p.push(ZOOM_TO, 0.01, 1300, 800, 2.4, 0.6);
@@ -232,13 +256,12 @@ describe('zoom to a point', () => {
     const start = growth.findIndex((g) => g > 0);
     const peak = growth.indexOf(Math.max(...growth));
     const moved = zs.findIndex((z) => z === 2.4);
-    // Fastest from the start (its first step only covers part of a 240 Hz step), never
-    // speeding up after, and almost still by the end.
-    expect(peak - start).toBeLessThanOrEqual(1);
+    // No jolt: the first steps are a small share of the peak, which comes early...
+    expect(growth[start + 1]!).toBeLessThan(growth[peak]! * 0.1);
+    expect((peak - start) / (moved - start)).toBeLessThan(0.4);
+    // ...then never speeding up again, almost still by the end.
     for (let n = peak + 1; n < moved - 1; n++) expect(growth[n]!).toBeLessThanOrEqual(growth[n - 1]! + 1e-12);
     expect(growth[moved - 2]!).toBeLessThan(growth[peak]! * 0.01);
-    // Halfway through the time, an ease-out cubic is 7/8 of the way, in log zoom.
-    expect(Math.log(zs[Math.round(0.3 * 240) - 2]!) / Math.log(2.4)).toBeCloseTo(0.875, 1);
     expect(xs.at(-1)).toBe(p.x);
   });
 
