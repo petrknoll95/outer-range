@@ -19,8 +19,9 @@ const { title, description } = Astro.props;
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="data:," />
     <title>{title}</title>
-    <!-- The wordmark's weight is preloaded so it paints in the right font straight away. -->
-    <Font cssVariable="--font-neue-montreal" preload={[{ weight: 500 }]} />
+    <!-- The wordmark's weight is preloaded so it paints in the right font straight away; the serif is there to use. -->
+    <Font cssVariable="--font-timeless-sans" preload={[{ weight: 500, style: 'normal' }]} />
+    <Font cssVariable="--font-timeless-serif" />
   </head>
   <body class="bg-canvas text-ink antialiased">
     <slot />

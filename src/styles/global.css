@@ -5,9 +5,11 @@
   --color-ink: oklch(0.24 0.005 90);
 }
 
-/* PP Neue Montreal (astro.config.mjs) is the default font: Tailwind's base sets the page in --font-sans. */
+/* Timeless Sans (astro.config.mjs) is the default font: Tailwind's base sets the page in --font-sans.
+   Timeless Serif is Tailwind's font-serif. */
 @theme inline {
-  --font-sans: var(--font-neue-montreal);
+  --font-sans: var(--font-timeless-sans);
+  --font-serif: var(--font-timeless-serif);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -101,30 +103,69 @@
   .about-layer {
     transform-origin: 50% 50vh;
   }
+  /* Scrolled, the text fades out under the header band instead of running into the wordmark. */
+  .about-view {
+    mask-image: linear-gradient(to bottom, transparent 56px, black 104px);
+  }
+  /* All of it centred, set from the copy's own hierarchy: a statement, then sections. */
   .about {
     font-size: 20px;
     line-height: 1.5;
     letter-spacing: -0.005em;
+    text-align: center;
     text-wrap: pretty;
   }
   .about > * + * {
     margin-top: 1em;
   }
-  .about h2 {
+  /* The statement at the top. */
+  .about > h2 {
+    font-size: clamp(28px, 4.2vw, 40px);
+    line-height: 1.12;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  /* The line under it (where I am now): small and quiet. Dimmed by its colour, so its
+     opacity is free to fade in and out with the rest. */
+  .about > h2 + p {
+    margin-top: 1.25rem;
+    font-size: 15px;
+    line-height: 20px;
+    color: color-mix(in oklab, var(--color-ink) 55%, transparent);
+  }
+  /* Each section: its title, then its text. */
+  .about h3 {
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 500;
+  }
+  .about > h3 {
     margin-top: 3.5rem;
+  }
+  .about > h3 + p {
+    margin-top: 0.75rem;
+  }
+  /* Services, below the text: a label, then a column per group, wrapping when the window is narrow. */
+  .about > .services {
+    margin-top: 4.5rem;
+  }
+  .about .services h2 {
     font-size: 11px;
     line-height: 16px;
     font-weight: 500;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    /* Dimmed by its colour, so its opacity is free to fade in and out with the rest. */
     color: color-mix(in oklab, var(--color-ink) 55%, transparent);
   }
-  .about h2 + * {
-    margin-top: 0.75rem;
+  .about .services-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 2rem 1.5rem;
+    margin-top: 1.25rem;
   }
-  .about li {
-    font-weight: 500;
+  .about h3 + ul {
+    margin-top: 0.5rem;
   }
 
   /*

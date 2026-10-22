@@ -44,17 +44,46 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   await page.goto('/about');
   await page.evaluate(() => document.fonts.ready);
   const article = page.locator('article.about');
-  await expect(article.locator('p').first()).toContainText('I find meaning and joy in simple things.');
-  await expect(article.locator('p').nth(1)).toContainText('It’s all about cutting through the noise');
-  await expect(article.getByRole('heading', { level: 2, name: 'Principles' })).toBeVisible();
-  await expect(article.locator('p').nth(2)).toContainText('leave the place better than you found it.');
-  await expect(article.getByRole('listitem')).toHaveText(['Truth', 'Beauty', 'Goodness']);
+  // The statement (under the wordmark, the page's h1), the line under it, then five sections.
+  await expect(article.locator(':scope > h2')).toHaveText('Good design gives you something to feel, something to recognize, and very little to figure out.');
+  await expect(article.locator(':scope > h2 + p')).toHaveText('Currently at Off Menu');
+  await expect(article.locator(':scope > h3')).toHaveText(['I. On simplicity', 'II. On aesthetics', 'III. On the small things', 'IV. On intention', 'V. On making']);
+  const sections = article.locator(':scope > h3 + p');
+  await expect(sections).toHaveCount(5);
+  await expect(sections.first()).toContainText('Simplicity takes judgment.');
+  await expect(sections.nth(1)).toContainText('How something looks shapes how it’s understood.');
+  await expect(sections.nth(2)).toContainText('when it’s time to close the file.');
+  await expect(sections.nth(3)).toContainText('A familiar pattern should earn its place as much as an unusual one.');
+  await expect(sections.last()).toContainText('enough openness to discover a better idea along the way.');
+  // Centred, all of it.
+  expect(await article.evaluate((el) => getComputedStyle(el).textAlign)).toBe('center');
+  // Then the services: a heading, and a group per column, in order.
+  const services = article.getByRole('region', { name: 'Services' });
+  await expect(services.getByRole('heading', { level: 3 })).toHaveText(['Digital Design', 'Branding', 'Print Design']);
+  await expect(services.getByRole('listitem')).toHaveText([
+    'UX/UI Design',
+    'Motion Design',
+    '3D Design',
+    'Social Media',
+    'Tone of Voice',
+    'Identity Design',
+    'Art Direction',
+    'Brand Guidelines',
+    'Storytelling',
+    'Packaging',
+    'Editorial',
+    'Wayfinding',
+    'Signage',
+  ]);
+  // Side by side: the three groups start on one line.
+  const tops = await services.getByRole('heading', { level: 3 }).evaluateAll((hs) => hs.map((h) => Math.round(h.getBoundingClientRect().top)));
+  expect(new Set(tops).size).toBe(1);
   const box = (await article.boundingBox())!;
-  // Narrow (34 rem), centred across the window, and centred down it, clear of the header.
+  // Narrow (34 rem), centred across the window; taller than it, so it starts clear of the header and scrolls.
   expect(box.width).toBeLessThanOrEqual(34 * 16);
   expect(box.x + box.width / 2).toBeCloseTo(1440 / 2, 0);
-  expect(box.y).toBeGreaterThan(60);
-  expect(Math.abs(box.y + box.height / 2 - 450)).toBeLessThan(40);
+  expect(box.y).toBeGreaterThan(100);
+  expect(await page.locator('[data-about]').evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
   // The canvas behind is flown past and inert.
   expect(await page.evaluate(() => document.querySelector<HTMLElement>('[data-canvas]')!.inert)).toBe(true);
   expect(await layer(page)).toEqual({ scale: 1, opacity: 1, blur: 0, inert: false });
@@ -130,4 +159,17 @@ test('on a small screen the text scrolls on its own', async ({ page }) => {
   await page.mouse.move(195, 300);
   await page.mouse.wheel(0, 300);
   await expect.poll(() => view.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+  // Scrolled under the header, it fades out rather than running into the wordmark.
+  expect(await view.evaluate((el) => getComputedStyle(el).maskImage)).toMatch(/linear-gradient/);
 });
+
+test('on a narrow screen the services groups wrap instead of squeezing', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/about');
+  const groups = page.locator('.services-groups > div');
+  const boxes = await groups.evaluateAll((gs) => gs.map((g) => g.getBoundingClientRect()).map((r) => ({ top: Math.round(r.top), width: r.width })));
+  // Not all on one line, and none narrower than its minimum.
+  expect(new Set(boxes.map((b) => b.top)).size).toBeGreaterThan(1);
+  for (const b of boxes) expect(b.width).toBeGreaterThanOrEqual(9.5 * 16 - 1);
+});
+

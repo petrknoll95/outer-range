@@ -20,7 +20,7 @@ test('the wordmark sits at the top centre', async ({ page }) => {
   expect(Math.abs(box.y + box.height / 2 - 34)).toBeLessThan(1);
 });
 
-test('PP Neue Montreal is the page font, and the wordmark is set in its medium weight', async ({ page }) => {
+test('Timeless Sans is the page font, and the wordmark is set in its medium weight', async ({ page }) => {
   await open(page);
   const fonts = await page.evaluate(async () => {
     await document.fonts.ready;
@@ -29,13 +29,30 @@ test('PP Neue Montreal is the page font, and the wordmark is set in its medium w
       body: getComputedStyle(document.body).fontFamily,
       wordmark: getComputedStyle(h1).fontFamily,
       weight: getComputedStyle(h1).fontWeight,
-      loaded: [...document.fonts].filter((f) => f.family.startsWith('PP Neue Montreal') && f.status === 'loaded').map((f) => f.weight),
+      loaded: [...document.fonts].filter((f) => f.family.startsWith('Timeless Sans') && f.status === 'loaded').map((f) => f.weight),
     };
   });
-  expect(fonts.body).toMatch(/^"PP Neue Montreal/);
-  expect(fonts.wordmark).toMatch(/^"PP Neue Montreal/);
+  expect(fonts.body).toMatch(/^"Timeless Sans/);
+  expect(fonts.wordmark).toMatch(/^"Timeless Sans/);
   expect(fonts.weight).toBe('500');
   expect(fonts.loaded).toContain('500');
+});
+
+test('Timeless Serif is there to use, upright and italic, and loads only when asked for', async ({ page }) => {
+  await open(page);
+  const serif = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const family = getComputedStyle(document.documentElement).getPropertyValue('--font-timeless-serif');
+    const loaded = () =>
+      [...document.fonts].filter((f) => f.family.startsWith('Timeless Serif') && f.status === 'loaded').map((f) => `${f.weight} ${f.style}`);
+    const before = loaded();
+    await document.fonts.load(`400 16px ${family}`);
+    await document.fonts.load(`italic 400 16px ${family}`);
+    return { family, before, after: loaded() };
+  });
+  expect(serif.family).toMatch(/^"Timeless Serif/);
+  expect(serif.before).toEqual([]);
+  expect(serif.after).toEqual(expect.arrayContaining(['400 normal', '400 italic']));
 });
 
 test('dragging across the wordmark moves the canvas', async ({ page }) => {

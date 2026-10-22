@@ -26,6 +26,10 @@ pnpm-debug.log*
 # placeholder download cache
 scripts/placeholders/.cache/
 
+# Timeless (src/assets/fonts/timeless): its licence allows serving it on the site,
+# but not putting the fonts in a public repository
+src/assets/fonts/timeless/
+
 # test output
 test-results/
 playwright-report/
