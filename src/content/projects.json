@@ -90,23 +90,14 @@
     ]
   },
   {
-    "id": "sunday-fizz",
-    "title": "Sunday Fizz",
-    "year": 2024,
-    "images": [
-      "junday-with-lemons",
-      "moozy-in-ice",
-      "adapt-cans-floating"
-    ]
-  },
-  {
     "id": "wild-hours",
     "title": "Wild Hours",
     "year": 2025,
     "images": [
       "blue-can-in-the-sky",
       "giggle-seltzer-and-coupe",
-      "cove-hand-off"
+      "cove-hand-off",
+      "adapt-cans-floating"
     ]
   },
   {
@@ -189,7 +180,9 @@
     "images": [
       "bettermint-go",
       "bettermint-chill",
-      "bettermint-tubes"
+      "bettermint-tubes",
+      "bettermint-pill-drop",
+      "bettermint-pill-rotate"
     ]
   }
 ]

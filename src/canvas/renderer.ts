@@ -30,9 +30,8 @@ export interface ClientImage extends WorldImage {
   webp: string;
   /** Fallback src (smallest WebP). */
   src: string;
-  /** A video to play over the image (its poster frame), or none, and a small copy of it for tiles drawn small. */
-  video?: string;
-  videoSmall?: string;
+  /** A video to play over the image (its poster frame), or none: URLs of its copies (VideoCopies in media.ts). */
+  video?: { webm: string; mp4: string; smallWebm: string; smallMp4: string };
   /** From the image's content entry: shown under the focused view, and the alt text set on every tile. */
   title: string;
   category: string;
@@ -212,6 +211,9 @@ export class Renderer {
     private readonly lens: Lens,
     private readonly debug = false,
   ) {}
+
+  /** Whether this browser plays VP9 WebM; if not, videos play from their MP4 copies. */
+  private readonly webm = document.createElement('video').canPlayType('video/webm; codecs="vp9"') === 'probably';
 
   setGeometry(g: Geometry): void {
     this.geometry = g;
@@ -668,12 +670,13 @@ export class Renderer {
     return slot;
   }
 
-  /** The copy of the tile's video that fits the size it is laid out at, or null if it has none. */
+  /** The copy of the tile's video that fits the size it is laid out at, in the format this browser plays, or null if it has none. */
   private videoFor(slot: Slot): string | null {
-    const { video, videoSmall } = this.images[slot.image]!;
+    const { video } = this.images[slot.image]!;
     if (!video) return null;
-    const edge = Math.min(slot.width, slot.height) * slot.layout * devicePixelRatio;
-    return videoSmall && edge <= VIDEO_SMALL_EDGE * 1.25 ? videoSmall : video;
+    const small = Math.min(slot.width, slot.height) * slot.layout * devicePixelRatio <= VIDEO_SMALL_EDGE * 1.25;
+    if (small) return this.webm ? video.smallWebm : video.smallMp4;
+    return this.webm ? video.webm : video.mp4;
   }
 
   /** Laid out at another size: swap to the copy of its video that fits, carrying on from the same moment. */

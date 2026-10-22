@@ -26,7 +26,7 @@ const { route } = Astro.props;
 const files = import.meta.glob<{ default: ImageMetadata }>(['../assets/placeholders/*.jpg', '../assets/work/*.webp', '../assets/videos/*.jpg'], {
   eager: true,
 });
-const videos = import.meta.glob<string>('../assets/videos/*.mp4', { eager: true, query: '?url', import: 'default' });
+const videos = import.meta.glob<string>('../assets/videos/*.{mp4,webm}', { eager: true, query: '?url', import: 'default' });
 // Photos hide compression well; designed work (fine type, flat colour) shows it, so it gets more.
 const QUALITY = { photo: { avif: 55, webp: 76 }, detail: { avif: 75, webp: 90 } } as const;
 
@@ -55,9 +55,9 @@ const images: ClientImage[] = await Promise.all(
     const detail = m.detail ?? false;
     const [avif, webp] = await Promise.all([srcset(src, 'avif', widths, detail), srcset(src, 'webp', widths, detail)]);
     const { title, category, alt } = content[n]!;
-    const video = m.video ? videos[`../assets/${m.video}`]! : undefined;
-    const videoSmall = m.videoSmall ? videos[`../assets/${m.videoSmall}`]! : undefined;
-    return { aspect: m.aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, video, videoSmall, title, category, alt };
+    const url = (path: string) => videos[`../assets/${path}`]!;
+    const video = m.video && { webm: url(m.video.webm), mp4: url(m.video.mp4), smallWebm: url(m.video.smallWebm), smallMp4: url(m.video.smallMp4) };
+    return { aspect: m.aspect, color: m.color, avif, webp, src: webp.split(' ')[0]!, video, title, category, alt };
   }),
 );
 

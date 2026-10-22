@@ -1,7 +1,35 @@
 [
   {
+    "file": "bettermint-pill-drop.mp4",
+    "webm": "bettermint-pill-drop.webm",
+    "small": "bettermint-pill-drop-small.mp4",
+    "smallWebm": "bettermint-pill-drop-small.webm",
+    "poster": "bettermint-pill-drop.jpg",
+    "aspect": "portrait",
+    "width": 1080,
+    "height": 1440,
+    "color": "#d8c8b8",
+    "duration": 8,
+    "source": "bettermint-pill-drop.mp4"
+  },
+  {
+    "file": "bettermint-pill-rotate.mp4",
+    "webm": "bettermint-pill-rotate.webm",
+    "small": "bettermint-pill-rotate-small.mp4",
+    "smallWebm": "bettermint-pill-rotate-small.webm",
+    "poster": "bettermint-pill-rotate.jpg",
+    "aspect": "portrait",
+    "width": 1002,
+    "height": 1336,
+    "color": "#d8d8c8",
+    "duration": 8,
+    "source": "bettermint-pill-rotate.mp4"
+  },
+  {
     "file": "crocs-rnd.mp4",
+    "webm": "crocs-rnd.webm",
     "small": "crocs-rnd-small.mp4",
+    "smallWebm": "crocs-rnd-small.webm",
     "poster": "crocs-rnd.jpg",
     "aspect": "square",
     "width": 1080,
@@ -12,7 +40,9 @@
   },
   {
     "file": "experimental-button-1.mp4",
+    "webm": "experimental-button-1.webm",
     "small": "experimental-button-1-small.mp4",
+    "smallWebm": "experimental-button-1-small.webm",
     "poster": "experimental-button-1.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -23,7 +53,9 @@
   },
   {
     "file": "experimental-navigation-1.mp4",
+    "webm": "experimental-navigation-1.webm",
     "small": "experimental-navigation-1-small.mp4",
+    "smallWebm": "experimental-navigation-1-small.webm",
     "poster": "experimental-navigation-1.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -34,7 +66,9 @@
   },
   {
     "file": "offmenu-navigation.mp4",
+    "webm": "offmenu-navigation.webm",
     "small": "offmenu-navigation-small.mp4",
+    "smallWebm": "offmenu-navigation-small.webm",
     "poster": "offmenu-navigation.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -45,7 +79,9 @@
   },
   {
     "file": "offmenu-website-reel.mp4",
+    "webm": "offmenu-website-reel.webm",
     "small": "offmenu-website-reel-small.mp4",
+    "smallWebm": "offmenu-website-reel-small.webm",
     "poster": "offmenu-website-reel.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -56,7 +92,9 @@
   },
   {
     "file": "offmenu-website.mp4",
+    "webm": "offmenu-website.webm",
     "small": "offmenu-website-small.mp4",
+    "smallWebm": "offmenu-website-small.webm",
     "poster": "offmenu-website.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -67,7 +105,9 @@
   },
   {
     "file": "remi-logo.mp4",
+    "webm": "remi-logo.webm",
     "small": "remi-logo-small.mp4",
+    "smallWebm": "remi-logo-small.webm",
     "poster": "remi-logo.jpg",
     "aspect": "landscape",
     "width": 1440,
@@ -78,7 +118,9 @@
   },
   {
     "file": "subzero-cans.mp4",
+    "webm": "subzero-cans.webm",
     "small": "subzero-cans-small.mp4",
+    "smallWebm": "subzero-cans-small.webm",
     "poster": "subzero-cans.jpg",
     "aspect": "portrait",
     "width": 1080,
@@ -89,7 +131,9 @@
   },
   {
     "file": "tangent.mp4",
+    "webm": "tangent.webm",
     "small": "tangent-small.mp4",
+    "smallWebm": "tangent-small.webm",
     "poster": "tangent.jpg",
     "aspect": "landscape",
     "width": 1440,

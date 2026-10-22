@@ -33,19 +33,22 @@ interface Clip {
 async function centreOnVideo(page: Page): Promise<Clip> {
   const clip = await page.evaluate(() => {
     const api = (window as unknown as { __canvas: Api }).__canvas;
-    const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as { images: { video?: string; videoSmall?: string }[] };
+    type Copies = { webm: string; mp4: string; smallWebm: string; smallMp4: string };
+    const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as { images: { video?: Copies }[] };
+    // The format the page plays here: WebM where VP9 plays, MP4 otherwise.
+    const webm = document.createElement('video').canPlayType('video/webm; codecs="vp9"') === 'probably';
     const g = api.geometry();
     for (let r = 0; r < 12; r++) {
       for (let i = -r; i <= r; i++) {
         for (let j = -r; j <= r; j++) {
           if (Math.max(Math.abs(i), Math.abs(j)) !== r) continue;
           const cell = api.world.cell(i, j);
-          const { video, videoSmall } = data.images[cell.image]!;
+          const { video } = data.images[cell.image]!;
           if (!video) continue;
           const cx = i * g.pitch + cell.dx * g.s;
           const cy = j * g.pitch + cell.dy * g.s;
           api.physics.jumpTo(cx - g.vw / 2, cy - g.vh / 2, 1);
-          return { full: video, small: videoSmall! };
+          return webm ? { full: video.webm, small: video.smallWebm } : { full: video.mp4, small: video.smallMp4 };
         }
       }
     }
@@ -79,6 +82,8 @@ test('a video tile on screen plays, muted and looping, over its poster frame', a
   await expect.poll(async () => (await centreVideo(page, src))?.shown, { timeout: 10_000 }).toBe(true);
   const a = (await centreVideo(page, src))!;
   expect(a).toMatchObject({ paused: false, muted: true, loop: true });
+  // Chromium plays VP9, so it gets the WebM copy.
+  expect(src.small).toMatch(/\.webm$/);
   await page.waitForTimeout(500);
   expect((await centreVideo(page, src))!.time).toBeGreaterThan(a.time);
   // Under it, the tile is an image like any other: the poster frame, with the entry's alt text.
@@ -115,6 +120,21 @@ test('zoomed out a tile plays the small copy; zoomed in on, it swaps to the full
   expect(after).toMatchObject({ copy: 'full', paused: false });
   // From about where the small copy had got to, not from the start.
   expect(after.time).toBeGreaterThanOrEqual(before);
+});
+
+test('a browser that cannot play VP9 WebM gets the MP4 copies', async ({ page }) => {
+  await page.addInitScript(() => {
+    const canPlayType = HTMLMediaElement.prototype.canPlayType;
+    HTMLMediaElement.prototype.canPlayType = function (type: string) {
+      return type.startsWith('video/webm') ? '' : canPlayType.call(this, type);
+    };
+  });
+  await page.goto('/?test');
+  await settled(page);
+  const clip = await centreOnVideo(page);
+  expect(clip.small).toMatch(/\.mp4$/);
+  await expect.poll(async () => (await centreVideo(page, clip))?.shown, { timeout: 10_000 }).toBe(true);
+  expect(await centreVideo(page, clip)).toMatchObject({ paused: false, copy: 'small' });
 });
 
 test('videos hold still off screen and on the about view', async ({ page }) => {
