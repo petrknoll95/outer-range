@@ -108,7 +108,7 @@ test('while the canvas moves, the frame stays locked to its image', async ({ pag
 
 test('when another image becomes active, the frame moves to it smoothly, never jumping', async ({ page }) => {
   await open(page);
-  // Click an image well away from the centre: the canvas glides it in, and the frame hands over on the way.
+  // Scroll an image well away from the centre into the middle: the frame hands over on the way.
   const target = await page.evaluate(() => {
     const c = (window as unknown as { __canvas: Api }).__canvas;
     const a = c.activeImage()!;
@@ -130,7 +130,12 @@ test('when another image becomes active, the frame moves to it smoothly, never j
     };
     requestAnimationFrame(tick);
   });
-  await page.mouse.click(target.x, target.y);
+  // In steps, like a trackpad, so the canvas itself moves at a steady pace.
+  await page.mouse.move(720, 450);
+  for (let n = 0; n < 12; n++) {
+    await page.mouse.wheel((target.x - 720) / 12, (target.y - 450) / 12);
+    await page.waitForTimeout(30);
+  }
   await settled(page);
   await page.waitForTimeout(FOCUS_FRAME_DURATION * 1000 + 100);
   const track = await page.evaluate(() => (window as unknown as { __track: number[][] }).__track);

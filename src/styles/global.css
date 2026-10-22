@@ -89,6 +89,44 @@
     cursor: default;
   }
 
+  /* The about view (Site.astro): a narrow column of text, a layer behind the canvas. */
+  .about-view[inert],
+  [data-canvas][inert] {
+    pointer-events: none;
+  }
+  /* Off the about view, out of sight; main.ts draws it in perspective during the flight, about the window's centre. */
+  .about-view:not([data-state="in"]) .about-layer {
+    opacity: 0;
+  }
+  .about-layer {
+    transform-origin: 50% 50vh;
+  }
+  .about {
+    font-size: 20px;
+    line-height: 1.5;
+    letter-spacing: -0.005em;
+    text-wrap: pretty;
+  }
+  .about > * + * {
+    margin-top: 1em;
+  }
+  .about h2 {
+    margin-top: 3.5rem;
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    /* Dimmed by its colour, so its opacity is free to fade in and out with the rest. */
+    color: color-mix(in oklab, var(--color-ink) 55%, transparent);
+  }
+  .about h2 + * {
+    margin-top: 0.75rem;
+  }
+  .about li {
+    font-weight: 500;
+  }
+
   /*
    * The focused image's caption (src/canvas/caption.ts): the title centred above the focus
    * frame, the category and alt text centred below it, so they move with the frame.

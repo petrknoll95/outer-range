@@ -125,9 +125,10 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, enable
   };
 
   const onWheel = (e: WheelEvent) => {
-    // Never the page's own scroll or zoom, even while the canvas ignores input.
-    e.preventDefault();
+    // While the canvas ignores input (on the about view) the wheel is the browser's: the text scrolls.
     if (!enabled()) return;
+    // Otherwise never the page's own scroll or zoom.
+    e.preventDefault();
     let dx = e.deltaX;
     let dy = e.deltaY;
     if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {

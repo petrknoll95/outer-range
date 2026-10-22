@@ -242,6 +242,15 @@ export const FLIGHT_EASE = [0.5, 0, 0.25, 1] as const;
 export const FLIGHT_BLUR = 16;
 /** Coming back to the canvas, the flight plays in reverse over this long, s: images rush in from the camera and settle. */
 export const FLIGHT_RETURN_DURATION = 0.75;
+/**
+ * The about view's text is a plane behind the canvas, FLIGHT_FAR beyond where the camera
+ * stops (in the same depth units as the images). Flying in, it comes towards the camera from
+ * far off: growing to its own size as the camera arrives, fading in from FLIGHT_FAR_FADE of
+ * the way, and sharpening from FLIGHT_FAR_BLUR screen px. Flying back, the opposite.
+ */
+export const FLIGHT_FAR = 1;
+export const FLIGHT_FAR_FADE = 0.35;
+export const FLIGHT_FAR_BLUR = 8;
 /** With reduced motion there is no flight, just a fade this long, s. */
 export const FLIGHT_REDUCED_DURATION = 0.3;
 

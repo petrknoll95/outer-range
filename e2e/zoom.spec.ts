@@ -117,3 +117,37 @@ test('zooming back out is smooth too', async ({ page }) => {
   await settled(page);
   expectSmooth(await record(page, 'out'));
 });
+
+test('zooming onto another image while the frame is mid hand-over leaves the frame, and only the frame, on it', async ({ page }) => {
+  await page.goto('/?test');
+  await settled(page);
+  const result = await page.evaluate(async () => {
+    const c = (window as unknown as { __canvas: Api & { activeImage: () => { image: number; left: number; top: number; width: number; height: number } } }).__canvas;
+    // A scroll that makes another image the centremost: the frame starts handing over to it...
+    const before = c.activeImage().image;
+    window.dispatchEvent(new WheelEvent('wheel', { deltaX: 200, deltaY: 90, clientX: 720, clientY: 450, cancelable: true }));
+    for (let n = 0; n < 40 && c.activeImage().image === before; n++) await new Promise((r) => requestAnimationFrame(r));
+    // ...and at once a pinch onto an image well off centre.
+    const tiles = [...document.querySelectorAll<HTMLElement>('[data-canvas-layer] > div')].filter((t) => !t.hidden);
+    const centre = (t: HTMLElement) => {
+      const r = t.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
+    const off = (t: HTMLElement) => Math.hypot(centre(t).x - innerWidth / 2, centre(t).y - innerHeight / 2);
+    const target = tiles.filter((t) => off(t) > 250 && off(t) < 420 && centre(t).x > 100 && centre(t).y > 100 && centre(t).x < innerWidth - 100 && centre(t).y < innerHeight - 100).sort((a, b) => off(a) - off(b))[0]!;
+    const at = centre(target);
+    for (let n = 0; n < 12; n++) {
+      window.dispatchEvent(new WheelEvent('wheel', { ctrlKey: true, deltaY: -12, clientX: at.x, clientY: at.y, cancelable: true }));
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    await new Promise((r) => setTimeout(r, 2500));
+    const named = [...document.querySelectorAll<HTMLElement>('[data-canvas-layer] > div')].filter((t) => t.style.getPropertyValue('anchor-name'));
+    const a = c.activeImage();
+    const f = document.querySelector('.focus-frame')!.getBoundingClientRect();
+    return { named: named.length, off: Math.hypot(f.left + f.width / 2 - (a.left + a.width / 2), f.top + f.height / 2 - (a.top + a.height / 2)) };
+  });
+  // One tile carries the frame's anchors (a stale one elsewhere would pull it off), and it is round the active image.
+  expect(result.named).toBe(1);
+  expect(result.off).toBeLessThan(1);
+});
+

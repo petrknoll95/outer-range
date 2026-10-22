@@ -1,7 +1,8 @@
 import { gsap } from 'gsap';
 import { FocusCaption } from './caption';
 import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, STEP, ZOOM_DURATION } from './config';
-import { flightTravel } from './flight';
+import type { FlightView } from './flight';
+import { flightFar, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
 import { attachInput } from './input';
@@ -156,10 +157,14 @@ function tileAt(x: number, y: number): CellRect | null {
   return target && root.contains(target) ? renderer.rectOf(target) : null;
 }
 
-/** Glide the clicked image's grid centre to the middle of the screen. */
-function centreAt(x: number, y: number, t: number): void {
+/**
+ * A click on an image. Zoomed out, it opens the focused view on it (zooming in, centred);
+ * zoomed in, it glides the image's grid centre to the middle of the screen.
+ */
+function tapAt(x: number, y: number, t: number): void {
   const rect = tileAt(x, y);
   if (!rect) return;
+  if (zoomState === 'out') return zoomInOn(rect, t);
   // Measure against where the camera is heading, so a click mid-scroll still centres.
   const { dx, dy } = centerDelta(rect, physics.tx, physics.ty, physics.tz, geometry.vw, geometry.vh);
   physics.push(GLIDE, t, dx, dy, focusDuration(Math.hypot(dx, dy)));
@@ -211,7 +216,7 @@ attachInput({
   root,
   physics,
   wake,
-  tap: centreAt,
+  tap: tapAt,
   zoom: setZoom,
   toggleZoom,
   enabled: () => !flight,
@@ -305,6 +310,7 @@ function go(next: Route): void {
   route = next;
   document.title = ROUTES[next].title;
   showLink(next);
+  showAbout(next === 'about');
   if (next === 'about') leaveCanvas();
   else if (flight) turn(0);
 }
@@ -335,12 +341,15 @@ function stepFlight(): void {
   const duration = still ? FLIGHT_REDUCED_DURATION : f.to === 1 ? FLIGHT_DURATION : FLIGHT_RETURN_DURATION;
   f.u = Math.min(1, Math.max(0, f.u + ((f.to === 1 ? 1 : -1) * (t - f.last)) / duration));
   f.last = t;
-  renderer.drawFlight(flightTravel(f.u), still);
+  const travel = flightTravel(f.u);
+  renderer.drawFlight(travel, still);
+  drawAbout(travel, still);
   if (f.u !== f.to) return;
   // Flown past: only the header is left, and nothing to draw until it turns back.
   if (f.to === 1) return sleep();
   // Back where it was: browse on from exactly here.
   renderer.endFlight();
+  aboutLayer.removeAttribute('style');
   flight = null;
   delete document.documentElement.dataset.leaving;
   relayout();
@@ -385,6 +394,33 @@ function restoreView(): boolean {
   physics.jumpTo(view.cx * geometry.s - geometry.vw / 2 / z, view.cy * geometry.s - geometry.vh / 2 / z, z);
   if (zoomState === 'in') physics.setPaging(geometry.pitch);
   return true;
+}
+
+// The about view's text (Site.astro), a layer behind the canvas.
+const about = document.querySelector<HTMLElement>('[data-about]')!;
+const aboutLayer = about.querySelector<HTMLElement>('[data-about-layer]')!;
+const far: FlightView = { scale: 1, opacity: 1, blur: 0 };
+
+/** Which view is showing; the other is inert: no clicks, focus or scrolls. */
+function showAbout(on: boolean): void {
+  about.inert = !on;
+  root.inert = on;
+  if (on) about.dataset.state = 'in';
+  else delete about.dataset.state;
+}
+
+/**
+ * Draw the about text as the far plane with the camera `travel` in (flightFar): coming
+ * towards the camera from behind the canvas as it flies in, receding as it flies back.
+ * `still` (reduced motion): it only fades.
+ */
+function drawAbout(travel: number, still: boolean): void {
+  flightFar(travel, far);
+  aboutLayer.style.opacity = far.opacity.toFixed(3);
+  aboutLayer.style.transform = still || far.scale === 1 ? '' : `scale(${far.scale.toFixed(4)})`;
+  // The blur is drawn before the scale: ask for the share that comes out at far.blur on screen.
+  const blur = still ? 0 : far.blur / far.scale;
+  aboutLayer.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
 }
 
 // The header link: About on the canvas, Back on the about view.
@@ -443,6 +479,7 @@ if (route === 'about' || arriving) {
   renderer.beginFlight();
   flight = { u: 1, to: 1, last: now() };
   renderer.drawFlight(flightTravel(1), reducedMotion.matches);
+  drawAbout(flightTravel(1), reducedMotion.matches);
   // Coming back to the canvas: fly in.
   if (arriving) turn(0);
 } else {

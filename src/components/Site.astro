@@ -9,6 +9,7 @@ import type { ClientProject } from '../canvas/projects';
 import { resolveProjects } from '../canvas/projects';
 import type { CanvasData, ClientImage } from '../canvas/renderer';
 import type { Aspect } from '../canvas/world';
+import { Content as About } from '../content/about.md';
 import Header from './Header.astro';
 
 /**
@@ -71,11 +72,28 @@ const data = JSON.stringify({ sharpEdge, images, projects } satisfies CanvasData
 <Header route={route} />
 <main
   data-canvas
+  inert={route === 'about'}
   aria-label="Image canvas. Drag, scroll or use the arrow keys to move around; pinch, ctrl-scroll or plus and minus to zoom."
-  class="fixed inset-0 cursor-grab touch-none overflow-hidden select-none data-dragging:cursor-grabbing"
+  class="fixed inset-0 z-[1] cursor-grab touch-none overflow-hidden select-none data-dragging:cursor-grabbing"
 >
   <div data-canvas-layer class="absolute inset-0"></div>
 </main>
+<!--
+  The about view: a narrow column centred in the window, scrolling on its own when it runs
+  longer (src/content/about.md). It is a layer behind the canvas: flying to it, the camera
+  passes through the images and it comes towards the camera from far off (main.ts). Whichever
+  of the two isn't showing is inert and lets every click and scroll through.
+-->
+<div
+  data-about
+  data-state={route === 'about' ? 'in' : undefined}
+  inert={route !== 'about'}
+  class="about-view fixed inset-0 z-0 overflow-y-auto overscroll-contain"
+>
+  <div data-about-layer class="about-layer flex min-h-full items-center justify-center px-6 pt-28 pb-24">
+    <article class="about w-full max-w-[34rem]"><About /></article>
+  </div>
+</div>
 <script is:inline type="application/json" id="canvas-data" set:html={data} />
 <script>
   import '../canvas/main';

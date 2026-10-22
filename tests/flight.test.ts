@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_FADE_FROM, SEED } from '../src/canvas/config';
-import { FLIGHT_TRAVEL, flightDepth, flightTravel, flightView } from '../src/canvas/flight';
+import { FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_FADE_FROM, FLIGHT_FAR_BLUR, SEED } from '../src/canvas/config';
+import { FLIGHT_TRAVEL, flightDepth, flightFar, flightTravel, flightView } from '../src/canvas/flight';
 
 const view = (depth: number, u: number) => flightView(depth, flightTravel(u), { scale: 0, opacity: 0, blur: 0 });
 const depth = fc.double({ min: 1, max: 1 + FLIGHT_DEPTH_SPREAD, maxExcluded: true, noNaN: true });
@@ -96,5 +96,24 @@ describe('the flight out of the canvas', () => {
       const share = depths.filter((d) => d >= lo && d < lo + FLIGHT_DEPTH_SPREAD / 5).length / depths.length;
       expect(share).toBeGreaterThan(0.15);
     }
+  });
+
+  it('the far plane (the about text) comes towards the camera: small, faint and soft far off, its own size, opaque and sharp on arrival', () => {
+    const far = (u: number) => flightFar(flightTravel(u), { scale: 0, opacity: 0, blur: 0 });
+    expect(far(0).opacity).toBe(0);
+    expect(far(0).scale).toBeLessThan(0.4);
+    expect(far(0).blur).toBeCloseTo(FLIGHT_FAR_BLUR, 9);
+    expect(far(1)).toEqual({ scale: 1, opacity: 1, blur: 0 });
+    // Coming closer the whole way, and behind every image: it never grows past its own size.
+    fc.assert(
+      fc.property(progress, progress, (a, b) => {
+        const [u0, u1] = a <= b ? [a, b] : [b, a];
+        const [v0, v1] = [{ ...far(u0) }, far(u1)];
+        expect(v1.scale).toBeGreaterThanOrEqual(v0.scale);
+        expect(v1.opacity).toBeGreaterThanOrEqual(v0.opacity);
+        expect(v1.blur).toBeLessThanOrEqual(v0.blur + 1e-12);
+        expect(v1.scale).toBeLessThanOrEqual(1);
+      }),
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_EASE, FLIGHT_FADE_FROM, FLIGHT_FADE_TO } from './config';
+import { FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_EASE, FLIGHT_FADE_FROM, FLIGHT_FADE_TO, FLIGHT_FAR, FLIGHT_FAR_BLUR, FLIGHT_FAR_FADE } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 
@@ -46,3 +46,20 @@ export function flightView(depth: number, travel: number, out: FlightView): Flig
   out.blur = FLIGHT_BLUR * smoothstep(Math.min(1, r / FLIGHT_FADE_TO));
   return out;
 }
+
+/**
+ * The far plane (the about view's text) with the camera `travel` in. It sits FLIGHT_FAR
+ * beyond where the camera stops, so by perspective it is drawn FLIGHT_FAR / (distance left)
+ * as big: small and far off as the flight sets out, its own size when the camera arrives.
+ * Writes into `out`.
+ */
+export function flightFar(travel: number, out: FlightView): FlightView {
+  const t = Math.min(Math.max(0, travel), FLIGHT_TRAVEL);
+  out.scale = FLIGHT_FAR / (FLIGHT_TRAVEL + FLIGHT_FAR - t);
+  out.opacity = smoothstep(Math.min(1, Math.max(0, (t / FLIGHT_TRAVEL - FLIGHT_FAR_FADE) / (1 - FLIGHT_FAR_FADE))));
+  // Out of focus far off, sharp in the focal plane.
+  const start = FLIGHT_FAR / (FLIGHT_TRAVEL + FLIGHT_FAR);
+  out.blur = (FLIGHT_FAR_BLUR * (1 - out.scale)) / (1 - start);
+  return out;
+}
+

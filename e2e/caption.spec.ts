@@ -187,7 +187,7 @@ test('paging to another image switches the caption: out, then the new one in', a
     const el = document.querySelector<HTMLElement>('.focus-caption')!;
     // Each change's new value is the next one's old value, or what it is now for the last.
     new MutationObserver((records) =>
-      records.forEach((r, n) =>
+      records.forEach((_, n) =>
         (window as unknown as { __state: (s: string) => void }).__state(records[n + 1]?.oldValue ?? el.dataset.state ?? ''),
       ),
     ).observe(el, { attributes: true, attributeFilter: ['data-state'], attributeOldValue: true });

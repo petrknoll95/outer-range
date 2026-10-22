@@ -10,8 +10,6 @@ interface Api {
   route: () => 'home' | 'about';
   activeImage: () => { image: number } | null;
 }
-const api = () => (window as unknown as { __canvas: Api }).__canvas;
-
 async function open(page: Page): Promise<void> {
   await page.goto('/?test');
   await settled(page);
@@ -122,6 +120,8 @@ test('About flies the camera into the canvas: every image grows outward at its o
 }) => {
   await open(page);
   await sampleTiles(page);
+  // The canvas alone: the about view's text, coming in over it, is checked in about.spec.
+  await page.addStyleTag({ content: '[data-about] { visibility: hidden !important; }' });
   const video = await screencast(page);
   await enterAbout(page);
   await page.waitForTimeout(500);
@@ -340,9 +340,10 @@ test('a change of mind mid-flight turns it round from where it has got to', asyn
   expect(await view(page)).toEqual(before);
 });
 
-test('opened at /about: blank under the header, and Back flies the canvas in', async ({ page }) => {
+test('opened at /about: the canvas is flown past, and Back flies it in', async ({ page }) => {
   await page.goto('/about?test');
   await page.waitForFunction(() => (window as unknown as { __canvas?: Api }).__canvas?.flight()?.u === 1);
+  await page.addStyleTag({ content: '[data-about] { visibility: hidden !important; }' });
   expect(uniformColour(await page.screenshot())).not.toBeNull();
   expect(await label(page)).toEqual(['Back', '/']);
   await page.getByRole('link', { name: 'Back' }).click();

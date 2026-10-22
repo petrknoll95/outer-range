@@ -69,8 +69,11 @@ export class FocusFrame {
       return;
     }
     if (!this.to || this.el.hidden || this.concealed) {
-      // First image, or out of sight: go straight there, no hand-over.
+      // First image, or out of sight: go straight there, no hand-over. Both names come off
+      // the images it was between (mid hand-over they are two): a name left on any other
+      // tile would win the anchor whenever that tile comes later in the page.
       this.name(this.from, null);
+      this.name(this.to, null);
       this.from = this.to = tile;
       this.name(tile, `${FROM}, ${TO}`);
       this.restart(1, 0, 0, 0, 0);

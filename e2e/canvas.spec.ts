@@ -148,33 +148,49 @@ test('a press that moves less than the threshold is a tap, not a drag', async ({
   expect(await camera(page)).toEqual(before);
 });
 
-test('clicking an image glides it to the centre', async ({ page }) => {
+test('clicking an image opens the focused view on it; zoomed in, clicking another glides to it', async ({ page }) => {
   await open(page);
-  // A tile that is fully on screen, off-centre, and the one drawn on top at its centre.
-  const target = await page.evaluate(() => {
-    const tiles = window.__canvas.renderer
-      .visibleCells()
-      .filter((t) => t.left > 20 && t.top > 20 && t.left + t.width < 1420 && t.top + t.height < 880)
-      .sort((a, b) => Math.hypot(b.left + b.width / 2 - 720, b.top + b.height / 2 - 450) - Math.hypot(a.left + a.width / 2 - 720, a.top + a.height / 2 - 450));
-    for (const t of tiles) {
-      const x = t.left + t.width / 2;
-      const y = t.top + t.height / 2;
-      if (window.__canvas.renderer.rectOf(document.elementFromPoint(x, y)!)) return { ...t, x, y };
-    }
-    return null;
-  });
+  // A tile fully on screen, off centre, and the one drawn on top at its centre.
+  const offCentre = () =>
+    page.evaluate(() => {
+      const tiles = window.__canvas.renderer
+        .visibleCells()
+        .filter((t) => t.opacity > 0.05 && t.left > 20 && t.top > 20 && t.left + t.width < 1420 && t.top + t.height < 880)
+        .sort((a, b) => Math.hypot(b.left + b.width / 2 - 720, b.top + b.height / 2 - 450) - Math.hypot(a.left + a.width / 2 - 720, a.top + a.height / 2 - 450));
+      for (const t of tiles) {
+        const x = t.left + t.width / 2;
+        const y = t.top + t.height / 2;
+        if (Math.hypot(x - 720, y - 450) > 150 && window.__canvas.renderer.rectOf(document.elementFromPoint(x, y)!)) return { ...t, x, y };
+      }
+      return null;
+    });
+  const target = (await offCentre())!;
   expect(target).not.toBeNull();
-  expect(Math.hypot(target!.x - 720, target!.y - 450)).toBeGreaterThan(150);
-  await page.mouse.click(target!.x, target!.y);
+  await page.mouse.click(target.x, target.y);
   await settled(page);
-  const after = await page.evaluate(
-    (t) => window.__canvas.renderer.visibleCells().find((c) => c.i === t.i && c.j === t.j)!,
-    target!,
-  );
-  expect(after.left + after.width / 2).toBeCloseTo(720, 2);
-  expect(after.top + after.height / 2).toBeCloseTo(450, 2);
-  // At the centre the lens leaves it full size.
-  expect(after.scale).toBe(1);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('in');
+  expect((await camera(page)).z).toBeCloseTo(await page.evaluate(() => window.__canvas.zoomInLevel()), 6);
+  let t = await tileOf(page, target);
+  expect(t.left + t.width / 2).toBeCloseTo(720, 1);
+  expect(t.top + t.height / 2).toBeCloseTo(450, 1);
+
+  // Zoomed in, a click on a neighbour (faded, at the edge) glides it to the centre, still zoomed in.
+  const next = await page.evaluate(() => {
+    const c = window.__canvas;
+    const a = c.activeImage()!;
+    const n = c.renderer
+      .visibleCells()
+      .filter((t) => (t.i !== a.i || t.j !== a.j) && t.left + t.width / 2 > 40 && t.left + t.width / 2 < 1400 && t.top + t.height / 2 > 40 && t.top + t.height / 2 < 860)
+      .find((t) => c.renderer.rectOf(document.elementFromPoint(t.left + t.width / 2, t.top + t.height / 2)!));
+    return n ? { ...n, x: n.left + n.width / 2, y: n.top + n.height / 2 } : null;
+  });
+  expect(next).not.toBeNull();
+  await page.mouse.click(next!.x, next!.y);
+  await settled(page);
+  expect(await page.evaluate(() => window.__canvas.zoomState())).toBe('in');
+  t = await tileOf(page, next!);
+  expect(t.left + t.width / 2).toBeCloseTo(720, 1);
+  expect(t.top + t.height / 2).toBeCloseTo(450, 1);
 });
 
 test('wheel pans both axes', async ({ page }) => {
