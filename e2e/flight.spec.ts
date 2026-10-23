@@ -309,6 +309,33 @@ test('Back flies the canvas back in, the opposite way, to exactly the view it le
   await expect(page.locator('.focus-caption')).toBeVisible();
 });
 
+test('Esc on the about view goes back like Back does, to the view it left, zoomed in or out', async ({ page }) => {
+  await open(page);
+  for (const zoom of ['out', 'in'] as const) {
+    if (zoom === 'in') {
+      // Focus is still on the header link, which would take Space for itself.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.keyboard.press(' ');
+      await settled(page);
+    }
+    const before = await view(page);
+    expect(before.zoom).toBe(zoom);
+    await page.getByRole('link', { name: 'About' }).click();
+    await landed(page, 1);
+    await page.keyboard.press('Escape');
+    await page.waitForURL((url) => url.pathname === '/');
+    await landed(page, 0);
+    expect(await view(page)).toEqual(before);
+    expect(await label(page)).toEqual(['About', '/about']);
+  }
+  // Opened at /about, with no canvas behind it in history: Esc still flies the canvas in.
+  await page.goto('/about?test');
+  await landed(page, 1);
+  await page.keyboard.press('Escape');
+  await page.waitForURL((url) => url.pathname === '/');
+  await landed(page, 0);
+});
+
 test('the browser’s back and forward buttons run the same flights', async ({ page }) => {
   await open(page);
   const before = await view(page);

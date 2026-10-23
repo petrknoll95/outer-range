@@ -120,6 +120,21 @@ test('zooming in on an image off centre is smooth, and the frame never jumps whe
   expect(zoom.rows.at(-1)!.fo).toBe(1);
 });
 
+test('Esc backs out of the focused view, and does nothing zoomed out', async ({ page }) => {
+  await page.goto('/?test');
+  await settled(page);
+  const zoomState = () => page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.zoomState());
+  await page.keyboard.press('Escape');
+  await settled(page);
+  expect(await zoomState()).toBe('out');
+  await page.keyboard.press(' ');
+  await settled(page);
+  expect(await zoomState()).toBe('in');
+  await page.keyboard.press('Escape');
+  await settled(page);
+  expect(await zoomState()).toBe('out');
+});
+
 test('zooming back out is smooth too', async ({ page }) => {
   await page.goto('/?test');
   await settled(page);

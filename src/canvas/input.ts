@@ -29,6 +29,8 @@ export interface InputOptions {
   zoom?: (direction: 1 | -1, x: number, y: number, t: number) => void;
   /** Space or Enter was pressed at time t (s): zoom into the active image, or back out. */
   toggleZoom?: (t: number) => void;
+  /** Esc was pressed at time t (s): back out of the focused view. */
+  escape?: (t: number) => void;
   /** While this is false the canvas ignores input (e.g. while leaving it for another page). */
   enabled?: () => boolean;
   /** Current on-screen pitch and viewport, px, for keyboard steps. */
@@ -65,7 +67,7 @@ function isControl(target: EventTarget | null): boolean {
  * - Zoom in or out: trackpad pinch (ctrl+wheel in Chrome and Firefox, gesture events in
  *   Safari), ctrl/⌘ + mouse wheel, two-finger touch pinch, and + − 0 keys. Each gesture
  *   asks for one step (see `zoom`); the rest of it is ignored. Space and Enter toggle
- *   between the two (see `toggleZoom`).
+ *   between the two (see `toggleZoom`), and Esc backs out of the focused view.
  * - Pointer: mouse, pen and one-finger touch drag with pointer capture. A press stays a
  *   tap until it travels DRAG_THRESHOLD px; a click that ends a drag is swallowed.
  * - Arrow keys pan by KEY_STEP pitches, with Shift by KEY_PAGE of the viewport.
@@ -75,7 +77,7 @@ const identity = (x: number, y: number, out: { x: number; y: number }) => {
   out.y = y;
 };
 
-export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, enabled = () => true, metrics, toCanvas = identity }: InputOptions): () => void {
+export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, escape, enabled = () => true, metrics, toCanvas = identity }: InputOptions): () => void {
   const point = { x: 0, y: 0 };
   /** Screen → canvas point. Returns a shared object: read it before the next call. */
   const canvas = (x: number, y: number) => {
@@ -280,6 +282,9 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, enable
         if (isControl(e.target)) return;
         // Held down, it would flip in and out with every repeat.
         if (!e.repeat) toggleZoom?.(t);
+        break;
+      case 'Escape':
+        if (!e.repeat) escape?.(t);
         break;
       case 'ArrowLeft':
       case 'ArrowRight':

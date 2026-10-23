@@ -16,6 +16,13 @@ const { title, description } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
+    <!-- The theme last picked with "L" (src/canvas/main.ts), set before the first paint so it never flashes the other one. -->
+    <script is:inline>
+      try {
+        const theme = localStorage.getItem('theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch {}
+    </script>
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="data:," />
     <title>{title}</title>

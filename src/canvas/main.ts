@@ -212,6 +212,11 @@ function toggleZoom(t: number): void {
   else zoomOut(t);
 }
 
+/** Esc: out of the focused view, back to the canvas. */
+function backOut(t: number): void {
+  if (zoomState === 'in') zoomOut(t);
+}
+
 attachInput({
   root,
   physics,
@@ -219,6 +224,7 @@ attachInput({
   tap: tapAt,
   zoom: setZoom,
   toggleZoom,
+  escape: backOut,
   enabled: () => !flight,
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
@@ -466,13 +472,47 @@ link.addEventListener('click', (e) => {
   if (route === 'home') {
     history.pushState({ canvas: true }, '', ROUTES.about.path + location.search);
     go('about');
-  } else if ((history.state as { canvas?: boolean } | null)?.canvas) {
+  } else {
+    backToCanvas();
+  }
+});
+
+/** From the about view back to the canvas, as it was left (zoomed in or out). */
+function backToCanvas(): void {
+  if ((history.state as { canvas?: boolean } | null)?.canvas) {
     // Arrived here from the canvas: Back is going back in history, so Forward comes here again.
     history.back();
   } else {
     history.pushState({ canvas: true }, '', ROUTES.home.path + location.search);
     go('home');
   }
+}
+
+// "L": the other theme, light or dark, whichever the page isn't showing, kept for next time
+// (Layout.astro sets it again before the first paint). A quick cross-fade where the browser can.
+const THEME_KEY = 'theme';
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 'l' || e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+  const html = document.documentElement;
+  const next = (html.dataset.theme ?? (systemDark.matches ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark';
+  const apply = () => {
+    html.dataset.theme = next;
+  };
+  if (document.startViewTransition && !reducedMotion.matches) document.startViewTransition(apply);
+  else apply();
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    // Storage blocked: it switches, but isn't kept.
+  }
+});
+
+// Esc on the about view goes back too, like the Back link. (On the canvas it backs out of the focused view: input.ts.)
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.repeat || e.defaultPrevented || route !== 'about') return;
+  e.preventDefault();
+  backToCanvas();
 });
 // The browser's back and forward buttons, including back after a reload of the about view.
 window.addEventListener('popstate', () => go(routeAt(location.pathname)));

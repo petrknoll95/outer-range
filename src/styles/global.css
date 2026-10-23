@@ -12,11 +12,22 @@
   --font-serif: var(--font-timeless-serif);
 }
 
+/* Dark when the system is, unless the page is set to light, and whenever it is set to dark
+   ("L" switches it: src/canvas/main.ts). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-canvas: oklch(0.165 0.003 90);
     --color-ink: oklch(0.93 0.004 90);
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --color-canvas: oklch(0.165 0.003 90);
+  --color-ink: oklch(0.93 0.004 90);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 @layer base {
