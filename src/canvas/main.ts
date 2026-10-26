@@ -14,7 +14,8 @@ import { DEFAULT_LENS, Lens } from './lens';
 import type { Snapper } from './physics';
 import { CameraPhysics, GLIDE, ZOOM_TO } from './physics';
 import { ProjectLabel } from './projectlabel';
-import { ProjectView } from './projectview';
+import type { Guest } from './project';
+import { clusterBounds, projectGuests } from './project';
 import type { ClientProject } from './projects';
 import { createProjectIndex } from './projects';
 import type { CameraStep, CanvasData } from './renderer';
@@ -41,10 +42,7 @@ const frame = new FocusFrame(root);
 const caption = new FocusCaption(document.body);
 // The active image's project, above the frame, zoomed out and in.
 const projectLabel = new ProjectLabel(frame.el);
-// The focused image's tile (the project view starts from it and hides it while it shows).
-let activeTile: HTMLElement | null = null;
 renderer.onActiveChange = (tile) => {
-  activeTile = tile;
   frame.focus(tile);
   updateCaption();
   updateProjectLabel();
@@ -72,53 +70,248 @@ let zoomIn = 1;
  * riding along with the frame; it comes back once all is still again.
  */
 function updateCaption(): void {
-  const still = zoomState === 'in' && !flight && !projectView.shown && physics.isStill() && renderer.isAtRest() && !frame.moving;
+  const still = zoomState === 'in' && !flight && !project && physics.isStill() && renderer.isAtRest() && !frame.moving;
   const active = still ? renderer.activeImage() : null;
   caption.show(active ? data.images[active.image]! : null);
 }
 
 /**
- * The project view (projectview.ts): "P" in the focused view brings every image of the focused
- * image's project round a ring, over the dimmed canvas; "P" again, Esc or a click takes them
- * away. The canvas ignores input until they have gone, so the focused image returns to exactly
- * where it left. Its tile hides under its moving copy meanwhile; data-project on <html> dims
- * the canvas and stands the frame and caption aside (global.css).
+ * The project view (project.ts): "P" in the focused view narrows the canvas to the focused
+ * image's project. The camera draws back from the focused image, the cells round it take the
+ * rest of the project, each image gliding in from where its nearest copy is on the canvas, and
+ * everything else fades away: a small canvas of the project alone.
+ *
+ * Landed, it is browsed like the canvas, dragged and scrolled, though the project is kept in
+ * view (keepProjectInView) and its images trail less than they do there. Leaving sends the images back
+ * where they came from as the camera returns, from wherever it has got to: "P" or Esc, to the
+ * image the view was opened on; focusing one of the images (a click, Space, zooming in), to
+ * that one, following it back to where it really is on the canvas and landing in the focused
+ * view on it.
+ *
+ * One progress drives the way in and out, camera included, so the images move in step with the
+ * zoom: a critically damped spring chasing a goal that itself eases towards 1 (in) or 0 (out).
+ * The goal sets off gently, so the motion does too, building up rather than kicking off at full
+ * acceleration as a bare spring would; changing direction mid-way keeps the spring's momentum
+ * and turns smoothly, never jumping. The canvas ignores input until it lands.
  */
-const projectView = new ProjectView(document.body, data.images, () => geometry.radius / geometry.s, () => reducedMotion.matches);
-projectView.onDismiss = () => closeProject();
-let projectTile: HTMLElement | null = null;
+/** The spring's and its goal's rates, 1/s: together they settle in about 0.9 s. */
+const PROJECT_RATE = 10;
+const PROJECT_GOAL_RATE = 10;
+/** Of the window the project may fill, and how much is kept clear above and below for the header and info bar, px. */
+const PROJECT_FILL = 0.84;
+const PROJECT_CLEAR = 72;
+/** Landed, how close to the window's sides the project may be left, px. */
+const PROJECT_MARGIN = 24;
+/**
+ * The furthest the camera draws back for it. A big project needs further than the canvas's own
+ * zoomed-out view (zoom 1): its cluster is wider than the screen there.
+ */
+const PROJECT_MIN_ZOOM = 0.4;
+/** With reduced motion nothing moves: it only fades, this long, s. */
+const PROJECT_FADE = 0.25;
+
+interface ProjectState {
+  guests: Guest[];
+  /** Round its images, world px: the camera's centre is kept inside it. */
+  bounds: CellRect;
+  /** The camera's centre (world px) and zoom on the focused image it was opened on; where the way out ends (there, or leaving onto another image, on that one); and on the whole project. */
+  home: { x: number; y: number; z: number };
+  from: { x: number; y: number; z: number };
+  overview: { x: number; y: number; z: number };
+  /** Where the way in lands: the overview, or, coming back after turning round, where it was left. */
+  to: { x: number; y: number; z: number };
+  /** Landed: the camera is the canvas's own again, and takes input. */
+  free: boolean;
+  /** The spring: where it is (0 the focused view, 1 the project), how fast it is going, and the goal it chases. */
+  u: number;
+  v: number;
+  goal: number;
+  target: 0 | 1;
+  last: number;
+}
+let project: ProjectState | null = null;
+const projectMoving = () => project !== null && (project.u !== project.target || project.v !== 0);
+/** Moving perceptibly: short of the last few thousandths the spring takes to come fully to rest. */
+const projectInMotion = () => project !== null && (Math.abs(project.target - project.u) > 0.003 || Math.abs(project.v) > 0.03);
 
 function openProject(): void {
-  if (zoomState !== 'in' || flight || projectView.open) return;
+  if (project) {
+    // Mid-way out: turn back in.
+    if (project.target === 0) setProjectTarget(1);
+    return;
+  }
+  if (zoomState !== 'in' || flight) return;
   const active = renderer.activeImage();
+  const rect = renderer.activeRect();
   const n = active ? projects.projectOf(active.image) : -1;
-  if (!active || n < 0 || !activeTile) return;
-  const project = projects.projects[n]!;
-  // Round the ring in the project's own order, from the focused image.
-  const at = project.images.indexOf(active.image);
-  const members = [...project.images.slice(at), ...project.images.slice(0, at)];
-  projectTile = activeTile;
+  if (!active || !rect || n < 0) return;
+  const members = projects.projects[n]!.images;
+  const at = members.indexOf(active.image);
+  const others = [...members.slice(at + 1), ...members.slice(0, at)];
+  // With no copy near, a guest comes from a screen-width off in its direction.
+  const guests = projectGuests(world, geometry, active.i, active.j, others, (k) => data.images[k]!.aspect, geometry.vw / zoomIn);
+  const bounds = clusterBounds(rect, guests);
+  const z = physics.z;
+  const fit = Math.min((geometry.vw * PROJECT_FILL) / bounds.width, ((geometry.vh - 2 * PROJECT_CLEAR) * PROJECT_FILL) / bounds.height);
+  const overview = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, z: Math.min(z, Math.max(PROJECT_MIN_ZOOM, fit)) };
+  project = {
+    guests,
+    bounds,
+    home: { x: physics.x + geometry.vw / 2 / z, y: physics.y + geometry.vh / 2 / z, z },
+    from: { x: physics.x + geometry.vw / 2 / z, y: physics.y + geometry.vh / 2 / z, z },
+    overview,
+    to: overview,
+    free: false,
+    u: 0,
+    v: 0,
+    goal: 0,
+    target: 1,
+    last: now(),
+  };
+  // The camera is placed from the progress alone: no paging snap, no trails.
+  physics.setPaging(0);
+  renderer.setTrails(false);
+  renderer.setProject(guests, active, rect.left + rect.width / 2, rect.top + rect.height / 2, overview.z);
   document.documentElement.dataset.project = 'open';
-  projectView.show(project.title, members, active);
-  projectTile.style.visibility = 'hidden';
+  playVideos();
+  updateCaption();
+  wake();
+}
+
+/** Leave the project view: back to the image it was opened on, or (landed) onto the one of its images at `onto`. */
+function closeProject(onto: CellRect | null = null): void {
+  if (project?.target !== 1) return;
+  if (project.free) unland(onto);
+  setProjectTarget(0);
+}
+
+/** Landed: the camera and input are the canvas's again, at the overview's zoom (zooming in leaves: see zoomInOn). */
+function land(): void {
+  const p = project!;
+  p.free = true;
+  // (Turned back on its way out onto another image: leaving is back to the first again.)
+  p.from = p.home;
+  zoomState = 'out';
+  physics.setZoomLimits(Math.min(p.overview.z, physics.z), Math.max(p.overview.z, physics.z), geometry.vw / 2, geometry.vh / 2);
+  physics.setPaging(0);
+  renderer.projectFree = true;
+  renderer.setTrails(!reducedMotion.matches);
   updateCaption();
 }
 
-function closeProject(): void {
-  if (!projectView.open) return;
-  const tile = projectTile;
-  document.documentElement.dataset.project = 'closing';
-  // With reduced motion the copies only fade, over the tile already back in place.
-  if (reducedMotion.matches && tile) tile.style.visibility = '';
-  projectView.hide(renderer.activeImage() ?? { left: 0, top: 0, width: 0, height: 0 }, endProject);
+/**
+ * Leaving after browsing: the spring takes the camera back from wherever it is now, to the image
+ * it was opened on or onto the one at `onto`. Onto a guest, the camera ends on its copy, where the
+ * guest goes back to: it follows the image home.
+ */
+function unland(onto: CellRect | null): void {
+  const p = project!;
+  physics.halt();
+  const z = physics.z;
+  p.free = false;
+  p.to = { x: physics.x + geometry.vw / 2 / z, y: physics.y + geometry.vh / 2 / z, z };
+  const guest = onto && p.guests.find((g) => g.to.left === onto.left && g.to.top === onto.top);
+  if (guest?.copy) {
+    p.from = { x: guest.from.left + guest.from.width / 2, y: guest.from.top + guest.from.height / 2, z: zoomIn };
+    // Sharp all the way in, as when zooming in on the canvas.
+    renderer.prepare(onto!, zoomIn);
+  }
+  p.u = p.goal = 1;
+  p.v = 0;
+  physics.setPaging(0);
+  renderer.projectFree = false;
+  renderer.setTrails(false);
+  // The frame goes with it to the image it lands on.
+  renderer.projectFocus(guest?.copy ? onto : null);
+  clearTimeout(frameTimer);
+  frame.reveal();
+  updateCaption();
 }
 
-/** Gone: the tile back, the canvas undimmed, the caption free to come back. */
+/**
+ * The project is kept in view: let go with any of it off screen (or under the header or info
+ * bar), it glides back until all of it is in view again, and only as far as that.
+ */
+function keepProjectInView(t: number): void {
+  const { bounds } = project!;
+  const z = physics.z;
+  // The range of camera centres that show it all, per axis (its middle, if it can't all show).
+  const keep = (start: number, size: number, half: number, at: number) => {
+    const lo = start + size - half;
+    const hi = start + half;
+    return lo > hi ? start + size / 2 - at : Math.min(hi, Math.max(lo, at)) - at;
+  };
+  const cx = physics.x + geometry.vw / 2 / z;
+  const cy = physics.y + geometry.vh / 2 / z;
+  const dx = keep(bounds.left, bounds.width, (geometry.vw / 2 - PROJECT_MARGIN) / z, cx) * z;
+  const dy = keep(bounds.top, bounds.height, (geometry.vh / 2 - PROJECT_CLEAR) / z, cy) * z;
+  if (Math.hypot(dx, dy) > 0.5) physics.push(GLIDE, t, dx, dy, focusDuration(Math.hypot(dx, dy)));
+}
+
+function setProjectTarget(target: 0 | 1): void {
+  project!.target = target;
+  project!.last = now();
+  document.documentElement.dataset.project = target === 1 ? 'open' : 'closing';
+  playVideos();
+  wake();
+}
+
+/** One frame of the project view: the spring on, and the camera and images placed from it. */
+function stepProject(t: number): void {
+  const p = project!;
+  const dt = Math.min(0.05, Math.max(0, t - p.last));
+  p.last = t;
+  let place: number;
+  if (reducedMotion.matches) {
+    p.u = p.goal = Math.min(1, Math.max(0, p.u + (Math.sign(p.target - p.u) * dt) / PROJECT_FADE));
+    p.v = 0;
+    place = p.target;
+  } else {
+    for (let left = dt; left > 0; left -= 1 / 240) {
+      const h = Math.min(left, 1 / 240);
+      p.goal += (p.target - p.goal) * PROJECT_GOAL_RATE * h;
+      p.v += (PROJECT_RATE ** 2 * (p.goal - p.u) - 2 * PROJECT_RATE * p.v) * h;
+      p.u += p.v * h;
+    }
+    if (Math.abs(p.target - p.u) < 5e-4 && Math.abs(p.v) < 5e-3 && Math.abs(p.target - p.goal) < 5e-4) {
+      p.u = p.goal = p.target;
+      p.v = 0;
+    }
+    p.u = Math.min(1, Math.max(0, p.u));
+    place = p.u;
+  }
+  // The camera: its centre straight across, its zoom evenly in log space, both by the same progress.
+  const z = Math.exp(Math.log(p.from.z) + (Math.log(p.to.z) - Math.log(p.from.z)) * place);
+  const cx = p.from.x + (p.to.x - p.from.x) * place;
+  const cy = p.from.y + (p.to.y - p.from.y) * place;
+  physics.jumpTo(cx - geometry.vw / 2 / z, cy - geometry.vh / 2 / z, z);
+  renderer.projectProgress = p.u;
+  renderer.projectPlace = place;
+  // Landed (or setting off): the videos play, or hold.
+  playVideos();
+  if (p.target === 0 && p.u === 0) endProject();
+  else if (p.target === 1 && p.u === 1 && p.v === 0) land();
+}
+
+/** Back in the focused view, exactly as it was (at once, if it was still going). */
 function endProject(): void {
-  projectView.dismiss();
-  if (projectTile) projectTile.style.visibility = '';
-  projectTile = null;
+  const p = project;
+  if (!p) return;
+  project = null;
+  zoomState = 'in';
+  physics.halt();
+  physics.jumpTo(p.from.x - geometry.vw / 2 / p.from.z, p.from.y - geometry.vh / 2 / p.from.z, p.from.z);
+  physics.setZoomLimits(1, zoomIn, geometry.vw / 2, geometry.vh / 2);
+  physics.setPaging(geometry.pitch);
+  renderer.setProject(null);
+  renderer.projectProgress = 0;
+  renderer.projectPlace = 0;
+  renderer.projectFree = false;
+  renderer.setTrails(!reducedMotion.matches);
+  clearTimeout(frameTimer);
+  frame.reveal();
   delete document.documentElement.dataset.project;
+  playVideos();
   updateCaption();
   wake();
 }
@@ -127,9 +320,10 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
   if (e.key.toLowerCase() === 'p') {
     e.preventDefault();
-    if (projectView.open) closeProject();
+    if (project?.target === 1) closeProject();
     else openProject();
-  } else if (e.key === 'Escape' && projectView.open) {
+  } else if (e.key === 'Escape' && project?.target === 1 && !project.free) {
+    // On its way in. (Landed, Esc is the canvas's: see backOut.)
     e.preventDefault();
     closeProject();
   }
@@ -145,8 +339,11 @@ function updateProjectLabel(): void {
 /** Zooming onto another image, when the frame that stepped aside comes back. */
 let frameTimer = 0;
 
-/** 0 zoomed out to 1 zoomed in, from the actual zoom, so the fade follows the animation. */
-const focusAt = (z: number) => (zoomIn > 1 ? Math.min(1, Math.max(0, (z - 1) / (zoomIn - 1))) : 0);
+/** 0 zoomed out (to the project's overview, in the project view) to 1 zoomed in, from the actual zoom, so the fade follows the animation. */
+const focusAt = (z: number) => {
+  const out = project ? project.overview.z : 1;
+  return zoomIn > out ? Math.min(1, Math.max(0, (z - out) / (zoomIn - out))) : 0;
+};
 
 /** The camera position that centres the image nearest the view centre; paging uses it to find neighbours. */
 const nearest = { x: 0, y: 0 };
@@ -188,19 +385,21 @@ const listeners = new Set<() => void>();
 
 function draw(vx: number, vy: number, zoomAtRest: boolean): void {
   // Mid zoom-to, tiles keep their layout until it lands.
-  renderer.update(physics.renderX, physics.renderY, physics.renderZ, vx, vy, zoomAtRest, physics.zoomingTo);
+  renderer.update(physics.renderX, physics.renderY, physics.renderZ, vx, vy, zoomAtRest, physics.zoomingTo || projectMoving());
   frame.setRadius(geometry.radius * physics.renderZ);
 }
 
 /** At rest: no motion, no image still trailing, fading or still to be snapped to. */
-const atRest = () => physics.isAtRest() && renderer.isAtRest();
+const atRest = () => physics.isAtRest() && renderer.isAtRest() && !projectMoving();
 
 function tick(): void {
   if (flight) {
     stepFlight();
     return;
   }
+  if (project && !project.free) stepProject(now());
   physics.advance(now());
+  if (project?.free && zoomState === 'out' && physics.isStill()) keepProjectInView(now());
   // Before anything is drawn moved, so a caption leaving stays where it was.
   updateCaption();
   // (A zoom-to keeps its zoom and target equal at every step; it's at rest only once it lands.)
@@ -251,6 +450,8 @@ function tapAt(x: number, y: number, t: number): void {
 /** Zoom in on the image at grid rectangle `rect`: it grows and glides to the centre in one move. */
 function zoomInOn(rect: CellRect | null, t: number): void {
   if (zoomState === 'in' || !rect) return;
+  // In the project view, focusing an image leaves it, onto that image.
+  if (project) return closeProject(rect);
   zoomState = 'in';
   // Zoomed in, the view pages from image to image, one neighbour per gesture.
   physics.setPaging(geometry.pitch);
@@ -290,9 +491,10 @@ function toggleZoom(t: number): void {
   else zoomOut(t);
 }
 
-/** Esc: out of the focused view, back to the canvas. */
+/** Esc: out of the focused view, back to the canvas (or out of the project view). */
 function backOut(t: number): void {
   if (zoomState === 'in') zoomOut(t);
+  else closeProject();
 }
 
 attachInput({
@@ -303,7 +505,7 @@ attachInput({
   zoom: setZoom,
   toggleZoom,
   escape: backOut,
-  enabled: () => !flight && !projectView.shown,
+  enabled: () => !flight && (!project || project.free),
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
 });
@@ -318,7 +520,8 @@ function toCanvas(x: number, y: number, out: { x: number; y: number }): void {
 }
 
 function relayout(): void {
-  projectView.relayout();
+  // The project view is laid out for the old size: back to the focused view, then resize.
+  if (project) endProject();
   // Mid-flight the tiles are drawn from a snapshot; catch up once back.
   if (flight) return;
   const next = computeGeometry(root.clientWidth, root.clientHeight, world, seen);
@@ -387,7 +590,8 @@ let route: Route = routeAt(location.pathname);
 
 /** Videos play on the canvas, unless motion is to be reduced: then each holds its poster frame. */
 function playVideos(): void {
-  renderer.setVideos(!reducedMotion.matches && route !== 'about');
+  // (They hold still too while the project view moves: starting several at once mid-move costs frames.)
+  renderer.setVideos(!reducedMotion.matches && route !== 'about' && !projectInMotion());
 }
 playVideos();
 
@@ -419,7 +623,7 @@ function turn(to: 0 | 1): void {
 
 function leaveCanvas(): void {
   if (flight) return turn(1);
-  if (projectView.shown) endProject();
+  if (project) endProject();
   // Hold the camera where it is drawn; nothing else moves while the flight plays.
   physics.halt();
   saveView();
@@ -666,6 +870,8 @@ if (debug || params.has('test')) {
     route: () => route,
     flight: () => (flight ? { u: flight.u, to: flight.to } : null),
     activeImage: () => renderer.activeImage(),
+    /** The project view, or null: landed (and browsable) or not, and its overview's zoom. */
+    project: () => (project ? { free: project.free, target: project.target, overview: project.overview.z } : null),
     /** At rest, every image back on its grid position, and every on-screen image decoded. */
     isSettled: () => atRest() && renderer.visibleLoaded(),
     domNodes: () => root.getElementsByTagName('*').length,
