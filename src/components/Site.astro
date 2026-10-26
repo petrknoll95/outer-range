@@ -93,58 +93,59 @@ const [aboutBefore, aboutAfter = ''] = (await compiledContent()).split('<!-- ser
   <div data-canvas-layer class="absolute inset-0"></div>
 </main>
 <!--
-  The about view: a narrow column centred in the window, scrolling on its own when it runs
-  longer (src/content/about.md). It is a layer behind the canvas: flying to it, the camera
-  passes through the images and it comes towards the camera from far off (main.ts). Whichever
-  of the two isn't showing is inert and lets every click and scroll through.
+  The about view: a narrow column centred in the window, scrolling when it runs longer
+  (src/content/about.md). It is a layer behind the canvas: flying to it, the camera passes
+  through the images and it comes towards the camera from far off (main.ts). Whichever of the
+  two isn't showing is inert and lets every click and scroll through.
+
+  It scrolls with GSAP's ScrollSmoother (main.ts): the view is its wrapper and data-about-content
+  what it moves, over the page's own scroll, which only the about view has (global.css). The
+  flight draws data-about-layer, inside it, so the two never set the same transform.
 -->
-<div
-  data-about
-  data-state={route === 'about' ? 'in' : undefined}
-  inert={route !== 'about'}
-  class="about-view fixed inset-0 z-0 overflow-y-auto overscroll-contain"
->
-  <div data-about-layer class="about-layer flex min-h-full items-center justify-center px-6 pt-40 pb-24">
-    <article class="about w-full max-w-[34rem]">
-      <Fragment set:html={aboutBefore} />
-      <section class="services" aria-label="Services">
-        <div class="services-groups">
-          {
-            (about.services as { group: string; items: string[] }[]).map(({ group, items }) => (
-              <div>
-                <h3>{group}</h3>
-                <ul>
-                  {items.map((item) => (
-                    <li>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ))
-          }
-        </div>
-      </section>
-      <Fragment set:html={aboutAfter} />
-      <section class="list" aria-labelledby="awards">
-        <h2 id="awards">Awards</h2>
-        <ul>
-          {(about.awards as string[]).map((award) => (
-            <li>{award}</li>
-          ))}
-        </ul>
-      </section>
-      <section class="list" aria-labelledby="social">
-        <h2 id="social">Social</h2>
-        <ul>
-          {(about.social as { name: string; url: string }[]).map(({ name, url }) => (
-            <li>
-              <a href={url} target="_blank" rel="me noopener">
-                {name}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </article>
+<div data-about data-state={route === 'about' ? 'in' : undefined} inert={route !== 'about'} class="about-view fixed inset-0 z-0">
+  <div data-about-content>
+    <div data-about-layer class="about-layer flex min-h-svh items-center justify-center px-6 pt-40 pb-24">
+      <article class="about w-full max-w-[34rem]">
+        <Fragment set:html={aboutBefore} />
+        <section class="services" aria-label="Services">
+          <div class="services-groups">
+            {
+              (about.services as { group: string; items: string[] }[]).map(({ group, items }) => (
+                <div>
+                  <h3>{group}</h3>
+                  <ul>
+                    {items.map((item) => (
+                      <li>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            }
+          </div>
+        </section>
+        <Fragment set:html={aboutAfter} />
+        <section class="list" aria-labelledby="awards">
+          <h2 id="awards">Awards</h2>
+          <ul>
+            {(about.awards as string[]).map((award) => (
+              <li>{award}</li>
+            ))}
+          </ul>
+        </section>
+        <section class="list" aria-labelledby="social">
+          <h2 id="social">Social</h2>
+          <ul>
+            {(about.social as { name: string; url: string }[]).map(({ name, url }) => (
+              <li>
+                <a href={url} target="_blank" rel="me noopener">
+                  {name}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </article>
+    </div>
   </div>
 </div>
 <script is:inline type="application/json" id="canvas-data" set:html={data} />

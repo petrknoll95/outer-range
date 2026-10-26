@@ -1,4 +1,6 @@
 import { gsap } from 'gsap';
+import { ScrollSmoother } from 'gsap/ScrollSmoother';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FocusCaption } from './caption';
 import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, STEP, ZOOM_DURATION } from './config';
 import type { FlightView } from './flight';
@@ -414,7 +416,24 @@ function restoreView(): boolean {
 
 // The about view's text (Site.astro), a layer behind the canvas.
 const about = document.querySelector<HTMLElement>('[data-about]')!;
-const aboutLayer = about.querySelector<HTMLElement>('[data-about-layer]')!;
+const aboutContent = about.querySelector<HTMLElement>('[data-about-content]')!;
+const aboutLayer = aboutContent.querySelector<HTMLElement>('[data-about-layer]')!;
+
+// Its scroll, smoothed: the page scrolls (only on the about view, global.css) and ScrollSmoother
+// eases the text after it. Touch scrolls natively; with reduced motion nothing is eased.
+gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
+const ABOUT_SMOOTH = 1.1;
+// Not 0: at 0 ScrollSmoother stops moving the text at all, so it would never scroll.
+const ABOUT_SMOOTH_REDUCED = 0.001;
+const smoothing = () => (reducedMotion.matches ? ABOUT_SMOOTH_REDUCED : ABOUT_SMOOTH);
+const smoother = ScrollSmoother.create({
+  wrapper: about,
+  content: aboutContent,
+  smooth: smoothing(),
+  smoothTouch: false,
+  effects: false,
+});
+reducedMotion.addEventListener('change', () => smoother.smooth(smoothing()));
 const far: FlightView = { scale: 1, opacity: 1, blur: 0 };
 
 /** Which view is showing; the other is inert: no clicks, focus or scrolls. */
@@ -432,6 +451,11 @@ function showAbout(on: boolean): void {
  */
 function drawAbout(travel: number, still: boolean): void {
   flightFar(travel, far);
+  // About the viewport's centre, however far down the text is scrolled (and wherever the smooth
+  // scroll has carried it): the content moves the layer up by its offset, so the centre is that
+  // far further down the layer.
+  const top = aboutContent.getBoundingClientRect().top;
+  aboutLayer.style.transformOrigin = `50% ${(innerHeight / 2 - top).toFixed(1)}px`;
   aboutLayer.style.opacity = far.opacity.toFixed(3);
   aboutLayer.style.transform = still || far.scale === 1 ? '' : `scale(${far.scale.toFixed(4)})`;
   // The blur is drawn before the scale: ask for the share that comes out at far.blur on screen.

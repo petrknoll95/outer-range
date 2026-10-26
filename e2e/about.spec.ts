@@ -196,16 +196,119 @@ test('the text is a layer behind the canvas: flying in it comes towards the came
   expect(leaving.at(-1)![2]).toBe(0);
 });
 
-test('on a small screen the text scrolls on its own', async ({ page }) => {
+/** How far the page is scrolled, and how far ScrollSmoother has moved the text up. */
+const scrolled = (page: Page) =>
+  page.evaluate(() => [scrollY, -new DOMMatrix(getComputedStyle(document.querySelector('[data-about-content]')!).transform).m42]);
+
+test('on a small screen the text scrolls', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 560 });
   await page.goto('/about');
-  const view = page.locator('[data-about]');
-  expect(await view.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  // The page scrolls, to the text's full height.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
   await page.mouse.move(195, 300);
   await page.mouse.wheel(0, 300);
-  await expect.poll(() => view.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+  await expect.poll(async () => (await scrolled(page))[1]!).toBeGreaterThan(100);
   // Scrolled under the header, it fades out rather than running into the wordmark.
-  expect(await view.evaluate((el) => getComputedStyle(el).maskImage)).toMatch(/linear-gradient/);
+  expect(await page.locator('[data-about]').evaluate((el) => getComputedStyle(el).maskImage)).toMatch(/linear-gradient/);
+});
+
+test('the about text scrolls smoothly: it eases after the page scroll and lands on it', async ({ page }) => {
+  await page.goto('/about');
+  await page.waitForFunction(() => document.documentElement.scrollHeight > innerHeight);
+  // In its first few hundred ms ScrollSmoother puts the text straight where the page is, unsmoothed.
+  await page.waitForTimeout(500);
+  await page.mouse.move(720, 450);
+  // Every frame from here: the page's scroll and the text's.
+  const frames = page.evaluate(
+    () =>
+      new Promise<number[][]>((resolve) => {
+        const content = document.querySelector('[data-about-content]')!;
+        const rows: number[][] = [];
+        const t0 = performance.now();
+        const tick = () => {
+          rows.push([scrollY, -new DOMMatrix(getComputedStyle(content).transform).m42]);
+          if (performance.now() - t0 < 2000) requestAnimationFrame(tick);
+          else resolve(rows);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  await page.mouse.wheel(0, 500);
+  const rows = await frames;
+  // The page is there at once; the text trails it, closing in a little every frame...
+  const after = rows.filter(([p]) => p === 500);
+  expect(after.filter(([p, t]) => t! < p! - 50).length).toBeGreaterThan(5);
+  for (let n = 1; n < after.length; n++) expect(after[n]![1]!).toBeGreaterThanOrEqual(after[n - 1]![1]! - 0.5);
+  // ...and lands on it.
+  expect(Math.round(rows.at(-1)![1]!)).toBe(500);
+});
+
+test('with reduced motion the about text scrolls without easing', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/about');
+  await page.waitForFunction(() => document.documentElement.scrollHeight > innerHeight);
+  await page.mouse.move(720, 450);
+  await page.mouse.wheel(0, 500);
+  await expect.poll(async () => (await scrolled(page))[0]!).toBe(500);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  expect(Math.round((await scrolled(page))[1]!)).toBe(500);
+});
+
+test('scrolled down the about view, the flight back and in scales about the viewport centre', async ({ page }) => {
+  await page.goto('/about?test');
+  await page.waitForFunction(() => document.documentElement.scrollHeight > innerHeight);
+  await page.waitForTimeout(500);
+  await page.evaluate(() => scrollTo(0, 900));
+  // Settled there (the smooth scroll caught up).
+  await expect.poll(async () => Math.round((await scrolled(page))[1]!), { timeout: 4000 }).toBe(900);
+  // Every frame of a flight: where a line at the viewport centre and one near the top are drawn.
+  const track = () =>
+    page.evaluate(() => {
+      const lines = [...document.querySelectorAll<HTMLElement>('.about p, .about h3, .about li')];
+      const nearest = (y: number) => lines.reduce((a, b) => (Math.abs(a.getBoundingClientRect().top - y) <= Math.abs(b.getBoundingClientRect().top - y) ? a : b));
+      const [centre, top] = [nearest(innerHeight / 2), nearest(140)];
+      const mid = (el: HTMLElement) => {
+        const r = el.getBoundingClientRect();
+        return (r.top + r.bottom) / 2;
+      };
+      const w = window as unknown as { __track: number[][] };
+      w.__track = [];
+      const tick = () => {
+        w.__track.push([mid(centre), mid(top)]);
+        if (w.__track.length < 50) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  const tracked = () => page.evaluate(() => (window as unknown as { __track: number[][] }).__track);
+  const check = (rows: number[][]) => {
+    const [c0, t0] = rows[0]!;
+    // Scaled about the viewport's centre (y 450), both lines' distances from it shrink by the same
+    // factor, frame by frame: the line near the centre barely moves, the one near the top closes in.
+    for (const [c, t] of rows) {
+      const s = (t! - 450) / (t0! - 450);
+      expect(Math.abs(c! - 450 - s * (c0! - 450))).toBeLessThan(2);
+    }
+    expect(Math.max(...rows.map(([, t]) => t!))).toBeGreaterThan(t0! + 30);
+  };
+  await track();
+  await page.getByRole('link', { name: 'Back' }).click();
+  await page.waitForTimeout(900);
+  check(await tracked());
+  await page.waitForFunction(() => (window as unknown as { __canvas: Api }).__canvas.flight() === null);
+  // And in again, still scrolled where it was: it comes towards the camera about the centre too.
+  await track();
+  await page.getByRole('link', { name: 'About' }).click();
+  await page.waitForTimeout(900);
+  const rows = await tracked();
+  check([...rows].reverse());
+});
+
+test('on the canvas the page never scrolls', async ({ page }) => {
+  await page.goto('/?test');
+  await page.mouse.move(720, 450);
+  await page.mouse.wheel(0, 600);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => [scrollY, getComputedStyle(document.documentElement).overflowY])).toEqual([0, 'hidden']);
 });
 
 test('on a narrow screen the services groups wrap instead of squeezing, a lone last one centred', async ({ page }) => {

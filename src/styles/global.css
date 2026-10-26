@@ -60,6 +60,13 @@
     /* No rubber-banding, and no horizontal two-finger swipe triggering Back/Forward. */
     overscroll-behavior: none;
   }
+  /* The about view scrolls the page itself, which ScrollSmoother smooths (main.ts); the canvas never does. */
+  html:has([data-about][data-state="in"]) {
+    overflow-y: auto;
+  }
+  html:has([data-about][data-state="in"]) body {
+    overflow: visible;
+  }
 }
 
 /*
@@ -129,7 +136,8 @@
   [data-canvas][inert] {
     pointer-events: none;
   }
-  /* Off the about view, out of sight; main.ts draws it in perspective during the flight, about the window's centre. */
+  /* Off the about view, out of sight; main.ts draws it in perspective during the flight, about the
+     window's centre wherever the text is scrolled (it sets the origin each frame; this is unscrolled). */
   .about-view:not([data-state="in"]) .about-layer {
     opacity: 0;
   }
