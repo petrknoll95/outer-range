@@ -14,6 +14,7 @@ import { DEFAULT_LENS, Lens } from './lens';
 import type { Snapper } from './physics';
 import { CameraPhysics, GLIDE, ZOOM_TO } from './physics';
 import { ProjectLabel } from './projectlabel';
+import { ProjectView } from './projectview';
 import type { ClientProject } from './projects';
 import { createProjectIndex } from './projects';
 import type { CameraStep, CanvasData } from './renderer';
@@ -40,7 +41,10 @@ const frame = new FocusFrame(root);
 const caption = new FocusCaption(document.body);
 // The active image's project, above the frame, zoomed out and in.
 const projectLabel = new ProjectLabel(frame.el);
+// The focused image's tile (the project view starts from it and hides it while it shows).
+let activeTile: HTMLElement | null = null;
 renderer.onActiveChange = (tile) => {
+  activeTile = tile;
   frame.focus(tile);
   updateCaption();
   updateProjectLabel();
@@ -68,10 +72,68 @@ let zoomIn = 1;
  * riding along with the frame; it comes back once all is still again.
  */
 function updateCaption(): void {
-  const still = zoomState === 'in' && !flight && physics.isStill() && renderer.isAtRest() && !frame.moving;
+  const still = zoomState === 'in' && !flight && !projectView.shown && physics.isStill() && renderer.isAtRest() && !frame.moving;
   const active = still ? renderer.activeImage() : null;
   caption.show(active ? data.images[active.image]! : null);
 }
+
+/**
+ * The project view (projectview.ts): "P" in the focused view brings every image of the focused
+ * image's project round a ring, over the dimmed canvas; "P" again, Esc or a click takes them
+ * away. The canvas ignores input until they have gone, so the focused image returns to exactly
+ * where it left. Its tile hides under its moving copy meanwhile; data-project on <html> dims
+ * the canvas and stands the frame and caption aside (global.css).
+ */
+const projectView = new ProjectView(document.body, data.images, () => geometry.radius / geometry.s, () => reducedMotion.matches);
+projectView.onDismiss = () => closeProject();
+let projectTile: HTMLElement | null = null;
+
+function openProject(): void {
+  if (zoomState !== 'in' || flight || projectView.open) return;
+  const active = renderer.activeImage();
+  const n = active ? projects.projectOf(active.image) : -1;
+  if (!active || n < 0 || !activeTile) return;
+  const project = projects.projects[n]!;
+  // Round the ring in the project's own order, from the focused image.
+  const at = project.images.indexOf(active.image);
+  const members = [...project.images.slice(at), ...project.images.slice(0, at)];
+  projectTile = activeTile;
+  document.documentElement.dataset.project = 'open';
+  projectView.show(project.title, members, active);
+  projectTile.style.visibility = 'hidden';
+  updateCaption();
+}
+
+function closeProject(): void {
+  if (!projectView.open) return;
+  const tile = projectTile;
+  document.documentElement.dataset.project = 'closing';
+  // With reduced motion the copies only fade, over the tile already back in place.
+  if (reducedMotion.matches && tile) tile.style.visibility = '';
+  projectView.hide(renderer.activeImage() ?? { left: 0, top: 0, width: 0, height: 0 }, endProject);
+}
+
+/** Gone: the tile back, the canvas undimmed, the caption free to come back. */
+function endProject(): void {
+  projectView.dismiss();
+  if (projectTile) projectTile.style.visibility = '';
+  projectTile = null;
+  delete document.documentElement.dataset.project;
+  updateCaption();
+  wake();
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+  if (e.key.toLowerCase() === 'p') {
+    e.preventDefault();
+    if (projectView.open) closeProject();
+    else openProject();
+  } else if (e.key === 'Escape' && projectView.open) {
+    e.preventDefault();
+    closeProject();
+  }
+});
 
 /** The project label names the active image's project, zoomed out and in. */
 function updateProjectLabel(): void {
@@ -241,7 +303,7 @@ attachInput({
   zoom: setZoom,
   toggleZoom,
   escape: backOut,
-  enabled: () => !flight,
+  enabled: () => !flight && !projectView.shown,
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
 });
@@ -256,6 +318,7 @@ function toCanvas(x: number, y: number, out: { x: number; y: number }): void {
 }
 
 function relayout(): void {
+  projectView.relayout();
   // Mid-flight the tiles are drawn from a snapshot; catch up once back.
   if (flight) return;
   const next = computeGeometry(root.clientWidth, root.clientHeight, world, seen);
@@ -356,6 +419,7 @@ function turn(to: 0 | 1): void {
 
 function leaveCanvas(): void {
   if (flight) return turn(1);
+  if (projectView.shown) endProject();
   // Hold the camera where it is drawn; nothing else moves while the flight plays.
   physics.halt();
   saveView();

@@ -14,7 +14,7 @@ test('the info bar sits at the bottom right, set like the header, and lets the c
   await settled(page);
   const bar = page.getByRole('complementary', { name: 'Controls' });
   await expect(bar).toBeVisible();
-  await expect(bar.getByRole('listitem')).toHaveText(['Drag/Pinch/Scroll', 'ESCNavigate', 'LTheme', 'AAbout']);
+  await expect(bar.getByRole('listitem')).toHaveText(['Drag/Pinch/Scroll', 'ESCNavigate', 'PProject', 'LTheme', 'AAbout']);
   const box = (await bar.boundingBox())!;
   // 24 px in from the right like the header's link, on a 36 px band 16 px up from the bottom like the header's.
   const list = (await bar.getByRole('list').boundingBox())!;
