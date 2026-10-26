@@ -89,7 +89,7 @@
     --focus-db: 0px;
     --focus-dl: 0px;
     position: absolute;
-    z-index: 1;
+    /* Its z-index, over every tile, is set in focusframe.ts. */
     pointer-events: none;
     top: calc(anchor(--focus-from top) + var(--focus-dt) + (anchor(--focus-to top) - anchor(--focus-from top) - var(--focus-dt)) * var(--focus-mix) - var(--focus-pad));
     right: calc(anchor(--focus-from right) + var(--focus-dr) + (anchor(--focus-to right) - anchor(--focus-from right) - var(--focus-dr)) * var(--focus-mix) - var(--focus-pad));
@@ -107,6 +107,39 @@
 
   @media (prefers-reduced-motion: reduce) {
     .focus-frame {
+      transition: none;
+    }
+  }
+
+  /*
+   * The active image's project (projectlabel.ts), a small translucent pill just above the
+   * frame's top-left corner. Inside the frame, it moves and hides with it. A tint of the ink
+   * over a blur of what's behind, so it reads on either theme and over any image.
+   */
+  .focus-project {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    padding: 4px 9px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--color-ink) 12%, transparent);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    color: var(--color-ink);
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    transition:
+      opacity 0.2s ease-out,
+      translate 0.2s ease-out;
+  }
+  .focus-project[data-hidden] {
+    opacity: 0;
+    translate: 0 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .focus-project {
       transition: none;
     }
   }
@@ -273,14 +306,13 @@
   }
 
   /*
-   * The focused image's caption (src/canvas/caption.ts): the title centred above the focus
-   * frame, the category and alt text centred below it, so they move with the frame.
+   * The focused image's caption (src/canvas/caption.ts): its category and alt text centred
+   * below the focus frame, so they move with it. (Its project is named above, in the label.)
    */
   .focus-caption {
     display: contents;
     color: var(--color-ink);
   }
-  .focus-caption-above,
   .focus-caption-below {
     position: fixed;
     z-index: 20;
@@ -291,9 +323,6 @@
     text-align: center;
     pointer-events: none;
     user-select: none;
-  }
-  .focus-caption-above {
-    bottom: calc(anchor(top) + 12px);
   }
   .focus-caption-below {
     top: calc(anchor(bottom) + 12px);
@@ -309,11 +338,6 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
     opacity: 0.55;
-  }
-  .focus-caption-title {
-    font-size: 15px;
-    line-height: 20px;
-    font-weight: 500;
   }
   .focus-caption-alt {
     margin-top: 6px;
@@ -367,7 +391,6 @@
     bottom: max(24px, env(safe-area-inset-bottom));
     z-index: 20;
   }
-  .focus-caption-above,
   .focus-caption-below {
     position: static;
     text-align: left;

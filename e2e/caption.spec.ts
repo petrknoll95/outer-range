@@ -8,7 +8,6 @@ interface Api {
 }
 interface Content {
   category: string;
-  title: string;
   alt: string;
 }
 
@@ -23,8 +22,8 @@ const settled = (page: Page) =>
 const activeContent = (page: Page) =>
   page.evaluate(() => {
     const images = JSON.parse(document.getElementById('canvas-data')!.textContent!).images as Content[];
-    const { category, title, alt } = images[(window as unknown as { __canvas: Api }).__canvas.activeImage()!.image]!;
-    return { category, title, alt };
+    const { category, alt } = images[(window as unknown as { __canvas: Api }).__canvas.activeImage()!.image]!;
+    return { category, alt };
   });
 
 /** What the caption shows, once every line has fully risen in. */
@@ -34,11 +33,11 @@ const shown = (page: Page): Promise<Content> =>
     const spans = [...el.querySelectorAll('span')];
     if (el.hidden || el.dataset.state !== 'in' || spans.some((s) => getComputedStyle(s).opacity !== '1')) return null;
     const text = (line: string) => el.querySelector(`.focus-caption-${line} span`)!.textContent;
-    return { category: text('category'), title: text('title'), alt: text('alt') };
+    return { category: text('category'), alt: text('alt') };
   }).then((h) => h.jsonValue() as Promise<Content>);
 
-const done = (CAPTION_IN + 2 * CAPTION_STAGGER) * 1000 + 100;
-const gone = (CAPTION_OUT + 2 * CAPTION_OUT_STAGGER) * 1000 + 100;
+const done = (CAPTION_IN + CAPTION_STAGGER) * 1000 + 100;
+const gone = (CAPTION_OUT + CAPTION_OUT_STAGGER) * 1000 + 100;
 
 /** Where the caption's lines are drawn, against the focus frame around the focused image. */
 const layout = (page: Page) =>
@@ -50,19 +49,16 @@ const layout = (page: Page) =>
     const size = (sel: string) => getComputedStyle(document.querySelector(sel)!).fontSize;
     return {
       frame: box('.focus-frame'),
-      title: box('.focus-caption-title span'),
       category: box('.focus-caption-category span'),
       alt: box('.focus-caption-alt'),
-      sizes: [size('.focus-caption-title'), size('.focus-caption-category'), size('.focus-caption-alt')],
+      sizes: [size('.focus-caption-category'), size('.focus-caption-alt')],
       align: getComputedStyle(document.querySelector('.focus-caption-alt')!).textAlign,
     };
   });
 
-/** The title centred above the frame, the category centred below it, and the alt text centred just under that. */
+/** The category centred below the frame, and the alt text centred just under that. */
 function expectAroundFrame(l: Awaited<ReturnType<typeof layout>>): void {
-  for (const line of [l.title, l.category, l.alt]) expect(Math.abs(line.centre - l.frame.centre)).toBeLessThan(1);
-  expect(l.frame.top - l.title.bottom).toBeGreaterThan(8);
-  expect(l.frame.top - l.title.bottom).toBeLessThan(20);
+  for (const line of [l.category, l.alt]) expect(Math.abs(line.centre - l.frame.centre)).toBeLessThan(1);
   expect(l.category.top - l.frame.bottom).toBeGreaterThan(8);
   expect(l.category.top - l.frame.bottom).toBeLessThan(20);
   expect(l.alt.top - l.category.bottom).toBeGreaterThanOrEqual(4);
@@ -70,7 +66,7 @@ function expectAroundFrame(l: Awaited<ReturnType<typeof layout>>): void {
   expect(l.align).toBe('center');
 }
 
-test('zoomed out there is no caption; zoomed in, the title rises in centred above the image, the category and alt centred below', async ({ page }) => {
+test('zoomed out there is no caption; zoomed in, the category and alt rise in centred below the image', async ({ page }) => {
   await open(page);
   const caption = page.locator('.focus-caption');
   await expect(caption).toBeHidden();
@@ -80,10 +76,12 @@ test('zoomed out there is no caption; zoomed in, the title rises in centred abov
   expect(await shown(page)).toEqual(await activeContent(page));
   const l = await layout(page);
   expectAroundFrame(l);
-  // The sizes they had: title 15 px, category 11 px, alt 13 px.
-  expect(l.sizes).toEqual(['15px', '11px', '13px']);
+  // Category 11 px, alt 13 px.
+  expect(l.sizes).toEqual(['11px', '13px']);
+  // No title: the project label names the image's project above it instead.
+  expect(await page.locator('.focus-caption-title').count()).toBe(0);
   // It takes no pointer events: what's under it is the canvas.
-  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('.focus-caption') === null, [l.title.centre, (l.title.top + l.title.bottom) / 2])).toBe(true);
+  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('.focus-caption') === null, [l.category.centre, (l.category.top + l.category.bottom) / 2])).toBe(true);
 
   // Paging, it moves with the frame to the next image, and stays centred on it.
   await page.keyboard.press('ArrowDown');
@@ -115,12 +113,11 @@ test('the lines rise in one after another, each easing in through every opacity'
   const rise = await page.evaluate(() => (window as unknown as { __rise: number[][] }).__rise);
   // When each line first shows at all, and is half in.
   const first = (line: number, above: number) => rise.find((r) => r[line]! > above)?.[0] ?? Infinity;
-  for (const line of [1, 2, 3]) {
+  for (const line of [1, 2]) {
     expect(rise.some((r) => r[line]! > 0.1 && r[line]! < 0.9)).toBe(true);
     expect(first(line, 0.99)).toBeLessThan(Infinity);
   }
   expect(first(1, 0.5)).toBeLessThan(first(2, 0.5));
-  expect(first(2, 0.5)).toBeLessThan(first(3, 0.5));
   // Not before the zoom has landed: it never rides along with the image.
   expect(first(1, 0.01)).toBeGreaterThan(ZOOM_DURATION * 1000);
 });
@@ -130,11 +127,11 @@ test('the moment the view moves the caption leaves, where it stands, fast; once 
   await page.keyboard.press(' ');
   await settled(page);
   await shown(page);
-  // Every frame from here: where the title's line (its mask) is drawn and how visible each line is.
+  // Every frame from here: where the category's line (its mask) is drawn and how visible each line is.
   await page.evaluate(() => {
     const w = window as unknown as { __caption: number[][] };
     w.__caption = [];
-    const title = document.querySelector('.focus-caption-title')!;
+    const title = document.querySelector('.focus-caption-category')!;
     const spans = [...document.querySelectorAll('.focus-caption span')];
     const t0 = performance.now();
     const tick = () => {
@@ -157,7 +154,7 @@ test('the moment the view moves the caption leaves, where it stands, fast; once 
   await page.waitForTimeout(done);
   const rows = await page.evaluate(() => (window as unknown as { __caption: number[][] }).__caption);
   const [, x0, y0] = rows[0]!;
-  // Whenever any of it can be seen, the title is exactly where it was: it never moves with the frame...
+  // Whenever any of it can be seen, the category is exactly where it was: it never moves with the frame...
   const seen = rows.filter((r) => r.slice(3).some((o) => o > 0.02));
   for (const [, x, y] of seen) {
     expect(x).toBeCloseTo(x0!, 1);
@@ -167,13 +164,14 @@ test('the moment the view moves the caption leaves, where it stands, fast; once 
   const goneAt = rows.findIndex((r) => r.slice(3).every((o) => o < 0.02));
   const leaving = rows.findIndex((r) => r.slice(3).some((o) => o < 0.99));
   expect(goneAt).toBeGreaterThan(-1);
-  expect(rows[goneAt]![0]! - rows[leaving]![0]!).toBeLessThan((CAPTION_OUT + 2 * CAPTION_OUT_STAGGER) * 1000 + 60);
+  expect(rows[goneAt]![0]! - rows[leaving]![0]!).toBeLessThan((CAPTION_OUT + CAPTION_OUT_STAGGER) * 1000 + 60);
   // ...and comes back slowly, once the view is still again.
   const back = rows.slice(goneAt);
   const from = back.findIndex((r) => r.slice(3).some((o) => o > 0.02));
   const full = back.findIndex((r) => r.slice(3).every((o) => o > 0.99));
   expect(from).toBeGreaterThan(-1);
-  expect(back[full]![0]! - back[from]![0]!).toBeGreaterThan(CAPTION_IN * 1000 * 0.8);
+  // (Its ease starts and ends gently, so the visible part of the rise is a little under CAPTION_IN.)
+  expect(back[full]![0]! - back[from]![0]!).toBeGreaterThan(CAPTION_IN * 1000 * 0.7);
 });
 
 test('paging to another image switches the caption: out, then the new one in', async ({ page }) => {
@@ -197,6 +195,6 @@ test('paging to another image switches the caption: out, then the new one in', a
   await page.waitForTimeout(done);
   const after = await shown(page);
   expect(after).toEqual(await activeContent(page));
-  expect(after.title).not.toBe(before.title);
+  expect(after.alt).not.toBe(before.alt);
   expect(states).toEqual(['out', 'below', 'in']);
 });

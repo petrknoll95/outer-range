@@ -13,13 +13,17 @@ import { computeGeometry, sizingReach, zoomInLevel } from './layout';
 import { DEFAULT_LENS, Lens } from './lens';
 import type { Snapper } from './physics';
 import { CameraPhysics, GLIDE, ZOOM_TO } from './physics';
+import { ProjectLabel } from './projectlabel';
+import type { ClientProject } from './projects';
+import { createProjectIndex } from './projects';
 import type { CameraStep, CanvasData } from './renderer';
 import { Renderer } from './renderer';
 import { createWorld } from './world';
 
 const root = document.querySelector<HTMLElement>('[data-canvas]')!;
 const layer = root.querySelector<HTMLElement>('[data-canvas-layer]')!;
-const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as CanvasData;
+const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as CanvasData & { projects: ClientProject[] };
+const projects = createProjectIndex(data.projects, data.images.length);
 
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
@@ -32,11 +36,14 @@ physics.snapper = (x, y, z) => snapper(x, y, z);
 const renderer = new Renderer(layer, world, data.images, lens, debug);
 // The frame around the active image, on top of the tiles; it follows the active image as it changes.
 const frame = new FocusFrame(root);
-// Zoomed in, the active image's title above it, and its category and alt text below.
+// Zoomed in, the active image's category and alt text below it.
 const caption = new FocusCaption(document.body);
+// The active image's project, above the frame, zoomed out and in.
+const projectLabel = new ProjectLabel(frame.el);
 renderer.onActiveChange = (tile) => {
   frame.focus(tile);
   updateCaption();
+  updateProjectLabel();
 };
 frame.onSettle = () => updateCaption();
 renderer.onRelease = (tile) => frame.release(tile);
@@ -64,6 +71,13 @@ function updateCaption(): void {
   const still = zoomState === 'in' && !flight && physics.isStill() && renderer.isAtRest() && !frame.moving;
   const active = still ? renderer.activeImage() : null;
   caption.show(active ? data.images[active.image]! : null);
+}
+
+/** The project label names the active image's project, zoomed out and in. */
+function updateProjectLabel(): void {
+  const active = renderer.activeImage();
+  const n = active ? projects.projectOf(active.image) : -1;
+  projectLabel.show(n < 0 ? null : projects.projects[n]!.title);
 }
 
 /** Zooming onto another image, when the frame that stepped aside comes back. */

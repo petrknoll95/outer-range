@@ -3,19 +3,17 @@ import { CAPTION_IN, CAPTION_OUT, CAPTION_OUT_STAGGER, CAPTION_STAGGER } from '.
 /** What the caption shows, from the image's content entry. */
 export interface CaptionContent {
   category: string;
-  title: string;
   alt: string;
 }
 
-/** Top to bottom, the order they rise in; the title sits above the image, the rest below. */
-const LINES = ['title', 'category', 'alt'] as const;
-const ABOVE: readonly (typeof LINES)[number][] = ['title'];
+/** Top to bottom, the order they rise in. */
+const LINES = ['category', 'alt'] as const;
 
 /**
- * The focused image's title, centred above it, and its category and alt text centred below.
- * Both are anchored to the focus frame (`.focus-caption` in global.css), so they sit round
- * whichever image it frames; leaving, they are pinned where they are drawn first, so they
- * never ride along with the frame as the view moves on.
+ * The focused image's category and alt text, centred below it (above it, the project label
+ * names its project: projectlabel.ts). Anchored to the focus frame (`.focus-caption` in
+ * global.css), so it sits under whichever image the frame frames; leaving, it is pinned where
+ * it is drawn first, so it never rides along with the frame as the view moves on.
  *
  * Each line sits in its own mask and rises into view, one after another. Switching to
  * another image first sends the lines out upwards, quicker, then brings the new ones in
@@ -42,8 +40,6 @@ export class FocusCaption {
     this.el.style.setProperty('--caption-out', `${CAPTION_OUT}s`);
     this.el.style.setProperty('--caption-out-stagger', `${CAPTION_OUT_STAGGER}s`);
     this.el.hidden = true;
-    const above = document.createElement('div');
-    above.className = 'focus-caption-above';
     const below = document.createElement('div');
     below.className = 'focus-caption-below';
     LINES.forEach((name, n) => {
@@ -52,11 +48,11 @@ export class FocusCaption {
       line.style.setProperty('--line', String(n));
       const text = document.createElement('span');
       line.append(text);
-      (ABOVE.includes(name) ? above : below).append(line);
+      below.append(line);
       this.lines.set(name, text);
     });
-    this.el.append(above, below);
-    this.groups = [above, below];
+    this.el.append(below);
+    this.groups = [below];
     parent.append(this.el);
   }
 

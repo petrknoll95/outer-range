@@ -57,6 +57,9 @@ const SALT_SHUFFLE = 6;
 
 const ASPECTS: readonly Aspect[] = ['landscape', 'portrait', 'square'];
 
+/** Cells stack in a random order, at z 0 to Z_LEVELS − 1 (a power of two); anything drawn over every tile goes at Z_LEVELS. */
+export const Z_LEVELS = 1024;
+
 export function emptyCell(): Cell {
   return { i: 0, j: 0, image: 0, aspect: 'square', w: 1, h: 1, dx: 0, dy: 0, z: 0 };
 }
@@ -119,7 +122,7 @@ export function createWorld(images: readonly WorldImage[], options: WorldOptions
       out.h = aspect === 'portrait' ? LONG : 1;
       out.dx = signed(hash(i, j, seed, SALT_JX)) * jitterX;
       out.dy = signed(hash(i, j, seed, SALT_JY)) * jitterY + columnStagger(i);
-      out.z = hash(i, j, seed, SALT_Z) & 0x3ff;
+      out.z = hash(i, j, seed, SALT_Z) & (Z_LEVELS - 1);
       return out;
     },
   };

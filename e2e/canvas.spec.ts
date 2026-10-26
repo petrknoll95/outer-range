@@ -417,10 +417,11 @@ test('the page never rubber-bands or swipes back', async ({ page }) => {
 test('panning 20 screens away and back is pixel-identical', async ({ page }) => {
   await open(page);
   // Videos play on: their frames differ between any two shots, so leave them out (video.spec.ts covers them),
-  // and with them what a shown video clears under it: every tile shows its poster, on no colour.
+  // and with them what a shown video clears under it: every tile shows its poster, on no colour. And
+  // the project label's blur: it spreads the few levels Chrome re-rasterises a tile edge differently.
   await page.addStyleTag({
     content:
-      '[data-canvas-layer] video { visibility: hidden } [data-canvas-layer] picture { visibility: visible !important } [data-canvas-layer] > div { background-color: transparent !important }',
+      '[data-canvas-layer] video { visibility: hidden } [data-canvas-layer] picture { visibility: visible !important } [data-canvas-layer] > div { background-color: transparent !important } .focus-project { backdrop-filter: none !important }',
   });
   const shoot = async () => PNG.sync.read(await page.screenshot({ animations: 'disabled' }));
   const tiles = () =>
@@ -553,9 +554,9 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
   );
   console.info(`pool bound ${bound}`);
   expect(after.pool).toBeLessThanOrEqual(bound);
-  // Four nodes per tile, one more for a tile that has shown a video, plus the layer and the focus frame.
+  // Four nodes per tile, one more for a tile that has shown a video, plus the layer, the focus frame and its project label.
   expect(after.videos).toBeLessThanOrEqual(after.pool);
-  expect(after.dom).toBe(after.pool * 4 + after.videos + 2);
+  expect(after.dom).toBe(after.pool * 4 + after.videos + 3);
   expect(afterHeap - baseHeap).toBeLessThan(1_000_000);
 });
 
