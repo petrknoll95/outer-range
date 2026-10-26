@@ -10,6 +10,7 @@ import { resolveProjects } from '../canvas/projects';
 import type { CanvasData, ClientImage } from '../canvas/renderer';
 import { compiledContent, frontmatter as about } from '../content/about.md';
 import Header from './Header.astro';
+import InfoBar from './InfoBar.astro';
 
 /**
  * The site: the canvas of images under the header. Both pages render it, `/` and `/about`, as
@@ -82,6 +83,7 @@ const [aboutBefore, aboutAfter = ''] = (await compiledContent()).split('<!-- ser
 ---
 
 <Header route={route} />
+<InfoBar />
 <main
   data-canvas
   inert={route === 'about'}

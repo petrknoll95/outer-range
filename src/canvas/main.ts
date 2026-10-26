@@ -469,13 +469,18 @@ link.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
   // (Any query, like ?debug or ?flat, carries over.)
+  switchView();
+});
+
+/** What the header link does: About from the canvas, Back from the about view. */
+function switchView(): void {
   if (route === 'home') {
     history.pushState({ canvas: true }, '', ROUTES.about.path + location.search);
     go('about');
   } else {
     backToCanvas();
   }
-});
+}
 
 /** From the about view back to the canvas, as it was left (zoomed in or out). */
 function backToCanvas(): void {
@@ -489,23 +494,27 @@ function backToCanvas(): void {
 }
 
 // "L": the other theme, light or dark, whichever the page isn't showing, kept for next time
-// (Layout.astro sets it again before the first paint). A quick cross-fade where the browser can.
+// (Layout.astro sets it again before the first paint). Only an attribute changes: the colours
+// fade on their own in CSS (global.css), so nothing else stops or waits for it.
 const THEME_KEY = 'theme';
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
 window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() !== 'l' || e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
   const html = document.documentElement;
   const next = (html.dataset.theme ?? (systemDark.matches ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark';
-  const apply = () => {
-    html.dataset.theme = next;
-  };
-  if (document.startViewTransition && !reducedMotion.matches) document.startViewTransition(apply);
-  else apply();
+  html.dataset.theme = next;
   try {
     localStorage.setItem(THEME_KEY, next);
   } catch {
     // Storage blocked: it switches, but isn't kept.
   }
+});
+
+// "A" does what the header link does: About, or Back from the about view (the info bar lists it).
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 'a' || e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+  e.preventDefault();
+  switchView();
 });
 
 // Esc on the about view goes back too, like the Back link. (On the canvas it backs out of the focused view: input.ts.)

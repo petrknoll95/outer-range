@@ -84,16 +84,18 @@ async function screencast(page: Page): Promise<{ stop: () => Promise<Buffer[]> }
   };
 }
 
-/** The colour of a PNG if every pixel is that colour (within a couple of levels), else null. */
 /** The header's band at the top of the screen, px: it stays as it is through the flight. */
 const HEADER_BAND = 60;
+/** The info bar's band at the bottom (InfoBar.astro), px: it stays put too. */
+const INFO_BAND = 60;
 
-/** The colour of a PNG if every pixel below the header is that colour (within a couple of levels), else null. */
+/** The colour of a PNG if every pixel between the header and the info bar is that colour (within a couple of levels), else null. */
 function uniformColour(png: Buffer): number[] | null {
-  const { data, width } = PNG.sync.read(png);
+  const { data, width, height } = PNG.sync.read(png);
   const from = HEADER_BAND * width * 4;
+  const to = (height - INFO_BAND) * width * 4;
   const first = [data[from]!, data[from + 1]!, data[from + 2]!];
-  for (let k = from; k < data.length; k += 4) {
+  for (let k = from; k < to; k += 4) {
     for (let c = 0; c < 3; c++) if (Math.abs(data[k + c]! - first[c]!) > 2) return null;
   }
   return first;

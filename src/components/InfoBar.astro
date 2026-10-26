@@ -1,0 +1,56 @@
+---
+/**
+ * The info bar: how to move around, fixed at the bottom right. Set like the header: white with
+ * a difference blend, so it reads on the light or dark canvas and over any image under it, and
+ * it takes no pointer events, so the canvas drags and scrolls under it too. A keyboard and
+ * trackpad hint, it shows only where there is a fine pointer and room for it.
+ *
+ * Each hint is its keys, drawn as 24 px pills with a 1.2 px outline (the icons are the design's
+ * own SVGs, src/assets/infobar), then what they do. The whole row is drawn at SCALE of the
+ * design's size, so it all shrinks together, in proportion.
+ */
+import arrows from '../assets/infobar/arrows.svg?url';
+import dragHorizontal from '../assets/infobar/drag-horizontal.svg?url';
+import pinch from '../assets/infobar/pinch.svg?url';
+import scrollVertical from '../assets/infobar/scroll-vertical.svg?url';
+import space from '../assets/infobar/space.svg?url';
+
+// The label and key type, trimmed to the cap height so it centres optically in its pill.
+const trim = 'leading-none [text-box:trim-both_cap_alphabetic] whitespace-nowrap';
+const label = `${trim} text-[16.8px] tracking-[-0.02em]`;
+const pill = 'flex h-6 shrink-0 items-center justify-center rounded-full border-[1.2px] border-white';
+const glyph = `${trim} text-[12px]`;
+const SCALE = 0.85;
+---
+
+<aside
+  aria-label="Controls"
+  class="pointer-events-none fixed right-6 bottom-4 z-20 hidden h-9 items-center text-white mix-blend-difference select-none [@media(hover:hover)_and_(pointer:fine)_and_(min-width:760px)]:flex"
+>
+  <ul class="flex items-center gap-[19.2px]" style={`zoom: ${SCALE}`}>
+    <li class="flex items-center gap-[9.6px]">
+      <span class="flex items-center gap-[4.8px]" aria-hidden="true">
+        <span class:list={[pill, 'w-7']}><img src={dragHorizontal} width="15.6971" height="8.84853" alt="" /></span>
+        <img src={pinch} width="28" height="24" alt="" class="shrink-0" />
+        <span class:list={[pill, 'w-7']}><img src={scrollVertical} width="13.6971" height="8.84853" alt="" class="rotate-90" /></span>
+      </span>
+      <span class={label}>Drag/Pinch/Scroll</span>
+    </li>
+    <li class="flex items-center gap-[9.6px]">
+      <span class="flex items-center gap-[4.8px]" aria-hidden="true">
+        <img src={arrows} width="24" height="24" alt="" class="shrink-0" />
+        <img src={space} width="24" height="24" alt="" class="shrink-0" />
+        <span class:list={[pill, 'px-1.5']}><span class={glyph}>ESC</span></span>
+      </span>
+      <span class={label}>Navigate</span>
+    </li>
+    <li class="flex items-center gap-[9.6px]">
+      <span class:list={[pill, 'w-6']} aria-hidden="true"><span class={glyph}>L</span></span>
+      <span class={label}>Theme</span>
+    </li>
+    <li class="flex items-center gap-[9.6px]">
+      <span class:list={[pill, 'w-6']} aria-hidden="true"><span class={glyph}>A</span></span>
+      <span class={label}>About</span>
+    </li>
+  </ul>
+</aside>

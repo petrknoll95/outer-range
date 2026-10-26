@@ -14,6 +14,28 @@
 
 /* Dark when the system is, unless the page is set to light, and whenever it is set to dark
    ("L" switches it: src/canvas/main.ts). */
+/* Registered as colours so a switch fades them, on their own: no snapshot, nothing paused,
+   every transition, drag and flight runs on through it. */
+@property --color-canvas {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.968 0.004 90);
+}
+@property --color-ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.24 0.005 90);
+}
+:root {
+  transition:
+    --color-canvas 0.3s ease,
+    --color-ink 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    transition: none;
+  }
+}
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --color-canvas: oklch(0.165 0.003 90);
