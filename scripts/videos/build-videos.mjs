@@ -24,9 +24,9 @@ const MAX_SHORT_EDGE = 1080;
 const SMALL_SHORT_EDGE = 360;
 const RATIOS = { landscape: 4 / 3, portrait: 3 / 4, square: 1 };
 /** Videos whose subject the nearest crop would cut. */
-const ASPECT = { 'subzero-cans': 'portrait' };
+const ASPECT = { 'subzero-cans': 'portrait', 'oxyd-drink': 'portrait' };
 /** Where the poster frame comes from, as a fraction of the length; the default is a third of the way. */
-const POSTER = { 'subzero-cans': 0, 'experimental-navigation-1': 0, 'offmenu-website': 0.85 };
+const POSTER = { 'subzero-cans': 0, 'experimental-navigation-1': 0, 'offmenu-website': 0.85, 'oxyd-drink': 0 };
 
 const source = process.argv[2];
 if (!source) {

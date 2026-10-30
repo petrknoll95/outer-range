@@ -104,6 +104,19 @@
     "source": "offmenu-website.mp4"
   },
   {
+    "file": "oxyd-drink.mp4",
+    "webm": "oxyd-drink.webm",
+    "small": "oxyd-drink-small.mp4",
+    "smallWebm": "oxyd-drink-small.webm",
+    "poster": "oxyd-drink.jpg",
+    "aspect": "portrait",
+    "width": 1080,
+    "height": 1440,
+    "color": "#080808",
+    "duration": 8,
+    "source": "oxyd-drink.webm"
+  },
+  {
     "file": "remi-logo.mp4",
     "webm": "remi-logo.webm",
     "small": "remi-logo-small.mp4",
