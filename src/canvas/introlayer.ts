@@ -26,6 +26,7 @@ uniform float z, tail, closed;
 const float HANDOVER = ${INTRO_HANDOVER.toFixed(3)};
 const float MIN_HALF = ${(INTRO_MIN_WIDTH / 2).toFixed(3)};
 out float along;
+out float fog;
 out vec2 local;
 flat out vec3 box;
 flat out vec4 paint;
@@ -33,9 +34,12 @@ void main() {
   // introTravel in intro.ts.
   float travel = HANDOVER * pow(mix(tail, z, corner.z) / HANDOVER, mix(depth.z, 1.0, closed));
   float w = max(depth.x + travel * mix(depth.y, 1.0, closed), 0.02);
-  vec2 size = max(half_ * mix(thin, 1.0, closed), MIN_HALF * w);
+  // Passing the camera a line keeps its width on screen, rather than flaring.
+  vec2 size = max(half_ * mix(thin, 1.0, closed) * min(w, 1.0), MIN_HALF * w);
   vec2 p = offset + vec2(corner.x, -corner.y) * size;
   local = p;
+  // Far off it fades into the distance, so the centre of the tunnel has no hard edge.
+  fog = clamp(1.3 - w / 30.0, 0.12, 1.0);
   box = tile;
   along = corner.z;
   paint = color;
@@ -45,8 +49,9 @@ void main() {
 
 const FRAGMENT = `#version 300 es
 precision mediump float;
-uniform float corners, fade;
+uniform float corners, fade, rays;
 in float along;
+in float fog;
 in vec2 local;
 flat in vec3 box;
 flat in vec4 paint;
@@ -54,7 +59,7 @@ out vec4 color;
 void main() {
   vec2 q = abs(local) - box.xy + box.z;
   float edge = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - box.z;
-  float a = paint.a * along * along * fade * mix(1.0, clamp(0.5 - edge, 0.0, 1.0), corners);
+  float a = paint.a * along * along * fog * fade * (box.x < 5000.0 ? rays : 1.0) * mix(1.0, clamp(0.5 - edge, 0.0, 1.0), corners);
   color = vec4(paint.rgb * a, a);
 }`;
 
@@ -83,7 +88,7 @@ function program(gl: WebGL2RenderingContext): WebGLProgram | null {
 export class IntroLayer {
   private leaving = false;
   private gone = false;
-  private readonly uniforms: Record<'z' | 'tail' | 'closed' | 'corners' | 'fade', WebGLUniformLocation | null>;
+  private readonly uniforms: Record<'z' | 'tail' | 'closed' | 'corners' | 'fade' | 'rays', WebGLUniformLocation | null>;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -92,7 +97,7 @@ export class IntroLayer {
     private readonly count: number,
   ) {
     const at = (name: string) => gl.getUniformLocation(p, name);
-    this.uniforms = { z: at('z'), tail: at('tail'), closed: at('closed'), corners: at('corners'), fade: at('fade') };
+    this.uniforms = { z: at('z'), tail: at('tail'), closed: at('closed'), corners: at('corners'), fade: at('fade'), rays: at('rays') };
   }
 
   /** Null where it can't be drawn, or (`slowGpu` false) not smoothly: the canvas just opens. */
@@ -154,6 +159,7 @@ export class IntroLayer {
     gl.uniform1f(uniforms.closed, frame.closed);
     gl.uniform1f(uniforms.corners, frame.corners);
     gl.uniform1f(uniforms.fade, frame.fade);
+    gl.uniform1f(uniforms.rays, frame.rays);
     gl.drawElementsInstanced(gl.TRIANGLES, FACES.length, gl.UNSIGNED_BYTE, 0, this.count);
   }
 

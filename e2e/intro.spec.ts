@@ -62,7 +62,7 @@ test('hands over to the real tiles for the last of the way, then leaves them unt
   const scale = () => page.locator('[data-canvas-layer]').evaluate((el) => (el as HTMLElement).style.transform);
   await open(page);
   expect(await scale()).toBe('');
-  await hold(page, 3.9);
+  await hold(page, 4.1);
   await page.waitForFunction(() => document.querySelector<HTMLElement>('[data-canvas-layer]')!.style.transform !== '');
   expect(await waiting(page)).toBe(false);
   await expect(layer(page)).toHaveCount(0);
@@ -72,11 +72,11 @@ test('hands over to the real tiles for the last of the way, then leaves them unt
   await expect(page.locator('.focus-frame')).toHaveCSS('opacity', '1');
 });
 
-test('the name rises in at the centre, and has gone before the launch', async ({ page }) => {
+test('the line rises in at the centre, the size of the wordmark, and has gone before the launch', async ({ page }) => {
   const title = page.locator('[data-intro-title]');
   const lastLetter = title.locator('span span').last();
   await open(page);
-  await expect(title).toHaveText('Petr Knoll');
+  await expect(title).toHaveText('The design office of Petr Knoll');
   await expect(title).toHaveAttribute('aria-hidden', 'true');
   await expect(lastLetter).toHaveCSS('transform', /^matrix\(1, 0, 0, 1, 0, \d/);
   await hold(page, 1.3);
@@ -85,13 +85,15 @@ test('the name rises in at the centre, and has gone before the launch', async ({
   const view = page.viewportSize()!;
   expect(Math.abs(box.x + box.width / 2 - view.width / 2)).toBeLessThan(2);
   expect(Math.abs(box.y + box.height / 2 - view.height / 2)).toBeLessThan(2);
-  await hold(page, 2.4);
+  const type = (el: Element) => { const css = getComputedStyle(el); return [css.fontSize, css.fontWeight, css.letterSpacing, css.fontFamily]; };
+  expect(await title.evaluate(type)).toEqual(await page.locator('h1').evaluate(type));
+  await hold(page, 2.5);
   await expect(title).toHaveCount(0);
 });
 
 test('draws lines at speed', async ({ page }) => {
   await open(page);
-  await hold(page, 2.9);
+  await hold(page, 3.1);
   await page.waitForTimeout(200);
   const lines = await page.screenshot();
   await hold(page, 0);

@@ -1,14 +1,14 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media } from '../src/assets/media';
-import { INTRO_DISTANCE, INTRO_DRIFT, INTRO_DRIFT_ZOOM, INTRO_DURATION, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_TITLE_IN, INTRO_TITLE_OUT, PIXEL_GRID, SEED } from '../src/canvas/config';
+import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_TITLE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, PIXEL_GRID, SEED } from '../src/canvas/config';
 import type { IntroTile } from '../src/canvas/intro';
-import { INTRO_LENGTH, INTRO_STRIDE, introDistance, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel } from '../src/canvas/intro';
+import { INTRO_LENGTH, INTRO_STRIDE, introDistance, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
 import { hexRgb, pixelColor, pixelColors } from '../src/canvas/pixels';
 
 /** Seconds in, u of the way from launch to landing. */
-const at = (u: number) => INTRO_DRIFT + u * INTRO_DURATION;
-const frame = (t: number) => introFrame(t, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0 });
+const at = (u: number) => INTRO_CRUISE + u * INTRO_DURATION;
+const frame = (t: number) => introFrame(t, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 });
 /** A portrait tile, its cells numbered in the red channel so each can be told apart. */
 const pixels = Array.from({ length: 48 }, (_, n) => `${n.toString(16).padStart(2, '0')}8040`).join('');
 const tile = (x: number, y: number): IntroTile => ({ i: 1, j: 2, x, y, width: 300, height: 400, radius: 12, aspect: 'portrait', pixels });
@@ -22,7 +22,7 @@ const instance = (data: Float32Array, n: number) => {
 
 describe('the intro camera', () => {
   it('sets out far off and lands exactly', () => {
-    expect(introDistance(INTRO_DRIFT)).toBeGreaterThan(INTRO_DISTANCE);
+    expect(introDistance(INTRO_CRUISE)).toBeGreaterThan(INTRO_DISTANCE);
     expect(introDistance(INTRO_LENGTH)).toBe(0);
     expect(introDistance(INTRO_LENGTH + 1)).toBe(0);
   });
@@ -35,13 +35,18 @@ describe('the intro camera', () => {
     );
   });
 
-  it('drifts in barely at all before it launches', () => {
-    const ratio = (1 + introDistance(0)) / (1 + introDistance(INTRO_DRIFT));
-    expect(ratio).toBeGreaterThan(1.1);
-    expect(ratio).toBeLessThan(INTRO_DRIFT_ZOOM);
-    const fastest = Math.max(...Array.from({ length: 19 }, (_, n) => Math.log1p(introDistance(n * 0.1)) - Math.log1p(introDistance(n * 0.1 + 0.02))));
-    const peak = Math.log1p(introDistance(at(0.2))) - Math.log1p(introDistance(at(0.2) + 0.02));
-    expect(fastest).toBeLessThan(peak / 8);
+  /** The rate of the flight at t, as seen: in ratios, a second. */
+  const speed = (t: number) => (Math.log1p(introDistance(t)) - Math.log1p(introDistance(t + 0.02))) / 0.02;
+
+  it('is already under way, at a steady rate, while the name is up', () => {
+    expect(speed(0)).toBeCloseTo(INTRO_CRUISE_RATE);
+    expect(speed(INTRO_CRUISE - 0.1)).toBeCloseTo(INTRO_CRUISE_RATE);
+  });
+
+  it('only speeds up from there, until it brakes: no lull before the launch', () => {
+    const peak = at(0.2);
+    for (let t = 0; t < peak; t += 0.05) expect(speed(t + 0.05)).toBeGreaterThanOrEqual(speed(t) - 1e-6);
+    expect(speed(peak)).toBeGreaterThan(INTRO_CRUISE_RATE * 8);
   });
 
   /** How fast the zoom changes, as seen: in ratios. */
@@ -68,9 +73,14 @@ describe('the intro camera', () => {
     expect(frame(at(over)).scale).toBeGreaterThan(0.85);
   });
 
+  it('holds the tiles\' rays back until the name has gone, and has them out just past the peak', () => {
+    expect(frame(INTRO_CRUISE).rays).toBe(0);
+    expect(frame(at(0.3)).rays).toBe(1);
+  });
+
   it('is all lines at speed, and landed is flat, closed up and has its corners', () => {
     expect(frame(at(0.15))).toMatchObject({ closed: 0, corners: 0 });
-    expect(frame(INTRO_LENGTH)).toMatchObject({ z: 0, tail: 0, scale: 1, closed: 1, corners: 1, fade: 1 });
+    expect(frame(INTRO_LENGTH)).toMatchObject({ z: 0, tail: 0, scale: 1, closed: 1, corners: 1, fade: 1, rays: 1 });
   });
 
   it('fades up out of nothing', () => {
@@ -78,7 +88,7 @@ describe('the intro camera', () => {
   });
 });
 
-describe('the name', () => {
+describe('the line of text', () => {
   it('waits below its mask, rises to its place, and leaves above it', () => {
     expect(introLetter(0, 0)).toBe(1);
     expect(introLetter(INTRO_TITLE_OUT - 0.01, 0)).toBeCloseTo(0, 2);
@@ -91,8 +101,13 @@ describe('the name', () => {
     expect(introLetter(introTitleEnd(10), 9)).toBe(-1);
   });
 
+  it('stays up long enough to read: over a second, all but its last letters settled', () => {
+    const readable = INTRO_TITLE_IN + INTRO_TITLE_IN_DURATION * 0.7;
+    expect(INTRO_TITLE_OUT - readable).toBeGreaterThan(1);
+  });
+
   it('is gone before the wormhole gets going', () => {
-    expect(introTitleEnd(10)).toBeLessThanOrEqual(INTRO_DRIFT);
+    expect(introTitleEnd(INTRO_TITLE.length)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
   });
 });
 
@@ -158,7 +173,9 @@ describe('what the intro draws', () => {
     for (let n = 0; n < count; n++) {
       const { pos, half, depth } = instance(data, n);
       expect(depth[0]).toBeLessThanOrEqual(1);
-      expect(Math.hypot(pos[0]!, pos[1]!) - Math.max(...half)).toBeGreaterThan(reach);
+      // Outside the view, or passed already.
+      if (1 - depth[0]! <= LINE_CLEAR) expect(Math.hypot(pos[0]!, pos[1]!) - Math.max(...half)).toBeGreaterThan(reach);
+      else expect(depth[0]! + introDistance(at(0.75)) * depth[1]!).toBeLessThan(0);
     }
   });
 
@@ -177,6 +194,26 @@ describe('what the intro draws', () => {
     // Solid, and most about as far back as the rays.
     expect(median(lines.map((l) => l.depth[1]!))).toBeGreaterThan(0.6);
     for (let n = 0; n < lines.length; n++) expect(lineData[n * INTRO_STRIDE + 13]).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it('strings the lines out along the tunnel, for the camera to pass from the start', () => {
+    const data = introInstances([], palette, 1440, 900, SEED);
+    const lines = Array.from({ length: data.length / INTRO_STRIDE }, (_, n) => instance(data, n));
+    const depth = (t: number, line: (typeof lines)[number]) => line.depth[0]! + introDistance(t) * line.depth[1]!;
+    // All in front of the camera to begin with, and plenty go by while the name is up.
+    expect(lines.every((line) => depth(0, line) >= 1 - 1e-3)).toBe(true);
+    expect(lines.filter((line) => depth(INTRO_CRUISE, line) < 0).length).toBeGreaterThan(100);
+  });
+
+  it('leaves no hole in the middle of the tunnel', () => {
+    const data = introInstances([], palette, 1440, 900, SEED);
+    const reach = Math.hypot(1440, 900) / 2;
+    const lines = Array.from({ length: data.length / INTRO_STRIDE }, (_, n) => instance(data, n));
+    const radii = lines.map(({ pos }) => Math.hypot(pos[0]!, pos[1]!));
+    expect(radii.filter((r) => r < reach * 0.1).length).toBeGreaterThan(50);
+    // But never dead on the axis: the layer holds a passed line 0.02 from the camera, which
+    // has to put it off screen.
+    expect(Math.min(...radii) / 0.02).toBeGreaterThan(reach);
   });
 
   it('scales the lines to the screen, up to a limit', () => {

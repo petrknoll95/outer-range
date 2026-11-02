@@ -2,7 +2,7 @@ import { gsap } from 'gsap';
 import { ScrollSmoother } from 'gsap/ScrollSmoother';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FocusCaption } from './caption';
-import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_HANDOVER, SEED, STEP, ZOOM_DURATION } from './config';
+import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_HANDOVER, INTRO_TITLE, SEED, STEP, ZOOM_DURATION } from './config';
 import type { FlightView } from './flight';
 import { flightFar, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
@@ -619,8 +619,8 @@ const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' 
 let route: Route = routeAt(location.pathname);
 
 /**
- * Opening the canvas, the camera drifts in on a field of stars as the name rises and leaves,
- * then launches through a wormhole of lines that close up into its tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
+ * Opening the canvas, the camera is already flying down a tunnel of lines as a line of text
+ * rises and leaves, then it speeds up into a wormhole that closes up into the tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
  * lines are tiles the layer fades to them, and they glide in the rest of the way themselves.
  * Anything the visitor does cuts it short: they get the canvas, and what they did counts.
  */
@@ -650,8 +650,7 @@ function startIntro(): void {
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  const name = document.querySelector('h1')!.textContent!;
-  intro = { lines, title: new IntroTitle(root, name, Z_LEVELS + 2), start: null, held: null, gliding: false, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0 }, stop };
+  intro = { lines, title: new IntroTitle(root, INTRO_TITLE, Z_LEVELS + 2), start: null, held: null, gliding: false, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
   lines.draw(introFrame(0, intro.frame));
   intro.title.draw(0);
   frame.conceal();

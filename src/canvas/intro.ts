@@ -1,4 +1,4 @@
-import { INTRO_DISTANCE, INTRO_DRIFT, INTRO_DRIFT_ZOOM, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION, INTRO_TITLE_STAGGER, PIXEL_GRID } from './config';
+import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION, INTRO_TITLE_STAGGER, PIXEL_GRID } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { Rgb } from './pixels';
@@ -13,7 +13,8 @@ import type { Aspect } from './world';
  * Each thing drawn is a box: its rectangle as seen now and, behind that, as seen a moment ago.
  * That sweep is its motion blur, and at this speed it is a line.
  * There are two kinds: rays, one per cell of each tile's colour grid, which land on that
- * cell, and lines on a tube around the view, which pass the camera before it lands. This file works out where
+ * cell, and lines along a tube around the view, which the camera really flies past, so it is
+ * under way from the first frame and the launch only speeds it up. This file works out where
  * they go; introlayer.ts draws them.
  */
 
@@ -44,21 +45,23 @@ export interface IntroFrame {
   corners: number;
   /** Out of nothing, at the very start. */
   fade: number;
+  /** 0 while the tiles' rays are held back, to 1: out of the vanishing point as the launch builds. */
+  rays: number;
 }
 
 /** How long it all takes, s. */
-export const INTRO_LENGTH = INTRO_DRIFT + INTRO_DURATION;
+export const INTRO_LENGTH = INTRO_CRUISE + INTRO_DURATION;
 
 const introEase = cubicBezier(...INTRO_EASE);
 const LOG_DEPTH = Math.log(1 + INTRO_DISTANCE);
-const LOG_DRIFT = Math.log(INTRO_DRIFT_ZOOM);
-/** The drift lasts into the launch, so the camera never stops between them. */
-const DRIFT_END = INTRO_DRIFT + 0.6;
+/** The cruise eases off into the launch, so its speed only ever hands over, never drops. */
+const CRUISE_EASE = 0.6;
 
 /** How far the camera has left to go, t s in: reaches exactly 0 at INTRO_LENGTH, at no speed. */
 export function introDistance(t: number): number {
-  const drift = Math.max(0, 1 - Math.max(0, t) / DRIFT_END);
-  return Math.expm1(LOG_DEPTH * (1 - introEase((t - INTRO_DRIFT) / INTRO_DURATION)) + LOG_DRIFT * drift * drift);
+  const after = Math.min(1, Math.max(0, (t - INTRO_CRUISE) / CRUISE_EASE));
+  const cruise = INTRO_CRUISE_RATE * (Math.max(0, INTRO_CRUISE - t) + (CRUISE_EASE / 3) * (1 - after) ** 3);
+  return Math.expm1(LOG_DEPTH * (1 - introEase((t - INTRO_CRUISE) / INTRO_DURATION)) + cruise);
 }
 
 /** The camera t s in. Writes into `out`. */
@@ -70,11 +73,13 @@ export function introFrame(t: number, out: IntroFrame): IntroFrame {
   // Whole tiles still streak; the streaks draw in as the images are about to take over.
   out.tail = out.z + (introDistance(t - INTRO_SHUTTER * INTRO_DURATION) - out.z) * between(INTRO_HANDOVER, 0.35, out.z);
   out.corners = 1 - between(INTRO_HANDOVER, 0.2, out.z);
-  out.fade = between(0, 0.5, t);
+  out.fade = between(0, 0.25, t);
+  // Far off they would only be a blob behind the text; the tunnel stays open until it has gone.
+  out.rays = 1 - between(12, 34, out.z);
   return out;
 }
 
-/** Where letter n of the name is t s in, as a share of its height below (+) or above (−) its place: past ±1 it is out of the mask. */
+/** Where letter n of the line is t s in, as a share of its height below (+) or above (−) its place: past ±1 it is out of the mask. */
 export function introLetter(t: number, n: number): number {
   const delay = n * INTRO_TITLE_STAGGER;
   const progress = (start: number, duration: number) => Math.min(1, Math.max(0, (t - start - delay) / duration));
@@ -83,7 +88,7 @@ export function introLetter(t: number, n: number): number {
   return 1 - rise - leave;
 }
 
-/** When the last letter of a name `letters` long has gone, s. */
+/** When the last letter of a line `letters` long has gone, s. */
 export const introTitleEnd = (letters: number) => INTRO_TITLE_OUT + INTRO_TITLE_OUT_DURATION + letters * INTRO_TITLE_STAGGER;
 
 const lightness = ([r, g, b]: Rgb) => (r + g + b) / 3;
@@ -95,7 +100,7 @@ export function introPalette(all: readonly Rgb[], background: Rgb): readonly Rgb
   return seen.length >= 4 ? seen : all;
 }
 
-/** How many lines pass the camera on a viewport this big. */
+/** How many lines there are on a viewport this big. */
 export function introLineCount(vw: number, vh: number): number {
   return Math.min(INTRO_LINES, Math.round((vw * vh) / INTRO_LINE_AREA));
 }
@@ -118,6 +123,9 @@ function rayPace(tile: number, ray: number): number {
 /** Per instance: pos 2, offset 2, half 2, thin 1, tile 3, colour 4, depth 2, pace 1. */
 export const INTRO_STRIDE = 17;
 
+/** How far along the tunnel a line has to be for the camera to be past it before the tiles land. */
+export const LINE_CLEAR = 2;
+
 const SALT_RAY = 9;
 const SALT_TILE_PACE = 10;
 const SALT_PACE = 19;
@@ -130,7 +138,7 @@ const SALT_COLOR = 16;
 const SALT_ALPHA = 17;
 const SALT_COLOR2 = 18;
 
-/** What the layer draws, per INTRO_STRIDE: every tile's rays, then the lines that pass. */
+/** What the layer draws, per INTRO_STRIDE: every tile's rays, then the tunnel's lines. */
 export function introInstances(tiles: readonly IntroTile[], palette: readonly Rgb[], vw: number, vh: number, seed: number): Float32Array {
   const lines = introLineCount(vw, vh);
   const rays = tiles.reduce((sum, tile) => sum + tile.pixels.length / 6, 0);
@@ -176,11 +184,19 @@ export function introInstances(tiles: readonly IntroTile[], palette: readonly Rg
   }
 
   const reach = Math.hypot(vw, vh) / 2;
+  const START = introDistance(0);
   for (let n = 0; n < lines; n++) {
     const angle = 2 * Math.PI * unit(hash(n, 0, seed, SALT_ANGLE));
-    // Outside the view at depth 1, so it has left the screen by the time the tiles land.
-    const ring = reach * (1.05 + 1.2 * unit(hash(n, 0, seed, SALT_RING)));
     const pace = rayPace(unit(hash(n, 0, seed, SALT_TILE_PACE)), unit(hash(n, 0, seed, SALT_PACE)));
+    const meet = 1 + 0.5 * unit(hash(n, 0, seed, SALT_FAR));
+    // Somewhere along the tunnel, between here and where the camera sets out: more of them
+    // nearer the tiles, where it goes fastest.
+    const along = Math.expm1(unit(hash(n, 0, seed, SALT_NEAR)) * Math.log1p(meet * START));
+    // Far along it can be anywhere, up close to the very middle: the camera is past it long
+    // before it lands (and just off centre it goes off screen as it passes, unlike dead on it).
+    // Near the tiles it has to be outside the view, to be off screen when they land.
+    const inner = along > LINE_CLEAR ? 0.03 : 1.05;
+    const ring = reach * (inner + (2.25 - inner) * unit(hash(n, 0, seed, SALT_RING)));
     // As wide as a ray at its pace, the same way: the ones that rush are the finest.
     const size = (INTRO_LINE_WIDTH[0] + (INTRO_LINE_WIDTH[1] - INTRO_LINE_WIDTH[0]) * unit(hash(n, 0, seed, SALT_SIZE))) / pace;
     // Of two colours, the more vivid: the work is mostly pale, its accents are what light the tunnel.
@@ -201,10 +217,11 @@ export function introInstances(tiles: readonly IntroTile[], palette: readonly Rg
       g,
       b,
       0.85 + 0.15 * unit(hash(n, 0, seed, SALT_ALPHA)),
-      unit(hash(n, 0, seed, SALT_NEAR)),
-      // Mostly about as far back as the rays, carrying their field on past the edge of the tiles.
-      1 - 0.8 * unit(hash(n, 0, seed, SALT_FAR)) ** 2,
-      pace,
+      // A speed of 1 is the camera's; a little over and the line comes to meet it. Lines go by
+      // at their own depth, so at no pace of their own.
+      1 - along,
+      meet,
+      1,
     );
   }
   return data;
