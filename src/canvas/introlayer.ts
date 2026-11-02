@@ -1,4 +1,4 @@
-import { INTRO_DPR, INTRO_FADE, INTRO_HANDOVER } from './config';
+import { INTRO_DPR, INTRO_FADE, INTRO_HANDOVER, INTRO_MIN_WIDTH } from './config';
 import type { IntroFrame } from './intro';
 import { INTRO_STRIDE } from './intro';
 import type { Rgb } from './pixels';
@@ -24,20 +24,23 @@ layout(location = 7) in vec3 depth; // at the focal plane, per unit of travel, a
 uniform vec2 view;
 uniform float z, tail, closed;
 const float HANDOVER = ${INTRO_HANDOVER.toFixed(3)};
+const float MIN_HALF = ${(INTRO_MIN_WIDTH / 2).toFixed(3)};
 out float along;
 out vec2 local;
 flat out vec3 box;
 flat out vec4 paint;
 void main() {
-  vec2 p = offset + vec2(corner.x, -corner.y) * half_ * mix(thin, 1.0, closed);
+  // introTravel in intro.ts.
+  float travel = HANDOVER * pow(mix(tail, z, corner.z) / HANDOVER, mix(depth.z, 1.0, closed));
+  float w = max(depth.x + travel * mix(depth.y, 1.0, closed), 0.02);
+  vec2 size = max(half_ * mix(thin, 1.0, closed), MIN_HALF * w);
+  vec2 p = offset + vec2(corner.x, -corner.y) * size;
   local = p;
   box = tile;
   along = corner.z;
   paint = color;
   p += pos;
-  // introTravel in intro.ts.
-  float travel = HANDOVER * pow(mix(tail, z, corner.z) / HANDOVER, mix(depth.z, 1.0, closed));
-  gl_Position = vec4(p.x / view.x, -p.y / view.y, 0, max(depth.x + travel * mix(depth.y, 1.0, closed), 0.02));
+  gl_Position = vec4(p.x / view.x, -p.y / view.y, 0, w);
 }`;
 
 const FRAGMENT = `#version 300 es

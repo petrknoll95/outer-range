@@ -1,12 +1,14 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media } from '../src/assets/media';
-import { INTRO_DISTANCE, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, PIXEL_GRID, SEED } from '../src/canvas/config';
+import { INTRO_DISTANCE, INTRO_DRIFT, INTRO_DRIFT_ZOOM, INTRO_DURATION, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_TITLE_IN, INTRO_TITLE_OUT, PIXEL_GRID, SEED } from '../src/canvas/config';
 import type { IntroTile } from '../src/canvas/intro';
-import { INTRO_STRIDE, introDistance, introFrame, introInstances, introLineCount, introPalette, introTravel } from '../src/canvas/intro';
+import { INTRO_LENGTH, INTRO_STRIDE, introDistance, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel } from '../src/canvas/intro';
 import { hexRgb, pixelColor, pixelColors } from '../src/canvas/pixels';
 
-const frame = (u: number) => introFrame(u, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0 });
+/** Seconds in, u of the way from launch to landing. */
+const at = (u: number) => INTRO_DRIFT + u * INTRO_DURATION;
+const frame = (t: number) => introFrame(t, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0 });
 /** A portrait tile, its cells numbered in the red channel so each can be told apart. */
 const pixels = Array.from({ length: 48 }, (_, n) => `${n.toString(16).padStart(2, '0')}8040`).join('');
 const tile = (x: number, y: number): IntroTile => ({ i: 1, j: 2, x, y, width: 300, height: 400, radius: 12, aspect: 'portrait', pixels });
@@ -20,21 +22,30 @@ const instance = (data: Float32Array, n: number) => {
 
 describe('the intro camera', () => {
   it('sets out far off and lands exactly', () => {
-    expect(introDistance(0)).toBeCloseTo(INTRO_DISTANCE);
-    expect(introDistance(1)).toBe(0);
-    expect(introDistance(1.2)).toBe(0);
+    expect(introDistance(INTRO_DRIFT)).toBeGreaterThan(INTRO_DISTANCE);
+    expect(introDistance(INTRO_LENGTH)).toBe(0);
+    expect(introDistance(INTRO_LENGTH + 1)).toBe(0);
   });
 
-  it('only ever comes closer', () => {
+  it('only ever comes closer, never stopping on the way', () => {
     fc.assert(
-      fc.property(fc.double({ min: 0, max: 0.98, noNaN: true }), (u) => {
-        expect(introDistance(u + 0.01)).toBeLessThan(introDistance(u));
+      fc.property(fc.double({ min: 0, max: INTRO_LENGTH - 0.05, noNaN: true }), (t) => {
+        expect(introDistance(t + 0.02)).toBeLessThan(introDistance(t));
       }),
     );
   });
 
+  it('drifts in barely at all before it launches', () => {
+    const ratio = (1 + introDistance(0)) / (1 + introDistance(INTRO_DRIFT));
+    expect(ratio).toBeGreaterThan(1.1);
+    expect(ratio).toBeLessThan(INTRO_DRIFT_ZOOM);
+    const fastest = Math.max(...Array.from({ length: 19 }, (_, n) => Math.log1p(introDistance(n * 0.1)) - Math.log1p(introDistance(n * 0.1 + 0.02))));
+    const peak = Math.log1p(introDistance(at(0.2))) - Math.log1p(introDistance(at(0.2) + 0.02));
+    expect(fastest).toBeLessThan(peak / 8);
+  });
+
   /** How fast the zoom changes, as seen: in ratios. */
-  const rate = (u: number) => Math.log1p(introDistance(u)) - Math.log1p(introDistance(u + 0.01));
+  const rate = (u: number) => Math.log1p(introDistance(at(u))) - Math.log1p(introDistance(at(u + 0.01)));
 
   it('launches, peaks early, and spends most of its time easing out', () => {
     const rates = Array.from({ length: 99 }, (_, n) => rate(n / 100));
@@ -47,23 +58,41 @@ describe('the intro camera', () => {
 
   it('draws streaks longest at speed, and none once the images take over', () => {
     const streak = (u: number) => {
-      const f = frame(u);
+      const f = frame(at(u));
       return Math.log((1 + f.tail) / (1 + f.z));
     };
     expect(streak(0.2)).toBeGreaterThan(streak(0.4));
-    const over = Array.from({ length: 1000 }, (_, n) => n / 1000).find((u) => frame(u).z <= INTRO_HANDOVER)!;
+    const over = Array.from({ length: 1000 }, (_, n) => n / 1000).find((u) => frame(at(u)).z <= INTRO_HANDOVER)!;
     expect(streak(over)).toBe(0);
-    expect(frame(over).closed).toBe(1);
-    expect(frame(over).scale).toBeGreaterThan(0.85);
+    expect(frame(at(over)).closed).toBe(1);
+    expect(frame(at(over)).scale).toBeGreaterThan(0.85);
   });
 
   it('is all lines at speed, and landed is flat, closed up and has its corners', () => {
-    expect(frame(0.15)).toMatchObject({ closed: 0, corners: 0 });
-    expect(frame(1)).toMatchObject({ z: 0, tail: 0, scale: 1, closed: 1, corners: 1, fade: 1 });
+    expect(frame(at(0.15))).toMatchObject({ closed: 0, corners: 0 });
+    expect(frame(INTRO_LENGTH)).toMatchObject({ z: 0, tail: 0, scale: 1, closed: 1, corners: 1, fade: 1 });
   });
 
   it('fades up out of nothing', () => {
     expect(frame(0).fade).toBe(0);
+  });
+});
+
+describe('the name', () => {
+  it('waits below its mask, rises to its place, and leaves above it', () => {
+    expect(introLetter(0, 0)).toBe(1);
+    expect(introLetter(INTRO_TITLE_OUT - 0.01, 0)).toBeCloseTo(0, 2);
+    expect(introLetter(introTitleEnd(10), 0)).toBe(-1);
+  });
+
+  it('sets its letters off one after the other', () => {
+    const t = INTRO_TITLE_IN + 0.1;
+    expect(introLetter(t, 0)).toBeLessThan(introLetter(t, 5));
+    expect(introLetter(introTitleEnd(10), 9)).toBe(-1);
+  });
+
+  it('is gone before the wormhole gets going', () => {
+    expect(introTitleEnd(10)).toBeLessThanOrEqual(INTRO_DRIFT);
   });
 });
 

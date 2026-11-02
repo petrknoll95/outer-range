@@ -26,13 +26,13 @@ test('plays on opening the canvas, then gets out of the way', async ({ page }) =
   await playing(page);
   await expect(layer(page)).toHaveCount(1);
   expect(await page.locator('header').evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
-  await page.waitForFunction(() => !(window as unknown as { __canvas: Api }).__canvas.intro(), null, { timeout: 4000 });
+  await page.waitForFunction(() => !(window as unknown as { __canvas: Api }).__canvas.intro(), null, { timeout: 8000 });
   await expect(layer(page)).toHaveCount(0);
   await settled(page);
   await expect(page.locator('header')).toHaveCSS('opacity', '1');
 });
 
-test('takes about two seconds', async ({ page }) => {
+test('takes about four seconds', async ({ page }) => {
   await page.goto('/?test&intro', { waitUntil: 'commit' });
   await playing(page);
   const ms = await page.evaluate(
@@ -43,8 +43,8 @@ test('takes about two seconds', async ({ page }) => {
         look();
       }),
   );
-  expect(ms).toBeGreaterThan(1500);
-  expect(ms).toBeLessThan(3000);
+  expect(ms).toBeGreaterThan(3200);
+  expect(ms).toBeLessThan(5500);
 });
 
 test('lands on the canvas as it opens without one', async ({ page }) => {
@@ -62,19 +62,36 @@ test('hands over to the real tiles for the last of the way, then leaves them unt
   const scale = () => page.locator('[data-canvas-layer]').evaluate((el) => (el as HTMLElement).style.transform);
   await open(page);
   expect(await scale()).toBe('');
-  await hold(page, 0.75);
+  await hold(page, 3.9);
   await page.waitForFunction(() => document.querySelector<HTMLElement>('[data-canvas-layer]')!.style.transform !== '');
   expect(await waiting(page)).toBe(false);
   await expect(layer(page)).toHaveCount(0);
-  await hold(page, 1);
+  await hold(page, 99);
   await settled(page);
   expect(await scale()).toBe('');
   await expect(page.locator('.focus-frame')).toHaveCSS('opacity', '1');
 });
 
+test('the name rises in at the centre, and has gone before the launch', async ({ page }) => {
+  const title = page.locator('[data-intro-title]');
+  const lastLetter = title.locator('span span').last();
+  await open(page);
+  await expect(title).toHaveText('Petr Knoll');
+  await expect(title).toHaveAttribute('aria-hidden', 'true');
+  await expect(lastLetter).toHaveCSS('transform', /^matrix\(1, 0, 0, 1, 0, \d/);
+  await hold(page, 1.3);
+  await expect.poll(() => lastLetter.evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(0%)');
+  const box = (await title.locator('span').first().boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(Math.abs(box.x + box.width / 2 - view.width / 2)).toBeLessThan(2);
+  expect(Math.abs(box.y + box.height / 2 - view.height / 2)).toBeLessThan(2);
+  await hold(page, 2.4);
+  await expect(title).toHaveCount(0);
+});
+
 test('draws lines at speed', async ({ page }) => {
   await open(page);
-  await hold(page, 0.3);
+  await hold(page, 2.9);
   await page.waitForTimeout(200);
   const lines = await page.screenshot();
   await hold(page, 0);
@@ -93,6 +110,7 @@ for (const [what, act] of [
     expect(await isPlaying(page)).toBe(false);
     expect(await waiting(page)).toBe(false);
     await expect(layer(page)).toHaveCount(0);
+    await expect(page.locator('[data-intro-title]')).toHaveCount(0);
     await expect(page.locator('[data-canvas-layer]')).toHaveCSS('transform', 'none');
   });
 }

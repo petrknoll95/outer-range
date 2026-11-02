@@ -1,4 +1,4 @@
-import { INTRO_DISTANCE, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, PIXEL_GRID } from './config';
+import { INTRO_DISTANCE, INTRO_DRIFT, INTRO_DRIFT_ZOOM, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION, INTRO_TITLE_STAGGER, PIXEL_GRID } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { Rgb } from './pixels';
@@ -46,26 +46,45 @@ export interface IntroFrame {
   fade: number;
 }
 
+/** How long it all takes, s. */
+export const INTRO_LENGTH = INTRO_DRIFT + INTRO_DURATION;
+
 const introEase = cubicBezier(...INTRO_EASE);
 const LOG_DEPTH = Math.log(1 + INTRO_DISTANCE);
+const LOG_DRIFT = Math.log(INTRO_DRIFT_ZOOM);
+/** The drift lasts into the launch, so the camera never stops between them. */
+const DRIFT_END = INTRO_DRIFT + 0.6;
 
-/** How far the camera has left to go at progress u: reaches exactly 0, at no speed. */
-export function introDistance(u: number): number {
-  return Math.expm1(LOG_DEPTH * (1 - introEase(u)));
+/** How far the camera has left to go, t s in: reaches exactly 0 at INTRO_LENGTH, at no speed. */
+export function introDistance(t: number): number {
+  const drift = Math.max(0, 1 - Math.max(0, t) / DRIFT_END);
+  return Math.expm1(LOG_DEPTH * (1 - introEase((t - INTRO_DRIFT) / INTRO_DURATION)) + LOG_DRIFT * drift * drift);
 }
 
-/** The camera at progress u (0 to 1, in time). Writes into `out`. */
-export function introFrame(u: number, out: IntroFrame): IntroFrame {
+/** The camera t s in. Writes into `out`. */
+export function introFrame(t: number, out: IntroFrame): IntroFrame {
   const between = (from: number, to: number, x: number) => smoothstep(Math.min(1, Math.max(0, (x - from) / (to - from))));
-  out.z = introDistance(u);
+  out.z = introDistance(t);
   out.scale = 1 / (1 + out.z);
   out.closed = 1 - between(0.2, 0.8, out.z);
   // Whole tiles still streak; the streaks draw in as the images are about to take over.
-  out.tail = out.z + (introDistance(u - INTRO_SHUTTER) - out.z) * between(INTRO_HANDOVER, 0.35, out.z);
+  out.tail = out.z + (introDistance(t - INTRO_SHUTTER * INTRO_DURATION) - out.z) * between(INTRO_HANDOVER, 0.35, out.z);
   out.corners = 1 - between(INTRO_HANDOVER, 0.2, out.z);
-  out.fade = between(0, 0.06, u);
+  out.fade = between(0, 0.5, t);
   return out;
 }
+
+/** Where letter n of the name is t s in, as a share of its height below (+) or above (−) its place: past ±1 it is out of the mask. */
+export function introLetter(t: number, n: number): number {
+  const delay = n * INTRO_TITLE_STAGGER;
+  const progress = (start: number, duration: number) => Math.min(1, Math.max(0, (t - start - delay) / duration));
+  const rise = 1 - (1 - progress(INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION)) ** 4;
+  const leave = progress(INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION) ** 3;
+  return 1 - rise - leave;
+}
+
+/** When the last letter of a name `letters` long has gone, s. */
+export const introTitleEnd = (letters: number) => INTRO_TITLE_OUT + INTRO_TITLE_OUT_DURATION + letters * INTRO_TITLE_STAGGER;
 
 const lightness = ([r, g, b]: Rgb) => (r + g + b) / 3;
 const vividness = ([r, g, b]: Rgb) => Math.max(r, g, b) - Math.min(r, g, b);

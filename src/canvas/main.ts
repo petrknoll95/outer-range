@@ -2,15 +2,16 @@ import { gsap } from 'gsap';
 import { ScrollSmoother } from 'gsap/ScrollSmoother';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FocusCaption } from './caption';
-import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_DURATION, INTRO_HANDOVER, SEED, STEP, ZOOM_DURATION } from './config';
+import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_HANDOVER, SEED, STEP, ZOOM_DURATION } from './config';
 import type { FlightView } from './flight';
 import { flightFar, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
 import { attachInput } from './input';
 import type { IntroFrame } from './intro';
-import { introFrame, introInstances, introPalette } from './intro';
+import { INTRO_LENGTH, introFrame, introInstances, introPalette } from './intro';
 import { IntroLayer } from './introlayer';
+import { IntroTitle } from './introtitle';
 import type { CellRect, Geometry } from './layout';
 import { computeGeometry, sizingReach, zoomInLevel } from './layout';
 import { DEFAULT_LENS, Lens } from './lens';
@@ -618,16 +619,17 @@ const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' 
 let route: Route = routeAt(location.pathname);
 
 /**
- * Opening the canvas, the camera arrives through a wormhole of lines that close up into its
- * tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
+ * Opening the canvas, the camera drifts in on a field of stars as the name rises and leaves,
+ * then launches through a wormhole of lines that close up into its tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
  * lines are tiles the layer fades to them, and they glide in the rest of the way themselves.
  * Anything the visitor does cuts it short: they get the canvas, and what they did counts.
  */
 interface Intro {
   lines: IntroLayer;
+  title: IntroTitle;
   /** Timed from its first frame, so the page's own start doesn't eat into it. */
   start: number | null;
-  /** For tests: stay at this progress. */
+  /** For tests: stay this many seconds in. */
   held: number | null;
   /** The real tiles have taken over. */
   gliding: boolean;
@@ -648,8 +650,10 @@ function startIntro(): void {
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  intro = { lines, start: null, held: null, gliding: false, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0 }, stop };
+  const name = document.querySelector('h1')!.textContent!;
+  intro = { lines, title: new IntroTitle(root, name, Z_LEVELS + 2), start: null, held: null, gliding: false, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0 }, stop };
   lines.draw(introFrame(0, intro.frame));
+  intro.title.draw(0);
   frame.conceal();
 }
 
@@ -657,9 +661,10 @@ function stepIntro(): void {
   const i = intro!;
   const t = now();
   i.start ??= t;
-  const u = i.held ?? (t - i.start) / INTRO_DURATION;
-  if (u >= 1) return endIntro();
-  const f = introFrame(u, i.frame);
+  const at = i.held ?? t - i.start;
+  if (at >= INTRO_LENGTH) return endIntro();
+  const f = introFrame(at, i.frame);
+  i.title.draw(at);
   if (f.z <= INTRO_HANDOVER && !i.gliding) {
     i.gliding = true;
     i.lines.leave();
@@ -673,6 +678,7 @@ function stepIntro(): void {
 function endIntro(): void {
   if (!intro) return;
   intro.lines.leave();
+  intro.title.remove();
   intro.stop.abort();
   intro = null;
   delete document.documentElement.dataset.intro;
@@ -977,10 +983,10 @@ if (debug || params.has('test')) {
     /** The view, and the flight between the two, or null. */
     route: () => route,
     flight: () => (flight ? { u: flight.u, to: flight.to } : null),
-    /** Whether the intro is playing; hold it at a progress to look at it. */
+    /** Whether the intro is playing; hold it this many seconds in to look at it. */
     intro: () => intro !== null,
-    holdIntro: (u: number) => {
-      if (intro) intro.held = u;
+    holdIntro: (at: number) => {
+      if (intro) intro.held = at;
     },
     activeImage: () => renderer.activeImage(),
     /** The project view, or null: landed (and browsable) or not, and its overview's zoom. */

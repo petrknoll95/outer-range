@@ -324,9 +324,13 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
 // ── The intro ──────────────────────────────────────────────────────────────
 
 /**
- * Opening the canvas, the camera arrives from INTRO_DISTANCE focal lengths away (intro.ts)
- * over INTRO_DURATION s. A zoom is seen in ratios, so INTRO_EASE eases the logarithm of the
- * zoom: it launches hard, peaks a fifth of the way in, and spends the rest easing out. Each
+ * Opening the canvas, the camera drifts in for INTRO_DRIFT s, by a factor of INTRO_DRIFT_ZOOM,
+ * as the name (the page's h1) rises in at the centre and leaves again: each letter through a
+ * mask, INTRO_TITLE_STAGGER s after the last, in from INTRO_TITLE_IN s over
+ * INTRO_TITLE_IN_DURATION s, out from INTRO_TITLE_OUT s over INTRO_TITLE_OUT_DURATION s.
+ *
+ * Then it launches from INTRO_DISTANCE focal lengths away (intro.ts) and arrives over
+ * INTRO_DURATION s. A zoom is seen in ratios, so INTRO_EASE eases the logarithm of the zoom: it launches hard, peaks a fifth of the way in, and spends the rest easing out. Each
  * tile comes in as its colour grid (pixels.ts), one ray per cell, thinned to INTRO_THIN of the
  * cell and INTRO_SPREAD apart in depth, each at its own pace within INTRO_PACE: below 1 it
  * runs ahead of the camera, above 1 it hangs back and tears through to catch up, part set by
@@ -336,8 +340,16 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * streak from where it was INTRO_SHUTTER of the duration ago, so streaks are longest at the
  * peak. One extra line per INTRO_LINE_AREA px² of screen, at most INTRO_LINES, passes the
  * camera on the way in, as wide as a ray (half INTRO_LINE_WIDTH across, at pace 1) and as
- * solid, so the tunnel and the images read as one field. Pixels are capped at INTRO_DPR.
+ * solid, so the tunnel and the images read as one field. However far off, nothing is drawn under INTRO_MIN_WIDTH px across,
+ * so the distant field reads as stars. Pixels are capped at INTRO_DPR.
  */
+export const INTRO_DRIFT = 2.2;
+export const INTRO_DRIFT_ZOOM = 1.35;
+export const INTRO_TITLE_IN = 0.3;
+export const INTRO_TITLE_IN_DURATION = 0.7;
+export const INTRO_TITLE_OUT = 1.55;
+export const INTRO_TITLE_OUT_DURATION = 0.4;
+export const INTRO_TITLE_STAGGER = 0.025;
 export const INTRO_DURATION = 2;
 export const INTRO_DISTANCE = 40;
 export const INTRO_EASE = [0.34, 0, 0.06, 1] as const;
@@ -350,6 +362,7 @@ export const INTRO_SHUTTER = 0.12;
 export const INTRO_LINE_AREA = 480;
 export const INTRO_LINES = 3000;
 export const INTRO_LINE_WIDTH = [3, 6] as const;
+export const INTRO_MIN_WIDTH = 2;
 export const INTRO_DPR = 1.5;
 export const INTRO_FADE = 0.32;
 
