@@ -176,3 +176,45 @@ test('zooming onto another image while the frame is mid hand-over leaves the fra
   expect(result.off).toBeLessThan(1);
 });
 
+test('on a phone each image fills 90% of the width, paging from one to the next', async ({ page }) => {
+  const view = { width: 390, height: 844 };
+  await page.setViewportSize(view);
+  await page.goto('/?test');
+  const settle = () => page.waitForFunction(() => (window as unknown as { __canvas?: { isSettled: () => boolean } }).__canvas?.isSettled(), null, { timeout: 30_000 });
+  const active = () => page.evaluate(() => (window as unknown as { __canvas: { activeImage: () => { width: number; height: number; image: number } } }).__canvas.activeImage());
+  await settle();
+  await page.keyboard.press(' ');
+  await settle();
+  const shapes = new Set<number>();
+  for (const key of ['ArrowRight', 'ArrowDown', 'ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowDown']) {
+    const { width, height } = await active();
+    shapes.add(Math.round((width / height) * 100));
+    expect(width).toBeCloseTo(view.width * 0.9, 0);
+    await page.keyboard.press(key);
+    await page.waitForTimeout(100);
+    await settle();
+  }
+  // It has seen more than one shape, at the same width.
+  expect(shapes.size).toBeGreaterThan(1);
+});
+
+test('the active image is always on top of the other tiles', async ({ page }) => {
+  await page.goto('/?test');
+  const settle = () => page.waitForFunction(() => (window as unknown as { __canvas?: { isSettled: () => boolean } }).__canvas?.isSettled(), null, { timeout: 30_000 });
+  const top = () =>
+    page.evaluate(() => {
+      const tiles = [...document.querySelectorAll<HTMLElement>('[data-canvas-layer] > div:not([hidden])')].sort((a, b) => +b.style.zIndex - +a.style.zIndex);
+      const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as { images: { alt: string }[] };
+      const active = (window as unknown as { __canvas: { activeImage: () => { image: number } } }).__canvas.activeImage();
+      return { top: tiles[0]!.querySelector('img')!.alt, active: data.images[active.image]!.alt, next: +tiles[1]!.style.zIndex, z: +tiles[0]!.style.zIndex };
+    });
+  await settle();
+  for (const act of [() => page.keyboard.press('ArrowRight'), () => page.keyboard.press('ArrowDown'), () => page.keyboard.press(' '), () => page.keyboard.press('ArrowRight')]) {
+    const now = await top();
+    expect(now.top).toBe(now.active);
+    expect(now.z).toBeGreaterThan(now.next);
+    await act();
+    await page.waitForTimeout(100);
+    await settle();
+  }
+});

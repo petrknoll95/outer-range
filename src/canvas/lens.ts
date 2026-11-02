@@ -44,6 +44,12 @@ export class Lens {
    */
   readonly reach: number;
 
+  /**
+   * How far the lens has let go, 0 (all there) to 1 (the identity). On a narrow screen a focused
+   * image reaches well into the part the lens squeezes, so it lets go as the image comes up.
+   */
+  relax = 0;
+
   private readonly amount: number;
   private readonly width: number;
 
@@ -108,10 +114,11 @@ export class Lens {
       out.scale = 1;
       return out;
     }
-    const k = rho > this.params.inner ? this.mapRadius(rho) / rho : 1;
+    const hold = 1 - this.relax;
+    const k = 1 + ((rho > this.params.inner ? this.mapRadius(rho) / rho : 1) - 1) * hold;
     out.x = qx * k;
     out.y = qy * k;
-    out.scale = this.scaleAt(this.radius((Math.abs(qx) + halfW) / hx, (Math.abs(qy) + halfH) / hy));
+    out.scale = 1 + (this.scaleAt(this.radius((Math.abs(qx) + halfW) / hx, (Math.abs(qy) + halfH) / hy)) - 1) * hold;
     return out;
   }
 
@@ -127,7 +134,8 @@ export class Lens {
       out.y = y;
       return out;
     }
-    const k = this.unmapRadius(rho) / rho;
+    // (Between 0 and 1 this is near enough: nothing is tapped mid-way.)
+    const k = 1 + (this.unmapRadius(rho) / rho - 1) * (1 - this.relax);
     out.x = x * k;
     out.y = y * k;
     return out;

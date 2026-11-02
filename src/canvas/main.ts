@@ -2,7 +2,7 @@ import { gsap } from 'gsap';
 import { ScrollSmoother } from 'gsap/ScrollSmoother';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FocusCaption } from './caption';
-import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_CRUISE, INTRO_HANDOVER, INTRO_WAIT, SEED, STEP, ZOOM_DURATION } from './config';
+import { LONG, FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_CRUISE, INTRO_HANDOVER, INTRO_WAIT, SEED, STEP, ZOOM_DURATION, ZOOM_NARROW } from './config';
 import type { FlightView } from './flight';
 import { flightFar, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
@@ -13,7 +13,7 @@ import { INTRO_FARTHEST, INTRO_LENGTH, introFrame, introInstances, introPalette 
 import { IntroLayer } from './introlayer';
 import { IntroTitle } from './introtitle';
 import type { CellRect, Geometry } from './layout';
-import { computeGeometry, sizingReach, zoomInLevel } from './layout';
+import { computeGeometry, sizingReach, zoomInFor, zoomInLevel } from './layout';
 import { DEFAULT_LENS, Lens } from './lens';
 import type { Snapper } from './physics';
 import { CameraPhysics, GLIDE, ZOOM_TO } from './physics';
@@ -347,17 +347,21 @@ let frameTimer = 0;
 /** 0 zoomed out (to the project's overview, in the project view) to 1 zoomed in, from the actual zoom, so the fade follows the animation. */
 const focusAt = (z: number) => {
   const out = project ? project.overview.z : 1;
-  return zoomIn > out ? Math.min(1, Math.max(0, (z - out) / (zoomIn - out))) : 0;
+  // All the way by the lowest zoom any image is focused at.
+  const focused = zoomInFor(geometry, LONG * geometry.s, LONG * geometry.s, zoomIn);
+  return focused > out ? Math.min(1, Math.max(0, (z - out) / (focused - out))) : 0;
 };
 
 /** The camera position that centres the image nearest the view centre; paging uses it to find neighbours. */
-const nearest = { x: 0, y: 0 };
+const nearest = { x: 0, y: 0, width: 0, height: 0 };
 const snapper: Snapper = (x, y, z) => {
-  const hx = geometry.vw / 2 / z;
-  const hy = geometry.vh / 2 / z;
-  nearestImageCentre(world, geometry, x + hx, y + hy, nearest);
-  return { x: nearest.x - hx, y: nearest.y - hy };
+  nearestImageCentre(world, geometry, x + geometry.vw / 2 / z, y + geometry.vh / 2 / z, nearest);
+  const to = focusZoom(nearest);
+  return { x: nearest.x - geometry.vw / 2 / to, y: nearest.y - geometry.vh / 2 / to, z: to };
 };
+
+/** The zoom an image is focused at. */
+const focusZoom = (image: { width: number; height: number }) => zoomInFor(geometry, image.width, image.height, zoomIn);
 
 const stepCam: CameraStep = { x: 0, y: 0, z: 1, panVx: 0, panVy: 0, zooming: false, anchorX: 0, anchorY: 0, focus: 0 };
 physics.onStep = () => {
@@ -407,6 +411,7 @@ let awake = false;
 const listeners = new Set<() => void>();
 
 function draw(vx: number, vy: number, zoomAtRest: boolean): void {
+  lens.relax = geometry.vw < ZOOM_NARROW ? focusAt(physics.renderZ) : 0;
   // Mid zoom-to, tiles keep their layout until it lands.
   renderer.update(physics.renderX, physics.renderY, physics.renderZ, vx, vy, zoomAtRest, physics.zoomingTo || projectMoving());
   frame.setRadius(geometry.radius * physics.renderZ);
@@ -483,7 +488,7 @@ function zoomInOn(rect: CellRect | null, t: number): void {
   // Zoomed in, the view pages from image to image, one neighbour per gesture.
   physics.setPaging(geometry.pitch);
   // Sharp all the way in, its full-size image loading on the way.
-  renderer.prepare(rect, zoomIn);
+  renderer.prepare(rect, focusZoom(rect));
   // Onto another image than the framed one: the frame steps aside rather than chase it, and
   // comes back round it as it arrives.
   const active = renderer.activeRect();
@@ -492,7 +497,7 @@ function zoomInOn(rect: CellRect | null, t: number): void {
     clearTimeout(frameTimer);
     frameTimer = window.setTimeout(() => frame.reveal(), reducedMotion.matches ? 0 : ZOOM_DURATION * FOCUS_FRAME_RETURN * 1000);
   }
-  physics.push(ZOOM_TO, t, rect.left + rect.width / 2, rect.top + rect.height / 2, zoomIn, ZOOM_DURATION);
+  physics.push(ZOOM_TO, t, rect.left + rect.width / 2, rect.top + rect.height / 2, focusZoom(rect), ZOOM_DURATION);
 }
 
 /** Zoom back out, keeping whatever is centred in place. */
@@ -566,7 +571,8 @@ function relayout(): void {
     // The zoomed-in level depends on the viewport: settle at the new one, still centred.
     const cx = physics.tx + geometry.vw / 2 / physics.tz;
     const cy = physics.ty + geometry.vh / 2 / physics.tz;
-    physics.push(ZOOM_TO, now(), cx, cy, zoomIn, STEP);
+    nearestImageCentre(world, geometry, cx, cy, nearest);
+    physics.push(ZOOM_TO, now(), cx, cy, focusZoom(nearest), STEP);
   }
   wake();
 }
@@ -653,11 +659,11 @@ function startIntro(): void {
   const background = [r / 255, g / 255, b / 255] as const;
   const palette = introPalette(data.images.flatMap((image) => pixelColors(image.pixels).filter((_, n) => n % 16 === 0)), background);
   const instances = introInstances(renderer.introTiles(INTRO_FARTHEST), palette, geometry.vw, geometry.vh, SEED);
-  const lines = IntroLayer.create(root, instances, background, geometry.vw, geometry.vh, Z_LEVELS + 1, params.has('test'));
+  const lines = IntroLayer.create(root, instances, background, geometry.vw, geometry.vh, Z_LEVELS + 2, params.has('test'));
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  intro = { lines, title: new IntroTitle(root, Z_LEVELS + 2), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
+  intro = { lines, title: new IntroTitle(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
   lines.draw(introFrame(0, intro.frame));
   intro.title.draw(0);
   frame.conceal();
@@ -778,10 +784,10 @@ function stepFlight(): void {
 
 /** Back from a flight: finish settling into the zoom state, on an image's centre when zoomed in. */
 function resettle(t: number): void {
-  const z = zoomState === 'in' ? zoomIn : 1;
   const cx = physics.x + geometry.vw / 2 / physics.z;
   const cy = physics.y + geometry.vh / 2 / physics.z;
   if (zoomState === 'in') nearestImageCentre(world, geometry, cx, cy, nearest);
+  const z = zoomState === 'in' ? focusZoom(nearest) : 1;
   const [px, py] = zoomState === 'in' ? [nearest.x, nearest.y] : [cx, cy];
   if (z !== physics.z || px !== cx || py !== cy) physics.push(ZOOM_TO, t, px, py, z, ZOOM_DURATION);
 }
@@ -810,7 +816,8 @@ function restoreView(): boolean {
   }
   if (!view) return false;
   zoomState = view.zoom;
-  const z = zoomState === 'in' ? zoomIn : 1;
+  if (zoomState === 'in') nearestImageCentre(world, geometry, view.cx * geometry.s, view.cy * geometry.s, nearest);
+  const z = zoomState === 'in' ? focusZoom(nearest) : 1;
   physics.jumpTo(view.cx * geometry.s - geometry.vw / 2 / z, view.cy * geometry.s - geometry.vh / 2 / z, z);
   if (zoomState === 'in') physics.setPaging(geometry.pitch);
   return true;

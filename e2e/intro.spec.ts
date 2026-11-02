@@ -113,7 +113,8 @@ test('it waits for images that are slow to load, but not for ever', async ({ pag
         look();
       }),
   );
-  expect(ms).toBeGreaterThan(5000);
+  // Longer than the 4.4 s it takes with the images in. (The clock here starts a little after it does.)
+  expect(ms).toBeGreaterThan(4600);
   expect(ms).toBeLessThan(8000);
 });
 

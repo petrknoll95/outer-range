@@ -72,3 +72,11 @@ test('dragging across the wordmark moves the canvas', async ({ page }) => {
   const after = await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.physics.y);
   expect(after).toBeLessThan(before - 50);
 });
+
+test('the wordmark and link are a size smaller on a phone', async ({ page }) => {
+  await page.goto('/?test');
+  await expect(page.locator('h1')).toHaveCSS('font-size', '24px');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('h1')).toHaveCSS('font-size', '20px');
+  await expect(page.getByRole('link', { name: 'About' })).toHaveCSS('font-size', '20px');
+});

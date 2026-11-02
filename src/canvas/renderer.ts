@@ -101,6 +101,8 @@ interface Slot {
   i: number;
   j: number;
   image: number;
+  /** Where it stacks among the tiles (see stack). */
+  z: number;
   /** The zoom it is laid out (sized in CSS, so rasterised) at; drawn scaled by zoom / layout. */
   layout: number;
   /** Image rectangle in world px at zoom 1. */
@@ -313,7 +315,8 @@ export class Renderer {
       slot.j = guest.j;
       slot.left = guest.to.left;
       slot.top = guest.to.top;
-      slot.el.style.zIndex = String(Z_LEVELS - 1);
+      slot.z = Z_LEVELS - 1;
+      this.stack(slot);
     }
   }
 
@@ -593,9 +596,17 @@ export class Renderer {
     return { i: slot.i, j: slot.j, image: slot.image, left: slot.cssX, top: slot.cssY, width: slot.drawnWidth, height: slot.drawnHeight };
   }
 
+  /** Where a tile stacks: the active image over every other, and under only the frame around it. */
+  private stack(slot: Slot): void {
+    slot.el.style.zIndex = String(slot === this.activeSlot ? Z_LEVELS : slot.z);
+  }
+
   private setActive(slot: Slot | null): void {
     if (slot === this.activeSlot) return;
+    const last = this.activeSlot;
     this.activeSlot = slot;
+    if (last) this.stack(last);
+    if (slot) this.stack(slot);
     this.onActiveChange?.(slot?.el ?? null);
   }
 
@@ -877,6 +888,7 @@ export class Renderer {
       cssX: Number.NaN,
       cssY: Number.NaN,
       cssScale: Number.NaN,
+      z: 0,
       drawnWidth: 0,
       drawnHeight: 0,
       distance: Number.POSITIVE_INFINITY,
@@ -999,7 +1011,8 @@ export class Renderer {
     // largest images at once as it opens.
     this.layOut(slot, guest && !this.projectFree ? this.projectZoom : fresh && this.holding ? this.camZ : this.layoutZoom);
     // A guest goes over the cells it crosses (under the frame).
-    slot.el.style.zIndex = String(guest ? Z_LEVELS - 1 : cell.z);
+    slot.z = guest ? Z_LEVELS - 1 : cell.z;
+    this.stack(slot);
     if (fresh) {
       // Arrive already faded (or not), like the tiles around it.
       slot.opacity = this.opacityTarget(slot);

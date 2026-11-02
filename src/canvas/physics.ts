@@ -20,6 +20,7 @@ import {
   WHEEL_TAU,
   ZOOM_EASE,
   ZOOM_TAU,
+  ZOOM_PAGE_DURATION,
 } from './config';
 import { cubicBezier, focusDuration, smoothstep, startSlope } from './focus';
 
@@ -51,7 +52,8 @@ export type StepListener = (x: number, y: number, z: number) => void;
  * Given a camera position (x, y) at zoom z, the camera position that centres the image
  * nearest the view centre, or null if there is none. Paging uses it to find neighbours.
  */
-export type Snapper = (x: number, y: number, z: number) => { x: number; y: number } | null;
+/** The camera position that frames the image nearest (x, y) at zoom z, and (if it wants another) at the zoom it wants. */
+export type Snapper = (x: number, y: number, z: number) => { x: number; y: number; z?: number } | null;
 
 /**
  * Camera physics on a fixed 240 Hz step.
@@ -578,8 +580,10 @@ export class CameraPhysics {
   /** Paging: glide to the neighbour of the anchored image in direction (dx, dy), or back if there is none. */
   private pageToward(t: number, dx: number, dy: number, vx: number, vy: number): void {
     const m = Math.hypot(dx, dy);
-    const target = m > 0 ? this.snapper!(this.pageAnchorX + (dx / m) * this.pageStep, this.pageAnchorY + (dy / m) * this.pageStep, this.tz) : null;
-    if (target) this.glideTo(t, target.x, target.y, vx, vy);
+    const z = this.zoomToDuration > 0 ? this.zoomToTarget : this.tz;
+    const target = m > 0 ? this.snapper!(this.pageAnchorX + (dx / m) * this.pageStep, this.pageAnchorY + (dy / m) * this.pageStep, z) : null;
+    if (target?.z !== undefined && target.z !== z) this.apply(ZOOM_TO, t, target.x + this.centreX / target.z, target.y + this.centreY / target.z, target.z, ZOOM_PAGE_DURATION, 0);
+    else if (target) this.glideTo(t, target.x, target.y, vx, vy);
     else this.glideTo(t, this.pageAnchorX, this.pageAnchorY, vx, vy);
   }
 

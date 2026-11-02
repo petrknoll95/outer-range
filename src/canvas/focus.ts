@@ -82,7 +82,7 @@ const nearestRect: CellRect = { left: 0, top: 0, width: 0, height: 0 };
  * an image within jitter and stagger of its lattice point, so the nearest one is always
  * among the cells two around the point's own. Writes into `out`.
  */
-export function nearestImageCentre(world: World, g: Geometry, wx: number, wy: number, out: { x: number; y: number }): { x: number; y: number } {
+export function nearestImageCentre<T extends { x: number; y: number; width?: number; height?: number }>(world: World, g: Geometry, wx: number, wy: number, out: T): T {
   const i0 = Math.round(wx / g.pitch);
   const j0 = Math.round((wy - world.columnStagger(i0) * g.s) / g.pitch);
   let best = Number.POSITIVE_INFINITY;
@@ -96,6 +96,10 @@ export function nearestImageCentre(world: World, g: Geometry, wx: number, wy: nu
         best = d;
         out.x = cx;
         out.y = cy;
+        if ('width' in out) {
+          out.width = r.width;
+          out.height = r.height;
+        }
       }
     }
   }

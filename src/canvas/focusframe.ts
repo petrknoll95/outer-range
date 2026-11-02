@@ -48,7 +48,7 @@ export class FocusFrame {
     this.el.setAttribute('aria-hidden', 'true');
     // Over every tile, however they stack: a neighbour overlapping the active image (or its
     // project label, above it) never covers it.
-    this.el.style.zIndex = String(Z_LEVELS);
+    this.el.style.zIndex = String(Z_LEVELS + 1);
     this.el.style.setProperty('--focus-pad', `${FOCUS_FRAME_PADDING}px`);
     this.el.style.setProperty('--focus-duration', `${FOCUS_FRAME_DURATION}s`);
     this.el.style.setProperty('--focus-conceal', `${FOCUS_FRAME_CONCEAL}s`);

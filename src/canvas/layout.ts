@@ -1,4 +1,4 @@
-import { CELLS_PER_VIEWPORT, LENS_REPEAT_SHARE, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_IN_FILL, ZOOM_MAX } from './config';
+import { ZOOM_NARROW, ZOOM_NARROW_HEIGHT, ZOOM_NARROW_WIDTH, CELLS_PER_VIEWPORT, LENS_REPEAT_SHARE, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_IN_FILL, ZOOM_MAX } from './config';
 import type { Cell, World } from './world';
 import { emptyCell } from './world';
 
@@ -62,11 +62,23 @@ export function computeGeometry(vw: number, vh: number, world: World, reach = 1)
 /**
  * The zoomed-in zoom for a geometry: a portrait image's long edge fills ZOOM_IN_FILL of
  * the viewport's short side, unless images would go soft first (the on-screen short edge
- * in device pixels reaching `sharpEdge`) or ZOOM_MAX is reached. Never below 1.
+ * in device pixels reaching `sharpEdge`) or ZOOM_MAX is reached. Never below 1. On a narrow
+ * viewport, the most any image zooms to (see zoomInFor): a portrait one, the narrowest.
  */
 export function zoomInLevel(g: Geometry, dpr: number, sharpEdge: number): number {
   const fill = (ZOOM_IN_FILL * Math.min(g.vw, g.vh)) / (LONG * g.s);
+  if (g.vw < ZOOM_NARROW) return zoomInFor(g, g.s, LONG * g.s, 1);
   return Math.max(1, Math.min(ZOOM_MAX, sharpEdge / (g.s * dpr), fill));
+}
+
+/**
+ * The zoomed-in zoom for an image `width` × `height` world px at zoom 1. `level` is the
+ * zoomed-in zoom (zoomInLevel): on a wide viewport every image shares it. On a narrow one the
+ * image fills ZOOM_NARROW_WIDTH of the width, or ZOOM_NARROW_HEIGHT of the height if that's less.
+ */
+export function zoomInFor(g: Geometry, width: number, height: number, level: number): number {
+  if (g.vw >= ZOOM_NARROW) return level;
+  return Math.max(1, Math.min((ZOOM_NARROW_WIDTH * g.vw) / width, (ZOOM_NARROW_HEIGHT * g.vh) / height));
 }
 
 /** Pixel rectangle of a cell's image in world space. */

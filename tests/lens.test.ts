@@ -181,4 +181,12 @@ describe('lens on the canvas', () => {
     console.info(`repeats on ${((100 * repeats) / screens).toFixed(1)}% of screens, largest copy at scale ${largest.toFixed(2)}`);
     expect(repeats / screens).toBeLessThan(0.08);
   });
+
+  it('lets go completely: drawn exactly as they lie', () => {
+    const lens = new Lens(DEFAULT_LENS);
+    lens.relax = 1;
+    const out = lens.apply(150, 300, 195, 422, { x: 0, y: 0, scale: 0 }, 150, 200);
+    expect(out).toEqual({ x: 150, y: 300, scale: 1 });
+    expect(lens.unapply(150, 300, 195, 422, { x: 0, y: 0 })).toEqual({ x: 150, y: 300 });
+  });
 });

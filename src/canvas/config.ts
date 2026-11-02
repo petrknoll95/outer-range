@@ -93,11 +93,20 @@ export const SETTLE_DISTANCE = 0.05;
  * viewport's short side, but never past where images would go soft: the zoom where the
  * on-screen short edge, in device pixels, reaches the source size three quarters of the
  * images have (index.astro passes it in as `sharpEdge`). ZOOM_MAX caps it on low-DPR screens.
+ *
+ * Under ZOOM_NARROW px wide, as on a phone, each image has its own zoom instead: it fills
+ * ZOOM_NARROW_WIDTH of the viewport's width, unless it would then be over ZOOM_NARROW_HEIGHT of
+ * its height, which leaves room for the label above and the caption below.
  */
 export const ZOOM_IN_FILL = 0.7;
+export const ZOOM_NARROW = 760;
+export const ZOOM_NARROW_WIDTH = 0.9;
+export const ZOOM_NARROW_HEIGHT = 0.62;
 export const ZOOM_MAX = 2.5;
 /** Time to move between the two zoom states, s. */
 export const ZOOM_DURATION = 0.7;
+/** Time to page to a neighbour that needs another zoom, s. */
+export const ZOOM_PAGE_DURATION = 0.5;
 /**
  * The zoom's ease, as a CSS cubic-bezier: it sets off gently (no jolt on the first frame),
  * is quickly up to speed, and spends the rest slowing smoothly into place.

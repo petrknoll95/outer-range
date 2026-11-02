@@ -57,7 +57,7 @@ const SALT_SHUFFLE = 6;
 
 const ASPECTS: readonly Aspect[] = ['landscape', 'portrait', 'square'];
 
-/** Cells stack in a random order, at z 0 to Z_LEVELS − 1 (a power of two); anything drawn over every tile goes at Z_LEVELS. */
+/** Cells stack in a random order, at z 0 to Z_LEVELS − 1 (a power of two); the active image goes at Z_LEVELS, and anything drawn over every tile above that. */
 export const Z_LEVELS = 1024;
 
 export function emptyCell(): Cell {
