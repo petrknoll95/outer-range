@@ -401,3 +401,51 @@ test('reloading the about view keeps the view: Back still returns to it', async 
   expect(after.y).toBeCloseTo(before.y, 3);
 });
 
+for (const [how, wait, gesture] of [
+  ['mid-scroll, all the way there', 1, 'scroll'],
+  ['mid-scroll, turning back mid-flight', 0.35, 'scroll'],
+  ['mid-drag, all the way there', 1, 'drag'],
+] as const) {
+  test(`left ${how}, the images land back without a jump`, async ({ page }) => {
+    await page.goto('/?test');
+    await page.waitForFunction(() => (window as unknown as { __canvas?: Api }).__canvas?.isSettled(), null, { timeout: 30_000 });
+    await page.evaluate(() => {
+      const record = window as unknown as { moves: { landed: boolean; d: number }[]; loop: () => void };
+      record.moves = [];
+      const last = new Map<Element, DOMMatrix>();
+      record.loop = () => {
+        let d = 0;
+        for (const el of document.querySelectorAll('[data-canvas-layer] > div:not([hidden])')) {
+          const m = new DOMMatrix(getComputedStyle(el).transform);
+          const box = el.getBoundingClientRect();
+          // Only what can be seen, there on both frames: tiles off screen as it left sit the flight out, hidden.
+          const seen = (el as HTMLElement).style.visibility !== 'hidden' && box.right > 0 && box.left < innerWidth && box.bottom > 0 && box.top < innerHeight;
+          const was = last.get(el);
+          if (was && seen) d = Math.max(d, Math.hypot(m.e - was.e, m.f - was.f));
+          if (seen) last.set(el, m);
+          else last.delete(el);
+        }
+        record.moves.push({ landed: (window as unknown as { __canvas: Api }).__canvas.flight() === null, d });
+        requestAnimationFrame(record.loop);
+      };
+      record.loop();
+    });
+    await page.mouse.move(700, 450);
+    if (gesture === 'drag') await page.mouse.down();
+    for (let n = 1; n < 8; n++) {
+      if (gesture === 'drag') await page.mouse.move(700 - n * 40, 450 - n * 20);
+      else await page.mouse.wheel(90, 60);
+      await page.waitForTimeout(16);
+    }
+    await page.keyboard.press('a');
+    if (gesture === 'drag') await page.mouse.up();
+    await page.waitForFunction((u) => ((window as unknown as { __canvas: Api }).__canvas.flight()?.u ?? 0) >= u, wait);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => (window as unknown as { __canvas: Api }).__canvas.flight() === null);
+    await page.waitForTimeout(500);
+    const moves = await page.evaluate(() => (window as unknown as { moves: { landed: boolean; d: number }[] }).moves);
+    let landing = moves.length - 1;
+    while (moves[landing - 1]!.landed) landing--;
+    expect(Math.max(...moves.slice(landing, landing + 30).map((m) => m.d))).toBeLessThan(wait === 1 ? 2 : 12);
+  });
+}

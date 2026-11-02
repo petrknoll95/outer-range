@@ -24,6 +24,18 @@ export interface Trail {
   resting: boolean;
 }
 
+/** Scale a trail's offset and speed by `k`, about its grid position (gx, gy); to rest, if that leaves nothing to see. */
+export function relaxTrail(t: Trail, gx: number, gy: number, k: number): void {
+  const [ox, oy, vx, vy] = [t.ox * k, t.oy * k, t.vx * k, t.vy * k];
+  if (Math.hypot(ox, oy) < 0.05) return placeTrail(t, gx, gy, 0, 0, 0);
+  t.ox = ox;
+  t.oy = oy;
+  t.px = gx + ox;
+  t.py = gy + oy;
+  t.vx = vx;
+  t.vy = vy;
+}
+
 export function restingTrail(): Trail {
   return { px: 0, py: 0, vx: 0, vy: 0, ox: 0, oy: 0, resting: true };
 }

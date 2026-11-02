@@ -240,6 +240,8 @@ export const FOCUS_FRAME_CONCEAL = 0.12;
  * as if leaving the focal plane, up to FLIGHT_BLUR screen px.
  */
 export const FLIGHT_DURATION = 0.8;
+/** Left mid-move, images relax out of their trails over this time constant as they fly, s, so none is left to snap back on the return. */
+export const FLIGHT_TRAIL_TAU = 0.16;
 export const FLIGHT_DEPTH_SPREAD = 2;
 export const FLIGHT_FADE_FROM = 0.45;
 export const FLIGHT_FADE_TO = 0.8;

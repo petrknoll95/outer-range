@@ -767,6 +767,7 @@ function stepFlight(): void {
   const still = reducedMotion.matches;
   const duration = still ? FLIGHT_REDUCED_DURATION : f.to === 1 ? FLIGHT_DURATION : FLIGHT_RETURN_DURATION;
   f.u = Math.min(1, Math.max(0, f.u + ((f.to === 1 ? 1 : -1) * (t - f.last)) / duration));
+  renderer.relaxFlight(t - f.last);
   f.last = t;
   const travel = flightTravel(f.u);
   renderer.drawFlight(travel, still);

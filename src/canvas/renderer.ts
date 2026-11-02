@@ -2,6 +2,7 @@ import {
   ACTIVE_SWITCH_MARGIN,
   FADE_OPACITY,
   FADE_TAU,
+  FLIGHT_TRAIL_TAU,
   LEAD_MAX,
   LEAD_TIME,
   MARGIN,
@@ -21,7 +22,7 @@ import type { Guest } from './project';
 import type { Trail } from './trail';
 import type { IntroTile } from './intro';
 import { pixelImage } from './pixels';
-import { easeLag, limitOffset, placeTrail, restingTrail, stepTrail, taperedLag, taperWeight, zoomTaperWeight } from './trail';
+import { easeLag, limitOffset, placeTrail, relaxTrail, restingTrail, stepTrail, taperedLag, taperWeight, zoomTaperWeight } from './trail';
 import type { Cell, World, WorldImage } from './world';
 import { emptyCell, Z_LEVELS } from './world';
 
@@ -229,7 +230,9 @@ export class Renderer {
   /** Called when a tile element is about to be reused for another image. */
   onRelease: ((tile: HTMLElement) => void) | null = null;
   /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began. */
-  private flight: { slot: Slot; x: number; y: number; scale: number; opacity: number; depth: number }[] | null = null;
+  /** How much of each tile's trail is left, 1 to 0. */
+  private flightTrail = 1;
+  private flight: { slot: Slot; x: number; y: number; scale: number; restX: number; restY: number; restScale: number; opacity: number; depth: number }[] | null = null;
   private readonly view: FlightView = { scale: 1, opacity: 1, blur: 0 };
   private videos = true;
   /**
@@ -547,6 +550,7 @@ export class Renderer {
     const g = this.geometry;
     if (!g) return;
     this.flight = [];
+    this.flightTrail = 1;
     for (const slot of this.active) {
       // Mobile browser chrome can expand the viewport during the flight. Hide tiles
       // outside its snapshot so they cannot appear along the newly exposed edge.
@@ -555,8 +559,31 @@ export class Renderer {
         continue;
       }
       const depth = flightDepth(slot.i, slot.j, this.world.seed);
-      this.flight.push({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, opacity: slot.cssOpacity, depth });
+      this.flight.push({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, ...this.restPlace(slot), opacity: slot.cssOpacity, depth });
     }
+  }
+
+  /** Where a tile sits with no trail: its place on the grid, through the lens. */
+  private restPlace(slot: Slot): { restX: number; restY: number; restScale: number } {
+    const g = this.geometry!;
+    const z = this.camZ;
+    const w = slot.width * z;
+    const h = slot.height * z;
+    const hx = g.vw / 2;
+    const hy = g.vh / 2;
+    const p = this.lens.apply((slot.left - this.camX) * z + w / 2 - hx, (slot.top - this.camY) * z + h / 2 - hy, hx, hy, this.lensed, w / 2, h / 2);
+    return { restX: hx + p.x - (w * p.scale) / 2, restY: hy + p.y - (h * p.scale) / 2, restScale: (z / slot.layout) * p.scale };
+  }
+
+  /** Let the tiles relax out of their trails, `dt` s of the flight's. */
+  relaxFlight(dt: number): void {
+    this.flightTrail *= Math.exp(-dt / FLIGHT_TRAIL_TAU);
+  }
+
+  /** Where a tile starts the flight from: as drawn when it began, but for how far it has relaxed. */
+  private flightPlace(f: NonNullable<Renderer['flight']>[number]): { x: number; y: number; scale: number } {
+    const k = this.flightTrail;
+    return { x: f.restX + (f.x - f.restX) * k, y: f.restY + (f.y - f.restY) * k, scale: f.restScale + (f.scale - f.restScale) * k };
   }
 
   /** Draw the flight with the camera `travel` in (see flightTravel). `still`: fade only, nothing moves (reduced motion). */
@@ -569,22 +596,41 @@ export class Renderer {
     for (const f of this.flight) {
       const v = flightView(f.depth, travel, this.view);
       const s = still ? 1 : v.scale;
-      f.slot.el.style.transform = transform(cx + (f.x - cx) * s, cy + (f.y - cy) * s, f.scale * s);
+      const from = this.flightPlace(f);
+      f.slot.el.style.transform = transform(cx + (from.x - cx) * s, cy + (from.y - cy) * s, from.scale * s);
       f.slot.el.style.opacity = (f.opacity * v.opacity).toFixed(3);
       // The blur is drawn before the tile is scaled: ask for the share that comes out at v.blur on screen.
-      const blur = still ? 0 : v.blur / (f.scale * s);
+      const blur = still ? 0 : v.blur / (from.scale * s);
       f.slot.el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
     }
   }
 
-  /** End the flight: every tile as it was drawn when it began. */
+  /** End the flight: every tile where it began, but for how far its trail has relaxed. */
   endFlight(): void {
     if (!this.flight) return;
     for (const slot of this.active) slot.el.style.visibility = slot.cssOpacity < 0.004 ? 'hidden' : '';
-    for (const { slot } of this.flight) {
+    for (const f of this.flight) {
+      const { slot } = f;
+      const from = this.flightPlace(f);
+      slot.cssX = from.x;
+      slot.cssY = from.y;
+      slot.cssScale = from.scale;
       slot.el.style.filter = '';
-      slot.el.style.transform = transform(slot.cssX, slot.cssY, slot.cssScale);
+      slot.el.style.transform = transform(from.x, from.y, from.scale);
       slot.el.style.opacity = slot.cssOpacity === 1 ? '' : slot.cssOpacity.toFixed(3);
+    }
+    // The tiles that sat it out relaxed too, so they don't slide in over the edge of the screen.
+    const flown = new Set(this.flight.map((f) => f.slot));
+    for (const slot of this.active) {
+      if (!flown.has(slot)) {
+        const { restX, restY, restScale } = this.restPlace(slot);
+        const k = this.flightTrail;
+        slot.cssX = restX + (slot.cssX - restX) * k;
+        slot.cssY = restY + (slot.cssY - restY) * k;
+        slot.cssScale = restScale + (slot.cssScale - restScale) * k;
+        slot.el.style.transform = transform(slot.cssX, slot.cssY, slot.cssScale);
+      }
+      relaxTrail(slot.trail, (slot.left - this.camX) * this.camZ, (slot.top - this.camY) * this.camZ, this.flightTrail);
     }
     this.flight = null;
   }
