@@ -10,10 +10,11 @@
 //    for a thumbnail costs every frame.
 // 3. Takes a poster frame from the encoded video (at POSTER, as a fraction of its length): the
 //    tile shows it until the video plays, and it is what the page builds image variants from.
-// 4. Records the files, size, dominant colour and length in src/assets/videos/manifest.json.
+// 4. Records the files, size, dominant colour, colour grid and length in src/assets/videos/manifest.json.
 //
 // Needs ffmpeg and ffprobe on the PATH.
 import sharp from 'sharp';
+import { pixelGrid } from '../pixels/pixel-grid.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -90,7 +91,7 @@ for (const name of readdirSync(source).filter((f) => /\.(mp4|mov|webm)$/i.test(f
   const { dominant } = await sharp(join(OUT, poster)).stats();
   const color = '#' + [dominant.r, dominant.g, dominant.b].map((n) => n.toString(16).padStart(2, '0')).join('');
 
-  manifest.push({ file: video, webm, small, smallWebm, poster, aspect, width: out.w, height: out.h, color, duration: Math.round(duration * 100) / 100, source: name });
+  manifest.push({ file: video, webm, small, smallWebm, poster, aspect, width: out.w, height: out.h, color, pixels: await pixelGrid(join(OUT, poster), aspect), duration: Math.round(duration * 100) / 100, source: name });
   console.log(`${video}: ${aspect} ${out.w}×${out.h}, ${duration.toFixed(1)} s`);
 }
 

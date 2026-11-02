@@ -11,6 +11,7 @@
 //
 // The images come from Cosmos and belong to their authors. Placeholders only; do not publish.
 import sharp from 'sharp';
+import { pixelGrid } from '../pixels/pixel-grid.mjs';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -192,6 +193,7 @@ for (const p of pool) {
     width,
     height,
     color: hex,
+    pixels: await pixelGrid(buffer, p.aspect),
     cropLoss: Number(p.options.find((o) => o.aspect === p.aspect).loss.toFixed(3)),
     credit: p.description,
     elementUrl: p.elementUrl,

@@ -2,12 +2,15 @@ import { gsap } from 'gsap';
 import { ScrollSmoother } from 'gsap/ScrollSmoother';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FocusCaption } from './caption';
-import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, STEP, ZOOM_DURATION } from './config';
+import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_DURATION, INTRO_HANDOVER, SEED, STEP, ZOOM_DURATION } from './config';
 import type { FlightView } from './flight';
 import { flightFar, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
 import { attachInput } from './input';
+import type { IntroFrame } from './intro';
+import { introFrame, introInstances, introPalette } from './intro';
+import { IntroLayer } from './introlayer';
 import type { CellRect, Geometry } from './layout';
 import { computeGeometry, sizingReach, zoomInLevel } from './layout';
 import { DEFAULT_LENS, Lens } from './lens';
@@ -19,8 +22,9 @@ import { clusterBounds, projectGuests } from './project';
 import type { ClientProject } from './projects';
 import { createProjectIndex } from './projects';
 import type { CameraStep, CanvasData } from './renderer';
+import { pixelColors } from './pixels';
 import { Renderer } from './renderer';
-import { createWorld } from './world';
+import { createWorld, Z_LEVELS } from './world';
 
 const root = document.querySelector<HTMLElement>('[data-canvas]')!;
 const layer = root.querySelector<HTMLElement>('[data-canvas-layer]')!;
@@ -393,6 +397,10 @@ function draw(vx: number, vy: number, zoomAtRest: boolean): void {
 const atRest = () => physics.isAtRest() && renderer.isAtRest() && !projectMoving();
 
 function tick(): void {
+  if (intro) {
+    stepIntro();
+    return;
+  }
   if (flight) {
     stepFlight();
     return;
@@ -505,7 +513,7 @@ attachInput({
   zoom: setZoom,
   toggleZoom,
   escape: backOut,
-  enabled: () => !flight && (!project || project.free),
+  enabled: () => !intro && !flight && (!project || project.free),
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
 });
@@ -528,6 +536,7 @@ function relayout(): void {
   const dprChanged = window.devicePixelRatio !== dpr;
   dpr = window.devicePixelRatio;
   if (!dprChanged && next.vw === geometry.vw && next.vh === geometry.vh) return;
+  endIntro();
   // Keep the world point under the viewport centre where it is.
   physics.rescale(next.s / geometry.s, geometry.vw / 2, geometry.vh / 2, next.vw / 2, next.vh / 2);
   geometry = next;
@@ -568,8 +577,10 @@ reducedMotion.addEventListener('change', () => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) sleep();
-  else wake();
+  if (document.hidden) {
+    endIntro();
+    sleep();
+  } else wake();
 });
 
 /**
@@ -588,12 +599,77 @@ const ROUTES: Record<Route, { path: string; title: string; link: { href: string;
 const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' ? 'about' : 'home');
 let route: Route = routeAt(location.pathname);
 
+/**
+ * Opening the canvas, the camera arrives through a wormhole of lines that close up into its
+ * tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
+ * lines are tiles the layer fades to them, and they glide in the rest of the way themselves.
+ * Anything the visitor does cuts it short: they get the canvas, and what they did counts.
+ */
+interface Intro {
+  lines: IntroLayer;
+  /** Timed from its first frame, so the page's own start doesn't eat into it. */
+  start: number | null;
+  /** For tests: stay at this progress. */
+  held: number | null;
+  /** The real tiles have taken over. */
+  gliding: boolean;
+  frame: IntroFrame;
+  stop: AbortController;
+}
+let intro: Intro | null = null;
+
+function startIntro(): void {
+  const body = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!;
+  body.fillStyle = getComputedStyle(document.body).backgroundColor;
+  body.fillRect(0, 0, 1, 1);
+  const [r, g, b] = body.getImageData(0, 0, 1, 1).data as unknown as [number, number, number];
+  const background = [r / 255, g / 255, b / 255] as const;
+  const palette = introPalette(data.images.flatMap((image) => pixelColors(image.pixels)), background);
+  const instances = introInstances(renderer.introTiles(), palette, geometry.vw, geometry.vh, SEED);
+  const lines = IntroLayer.create(root, instances, background, geometry.vw, geometry.vh, Z_LEVELS + 1, params.has('test'));
+  if (!lines) return;
+  const stop = new AbortController();
+  for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
+  intro = { lines, start: null, held: null, gliding: false, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0 }, stop };
+  lines.draw(introFrame(0, intro.frame));
+  frame.conceal();
+}
+
+function stepIntro(): void {
+  const i = intro!;
+  const t = now();
+  i.start ??= t;
+  const u = i.held ?? (t - i.start) / INTRO_DURATION;
+  if (u >= 1) return endIntro();
+  const f = introFrame(u, i.frame);
+  if (f.z <= INTRO_HANDOVER && !i.gliding) {
+    i.gliding = true;
+    i.lines.leave();
+    delete document.documentElement.dataset.intro;
+    layer.style.willChange = 'transform';
+  }
+  if (i.gliding) layer.style.transform = `scale(${f.scale.toFixed(5)})`;
+  i.lines.draw(f);
+}
+
+function endIntro(): void {
+  if (!intro) return;
+  intro.lines.leave();
+  intro.stop.abort();
+  intro = null;
+  delete document.documentElement.dataset.intro;
+  layer.style.transform = '';
+  layer.style.willChange = '';
+  frame.reveal();
+  playVideos();
+  wake();
+}
+
 /** Videos play on the canvas, unless motion is to be reduced: then each holds its poster frame. */
 function playVideos(): void {
   // (They hold still too while the project view moves: starting several at once mid-move costs frames.)
-  renderer.setVideos(!reducedMotion.matches && route !== 'about' && !projectInMotion());
+  renderer.setVideos(!reducedMotion.matches && route !== 'about' && !projectInMotion() && !intro);
 }
-playVideos();
 
 /** How far the flight has got, 0 (the canvas) to 1 (every image flown past), and which way it is going. */
 interface Flight {
@@ -605,6 +681,7 @@ let flight: Flight | null = null;
 
 function go(next: Route): void {
   if (next === route) return;
+  endIntro();
   route = next;
   document.title = ROUTES[next].title;
   showLink(next);
@@ -848,8 +925,13 @@ if (route === 'about' || arriving) {
   // Coming back to the canvas: fly in.
   if (arriving) turn(0);
 } else {
+  // A fresh load of the canvas, not a return to it. Tests ask for it with `?intro`.
+  const opening = navigation?.type !== 'back_forward' && !reducedMotion.matches && !document.hidden && (!params.has('test') || params.has('intro'));
+  if (opening) startIntro();
   wake();
 }
+if (!intro) delete document.documentElement.dataset.intro;
+playVideos();
 
 if (debug || params.has('test')) {
   const api = {
@@ -869,11 +951,16 @@ if (debug || params.has('test')) {
     /** The view, and the flight between the two, or null. */
     route: () => route,
     flight: () => (flight ? { u: flight.u, to: flight.to } : null),
+    /** Whether the intro is playing; hold it at a progress to look at it. */
+    intro: () => intro !== null,
+    holdIntro: (u: number) => {
+      if (intro) intro.held = u;
+    },
     activeImage: () => renderer.activeImage(),
     /** The project view, or null: landed (and browsable) or not, and its overview's zoom. */
     project: () => (project ? { free: project.free, target: project.target, overview: project.overview.z } : null),
     /** At rest, every image back on its grid position, and every on-screen image decoded. */
-    isSettled: () => atRest() && renderer.visibleLoaded(),
+    isSettled: () => !intro && atRest() && renderer.visibleLoaded(),
     domNodes: () => root.getElementsByTagName('*').length,
     /** Keep the loop awake (and call `fn` every frame) while measuring. */
     onFrame(fn: () => void) {

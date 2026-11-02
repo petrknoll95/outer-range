@@ -8,8 +8,9 @@
 //    unless ANCHOR says where along the cropped side to keep.
 // 2. Saves it as lossless WebP, keeping its colour profile (Figma exports Display P3): the
 //    master the page builds every served variant from, so nothing is lost before that step.
-// 3. Records size and dominant colour in src/assets/work/manifest.json.
+// 3. Records size, dominant colour and colour grid in src/assets/work/manifest.json.
 import sharp from 'sharp';
+import { pixelGrid } from '../pixels/pixel-grid.mjs';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { extname, join } from 'node:path';
@@ -47,7 +48,7 @@ for (const name of readdirSync(source).filter((f) => /\.(png|jpe?g|webp)$/i.test
   const { dominant } = await image.clone().stats();
   const color = '#' + [dominant.r, dominant.g, dominant.b].map((n) => n.toString(16).padStart(2, '0')).join('');
 
-  manifest.push({ file, aspect, width: crop.w, height: crop.h, color, source: name });
+  manifest.push({ file, aspect, width: crop.w, height: crop.h, color, pixels: await pixelGrid(join(OUT, file), aspect), source: name });
   console.log(`${file}: ${aspect} ${crop.w}×${crop.h}, ${(size / 1e6).toFixed(2)} MB`);
 }
 

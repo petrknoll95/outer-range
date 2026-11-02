@@ -21,6 +21,8 @@ export interface MediaFile {
   width: number;
   height: number;
   color: string;
+  /** Its colour grid: the image pixelated, as hex digits run together (scripts/pixels). */
+  pixels: string;
   /** A video to play over the still: its copies (see VideoCopies), as paths under src/assets. */
   video?: VideoCopies;
   /** Designed work (fine type, flat colour): its variants are served at a higher quality than photos'. */
@@ -33,9 +35,9 @@ export interface MediaFile {
  * entries resolve them.
  */
 export const media: MediaFile[] = [
-  ...images.map(({ file, aspect, width, height, color }) => ({ file, still: `placeholders/${file}`, aspect: aspect as Aspect, width, height, color })),
-  ...work.map(({ file, aspect, width, height, color }) => ({ file, still: `work/${file}`, detail: true, aspect: aspect as Aspect, width, height, color })),
-  ...videos.map(({ file, webm, small, smallWebm, poster, aspect, width, height, color }) => ({
+  ...images.map(({ file, aspect, width, height, color, pixels }) => ({ file, still: `placeholders/${file}`, aspect: aspect as Aspect, width, height, color, pixels })),
+  ...work.map(({ file, aspect, width, height, color, pixels }) => ({ file, still: `work/${file}`, detail: true, aspect: aspect as Aspect, width, height, color, pixels })),
+  ...videos.map(({ file, webm, small, smallWebm, poster, aspect, width, height, color, pixels }) => ({
     file,
     still: `videos/${poster}`,
     video: { webm: `videos/${webm}`, mp4: `videos/${file}`, smallWebm: `videos/${smallWebm}`, smallMp4: `videos/${small}` },
@@ -43,5 +45,6 @@ export const media: MediaFile[] = [
     width,
     height,
     color,
+    pixels,
   })),
 ];

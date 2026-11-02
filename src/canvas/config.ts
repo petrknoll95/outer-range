@@ -320,3 +320,36 @@ export const LEAD_MAX = 2;
 /** Short edge of the small copy of each video (scripts/videos), px: a tile drawn up to 1.25× that plays it instead of the full one. */
 export const VIDEO_SMALL_EDGE = 360;
 export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as const;
+
+// ── The intro ──────────────────────────────────────────────────────────────
+
+/**
+ * Opening the canvas, the camera arrives from INTRO_DISTANCE focal lengths away (intro.ts)
+ * over INTRO_DURATION s. A zoom is seen in ratios, so INTRO_EASE eases the logarithm of the
+ * zoom: it launches hard, peaks a fifth of the way in, and spends the rest easing out. Each
+ * tile comes in as its colour grid (pixels.ts), one ray per cell, thinned to INTRO_THIN of the
+ * cell and INTRO_SPREAD apart in depth, each at its own pace within INTRO_PACE: below 1 it
+ * runs ahead of the camera, above 1 it hangs back and tears through to catch up, part set by
+ * its tile (INTRO_TILE_PACE) so tiles arrive in waves. They close up into the grid, a streak
+ * drawing in behind each. INTRO_HANDOVER focal lengths out the real tiles take over and glide the rest of
+ * the way, as the layer fades to them over INTRO_FADE s. Motion blur draws everything as a
+ * streak from where it was INTRO_SHUTTER of the duration ago, so streaks are longest at the
+ * peak. One extra line per INTRO_LINE_AREA px² of screen, at most INTRO_LINES, passes the
+ * camera on the way in. Pixels are capped at INTRO_DPR.
+ */
+export const INTRO_DURATION = 2;
+export const INTRO_DISTANCE = 40;
+export const INTRO_EASE = [0.34, 0, 0.06, 1] as const;
+export const INTRO_HANDOVER = 0.12;
+export const INTRO_THIN = 0.3;
+export const INTRO_PACE = [0.72, 1.6] as const;
+export const INTRO_TILE_PACE = 0.45;
+export const INTRO_SPREAD = 0.6;
+export const INTRO_SHUTTER = 0.12;
+export const INTRO_LINE_AREA = 1400;
+export const INTRO_LINES = 800;
+export const INTRO_DPR = 1.5;
+export const INTRO_FADE = 0.32;
+
+/** Columns and rows of an image's colour grid (scripts/pixels), by its aspect: near square cells. */
+export const PIXEL_GRID = { landscape: [8, 6], portrait: [6, 8], square: [7, 7] } as const;

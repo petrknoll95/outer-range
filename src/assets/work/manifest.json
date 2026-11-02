@@ -5,7 +5,8 @@
     "width": 3200,
     "height": 2400,
     "color": "#b8b8b8",
-    "source": "3d-icons.webp"
+    "source": "3d-icons.webp",
+    "pixels": "b7b7b7a1a1a1b5b5b5b8b8b8b7b7b7b8b8b8adadadb4b4b4a8a8a8b4b4b4a9a9a9b7b7b7aeaeaeb5b5b5919191b7b7b7a9a9a9b6b6b6a6a6a6b4b4b4a7a7a7b6b6b6adadadb8b8b8b4b4b4a9a9a9a5a5a5a9a9a9b0b0b0b6b6b6bcbcbcb8b8b8b0b0b0999999979797989898a5a5a58f8f8fc2c2c2b7b7b7b4b4b4a8a8a8a9a9a9b0b0b0b4b4b4adadadb5b5b5b6b6b6"
   },
   {
     "file": "atomsai-1.webp",
@@ -13,7 +14,8 @@
     "width": 3200,
     "height": 3200,
     "color": "#b8b8b8",
-    "source": "atomsai-1.png"
+    "source": "atomsai-1.png",
+    "pixels": "bcbcbcbcbcbcbcbcbcbbbbbbbcbcbcbcbcbcbcbcbcbdbdbdc2c2c2d0d0d0bebebed0d0d0c2c2c2bdbdbdc3c3c3d8d8d8dfdfdfdcdcdcdfdfdfd8d8d8c3c3c3c6c6c6dfdfdfe4e4e4e4e4e4e4e4e4dfdfdfc6c6c6c3c3c3d8d8d8dfdfdfdcdcdcdfdfdfd8d8d8c3c3c3bdbdbdc2c2c2d0d0d0bebebed0d0d0c2c2c2bdbdbdbcbcbcbcbcbcbcbcbcbbbbbbbcbcbcbcbcbcbcbcbc"
   },
   {
     "file": "atomsai-2.webp",
@@ -21,7 +23,8 @@
     "width": 3200,
     "height": 2400,
     "color": "#283818",
-    "source": "atomsai-2.png"
+    "source": "atomsai-2.png",
+    "pixels": "5948385c4a3a614f3d6653416a5745766351867665a09485655b4a64625472736b797d78675f516b6253797466bbb3a36765576c7d747c939387a1a64d5c504a573f49553aa5a091717064728580839b9d8ca8ad425649253910253910a5a0927d7a6f79888290a3a29ab1b16870625c604c5e614faca798a19386c0b3a0d0c4b1cfc3b0d6ccbad4cab9d7cdbcd9cfc0"
   },
   {
     "file": "atomsai-3.webp",
@@ -29,7 +32,8 @@
     "width": 2400,
     "height": 3200,
     "color": "#080808",
-    "source": "atomsai-3.png"
+    "source": "atomsai-3.png",
+    "pixels": "0a0a0a1515151717171818181616160a0a0a0000001010101a1a1a1919190f0f0f0000001111111616160000000000001616161111111414142b2b2b3333333131312424241414141414142929293737373d3d3d2525251414141111111616160000000000001616161111110000001010101a1a1a1919190f0f0f0000000a0a0a1515151717171818181616160a0a0a"
   },
   {
     "file": "bettermint-chill.webp",
@@ -37,7 +41,8 @@
     "width": 2048,
     "height": 2048,
     "color": "#d8c8b8",
-    "source": "bettermint-chill.jpg"
+    "source": "bettermint-chill.jpg",
+    "pixels": "c7bcabc7bcacc7bcacc5b9a8cbbdaccbbeadc8bdadcdc2b3cdc3b3c5bcadbcb5a9caa87dceb99fcdc3b4d2c8b9d1c8b9d3bb9bc0a789c3a277cebaa0d2c8b9d5ccbcd5ccbcd4bc9cc1a582c5a377cfbaa0d5cbbbd8cebdd3c9b9d4ba9abda07cceb89bd4c4afd5cab9d9cfbed4cab9d4c0a7c5b196d4c5b1c8beb0d5cabadad1c1d9d0bfdad1c0dbd2c1dad1c2d5cebfd8cebe"
   },
   {
     "file": "bettermint-go.webp",
@@ -45,7 +50,8 @@
     "width": 3276,
     "height": 3276,
     "color": "#b8b8b8",
-    "source": "bettermint-go.jpg"
+    "source": "bettermint-go.jpg",
+    "pixels": "c0c0c0c0c0c0aeafaf686a6aaeaeaec0c0c0c0c0c0c0c0c0b8b8b8adadad747c80b6b8b9c0c0c0c0c0c0c0c0c0c0c0c0a4a4a46a7f88b3babec0c0c0c0c0c0c0c0c0c0c0c0a4a4a4687e87abb2b6b9babac0c0c0bfbfbfb6b7b7a3a3a4677d86b0b6b9c0c0c0c0c0c0c0c0c0aeaeae8687874f5a5f7277798d8d8dbebebe878787232324292a2a1718182a2b2c2c2d2d9a9a9a"
   },
   {
     "file": "bettermint-tubes.webp",
@@ -53,7 +59,8 @@
     "width": 1920,
     "height": 1920,
     "color": "#b8c8d8",
-    "source": "bettermint-tubes.jpg"
+    "source": "bettermint-tubes.jpg",
+    "pixels": "aeb9c8b1bacaaab5c58ea0b3869cb3969faea4abb7b5becdb6bfcfb1b9c7979aa3b1b9c8bdc6d5d3dae8b7c0cfbec7d7b5c0d1899aadbfc8d8ccd4e2d1d8e6a6aebcc0c9d8b2bfd07990a6b9c3d4cbd2e1cdd5e3bcc5d5bcc5d5b1bdce7b92a8b7c1d3c2cad9cad2e1abb5c4aab4c49daab97f94a9b5c0d1c1cadac3ccdcb4bdccb4bdcdb6bfcfb9c3d3bac3d1c0c8d8c1cad9"
   },
   {
     "file": "chill-pill-vial.webp",
@@ -61,7 +68,8 @@
     "width": 1254,
     "height": 1254,
     "color": "#c8b8b8",
-    "source": "chill-pill-vial.png"
+    "source": "chill-pill-vial.png",
+    "pixels": "c6bfb3c6bfb3c7bfb3c6bfb3c7bfb3c7bfb3c7bfb3c7bfb3c6bfb3bdb8aa3f503dbcb6aac7bfb3c7bfb3c6bfb3c2c0afb4b5a24f7852bab5a8bebbabc6bfb3c6bfb3c6bfb3bebbad9fc7a3bdbaacc6bfb3c7bfb3c6bfb3bfbdacbfbcada1caa5bebbadb8b8a6c6bfb3c7bfb3c1bbaebebbad578658bdb9abc6bfb3c6bfb3c6bfb3c7bfb3c6bfb3c6bfb3c6bfb3c7bfb3c7bfb3"
   },
   {
     "file": "ditto-bluetooth.webp",
@@ -69,7 +77,8 @@
     "width": 1520,
     "height": 1520,
     "color": "#080808",
-    "source": "ditto-bluetooth.png"
+    "source": "ditto-bluetooth.png",
+    "pixels": "dde7dfdbe8dcdfe8d8e4e8d5e7e7dbe8e8e7e8e8e854815d4c84505f843f71832a96913ce3d3b0e8e8e81515151313131212123a3a3a474747b79458e8e5e11010101a1a1a3c3e0aacb2075a5d09b18947e8e3de1a1a1a3838386e720dd4db06919608ab8447e8e3de0a0a0a1717171616165557301c1c1c997746e8e3de0d0d0d1010100a0a0a23240b10110a997746e8e3de"
   },
   {
     "file": "ditto-guidelines.webp",
@@ -77,7 +86,8 @@
     "width": 1525,
     "height": 1144,
     "color": "#d8d8d8",
-    "source": "ditto-guidelines.webp"
+    "source": "ditto-guidelines.webp",
+    "pixels": "d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d73d3d3dc3c3c3e2e2e2e2e2e2e2e2e2e2e2e2aaaaaa353535191919c5c5c5e5e5e5e3e3e3e2e2e2e8e8e8a7a7a70b0b0b0b0b0bc5c5c5eeeeeeeaeaeaedededeaeaeaa7a7a70a0a0a6c6c6cc2c2c2d4d4d4d3d3d3d3d3d3d4d4d4b2b2b26b6b6bd7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7"
   },
   {
     "file": "ditto-mark.webp",
@@ -85,7 +95,8 @@
     "width": 1520,
     "height": 1520,
     "color": "#e8f808",
-    "source": "ditto-mark.png"
+    "source": "ditto-mark.png",
+    "pixels": "e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e1e903c4ca06e9f100e9f100e9f100e9f100e9f100d6de04b1b707c2c906e9f100e9f100e9f100e9f100e2ea03c7cd06e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100e9f100"
   },
   {
     "file": "ditto-website.webp",
@@ -93,7 +104,8 @@
     "width": 1525,
     "height": 1144,
     "color": "#080808",
-    "source": "ditto-website.webp"
+    "source": "ditto-website.webp",
+    "pixels": "d0d0d0d2d2d2efefefe9e9e9d1d1d1d7d7d7d7d7d7bababaf5f5f5f3f4f4f4f4f4f4f4f4dcdcddc8c8c85d5d5d181818aaa4a5a19ea0f1f1f1f8f8f8f4f4f4c4c4c42e2e2e393939a8a8a9494c4feaeaeaeeeeeebcbcbcb8b8b846473c5c5f13d4d4d4cccccc939393252525505050d3d3d374756f12120ea8a8a811111219181a232225aeaeaed7d7d7909090121112"
   },
   {
     "file": "flex-posters.webp",
@@ -101,7 +113,8 @@
     "width": 1777,
     "height": 1333,
     "color": "#98d868",
-    "source": "flex-posters.webp"
+    "source": "flex-posters.webp",
+    "pixels": "797c6c77776775736491887f9f978ba7a096aca69eb2aea981b15485b7568fbe61a1988f8d9f8e8ca18e869a88aba69e92c95e95cd6097c865a0958a9fb29fa3bba5a3bba5aaa49b97cf619ad46398c966a89e9394a7949eb5a099b09bb3ada492c95e93cb5f8ab75ea2988e91a29099b09c91a794a9a196b0b091acaf8fb5b296bcaea1b6ae9fb4ae9fb9b3a4c0b2a3"
   },
   {
     "file": "gridbank-onboarding.webp",
@@ -109,7 +122,8 @@
     "width": 3600,
     "height": 4800,
     "color": "#380808",
-    "source": "gridbank-onboarding.png"
+    "source": "gridbank-onboarding.png",
+    "pixels": "38030f38030f38030f38030f38030f38030f13814a90502af37127f3690e98444b6d3e8c43aa759e704cffb68cff9761a14839af94c203b7689e632cfe791bfe7313a84c57c16af60db86999612efe8035fe741ca349446e448ca3bbaba5968fcca99dcca99da99395aca4b3ebeaeaa29c9cedebecebeaeaa19b9cedecec38030f38030f38030f38030f38030f38030f"
   },
   {
     "file": "gridbank-teams.webp",
@@ -117,7 +131,8 @@
     "width": 6400,
     "height": 4800,
     "color": "#380808",
-    "source": "gridbank-teams.png"
+    "source": "gridbank-teams.png",
+    "pixels": "3a07223e0b383b08294e03144e0314560d0e6d130e4c0b0f4610506d2995501465b21a3793132aaa1f0adc3e14941c0c4d175b7f2fb0631984d4153cd00034b6360aee56119a2e11440f4f64377e4b155e8e2030902833aa250dd14528921c0c5f49659681a9705c7baf777dae777db1605be5887c974d483a06223e0a383b08294d03134d0313560e0e6c140e4c0b0f"
   },
   {
     "file": "resonant-dashboard.webp",
@@ -125,7 +140,8 @@
     "width": 2000,
     "height": 1500,
     "color": "#281818",
-    "source": "resonant-dashboard.png"
+    "source": "resonant-dashboard.png",
+    "pixels": "301c1a301b1a2f1b1a2e1a192e1a192f1b1a2e1a192e1a192c1b192f282729201f2215142215142216142220222b1d1d28181612110e14120f17171510100e10100e171716291a192b1a1823211e1b181516161410100e10100e10100e2a1a192b19182719152517142a1b152d1d172c1c172b1b172b19182f1b1a2e1a192e1a192f1b1a2f1a192f1b1a2e1a192f1a19"
   },
   {
     "file": "resonant-mark.webp",
@@ -133,7 +149,8 @@
     "width": 1600,
     "height": 1600,
     "color": "#281818",
-    "source": "resonant-mark.png"
+    "source": "resonant-mark.png",
+    "pixels": "261a1a261a1a2b1e1d261a1a261a1a261a1a2c1e1e261a1a2b1e1d261a1a261a1a261a1a2a1d1c261a1a2a1d1c261a1a8c8b8a706d6d8e8c8b261a1a261a1a261a1a261a1a706d6d2c1e1e6f6d6d261a1a261a1a261a1a261a1a8e8c8c6f6d6d8d8c8c261a1a291c1c261a1a2b1e1d261a1a261a1a261a1a2b1d1d261a1a2c1e1e261a1a261a1a261a1a291c1c271a1a261a1a"
   },
   {
     "file": "spring-1.webp",
@@ -141,7 +158,8 @@
     "width": 3200,
     "height": 2400,
     "color": "#080808",
-    "source": "spring-1.png"
+    "source": "spring-1.png",
+    "pixels": "011508111c140f3a14063a110205060306070307080306080d29110d2b12052d0f0740142f3136272a2f0b121d0b121d1621190d2013194120156720121927151f2e3b55622131400d21130d3616146b21148821253550334a675b859a3f5d79010202020405030809060e11303e6f34467b3b4e8032447a01020202040503080a060e11212a4a212d53212e53202d53"
   },
   {
     "file": "tangent-footer.webp",
@@ -149,7 +167,8 @@
     "width": 2600,
     "height": 1950,
     "color": "#081818",
-    "source": "tangent-footer.webp"
+    "source": "tangent-footer.webp",
+    "pixels": "294f5375abb36baab377adb4aac0c3b0c5c7b2c6c8616c6b42472b76765674784c656d4a494426504b3058533c33372a2c34156b7c234a53214a531f62722a454834454834262e2031431585b2316fac435dad5447b26824a770029f7a033d2f061e12162d1d0b1e15041b1115251b11231812231a041d12041b11041d12041d12041d12041d12041d12041d12041b11"
   },
   {
     "file": "tenacity-card.webp",
@@ -157,7 +176,8 @@
     "width": 1500,
     "height": 1125,
     "color": "#d8d8e8",
-    "source": "tenacity-card.webp"
+    "source": "tenacity-card.webp",
+    "pixels": "d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2a9b7b590a49e90a39d8f9e9a8d9897a8b3b3d4dfe2d4dfe284948f365c47355945365d47314e3c838d8bd4dfe2d4dfe2838e8c2d3f302d3f302d3f302d3f30838d8bd4dfe2d4dfe2a9b5b58fa29d8e9b988d98978d9897a8b3b3d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2d4dfe2"
   },
   {
     "file": "tenacity-mark.webp",
@@ -165,7 +185,8 @@
     "width": 1011,
     "height": 758,
     "color": "#080808",
-    "source": "tenacity-mark.png"
+    "source": "tenacity-mark.png",
+    "pixels": "0d100a0d10090d10095d666a5c66690d10090d10090d100a0d10090c100934393a9babb19cabb13238380c10090d10090c0f080d100993a2a84b53554c545693a1a70d10090c0f080c0f08454d4e96a4aa5f686b525a5c96a5ab444a4c0c0f080c0f08161917a0afb6a0afb6262a2aa0b0b61518150c0f080d10090d100a525a5d565f623a404151595c0d100a0d1009"
   },
   {
     "file": "tenacity-phone.webp",
@@ -173,6 +194,7 @@
     "width": 1789,
     "height": 1342,
     "color": "#182818",
-    "source": "tenacity-phone.webp"
+    "source": "tenacity-phone.webp",
+    "pixels": "86664477543580532b8b5b3096693d9d72449b6e40ac8457754e2c84562e61442765563ebb9d739e7041996b3da2784a87572c7a502b323b2e23342a414130a0835dab8254a3784a96693ba68054704c2f38291a344c3e30372a997246a980529a7247c2a174caac828d67415a3b1f815b35a37949c1a075624d369e815cab875ca47f54956d439f7446b79366d4b992"
   }
 ]

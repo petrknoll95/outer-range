@@ -19,6 +19,8 @@ import { cellRange } from './layout';
 import type { Lens, LensPoint } from './lens';
 import type { Guest } from './project';
 import type { Trail } from './trail';
+import type { IntroTile } from './intro';
+import { pixelImage } from './pixels';
 import { easeLag, limitOffset, placeTrail, restingTrail, stepTrail, taperedLag, taperWeight, zoomTaperWeight } from './trail';
 import type { Cell, World, WorldImage } from './world';
 import { emptyCell, Z_LEVELS } from './world';
@@ -26,6 +28,8 @@ import { emptyCell, Z_LEVELS } from './world';
 /** One image as delivered by the page: build-time variants plus a placeholder colour. */
 export interface ClientImage extends WorldImage {
   color: string;
+  /** Its colour grid (pixels.ts). */
+  pixels: string;
   /** srcset strings with width descriptors. */
   avif: string;
   webp: string;
@@ -71,6 +75,16 @@ export interface CameraStep {
   anchorY: number;
   /** How far zoomed in, 0 (out) to 1 (in): fades every image but the active one. */
   focus: number;
+}
+
+/** A tile's screen rectangle and lens scale, trail offsets excluded. */
+interface DrawnTile {
+  slot: Slot;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  scale: number;
 }
 
 interface Slot {
@@ -140,12 +154,12 @@ const PROJECT_TRAIL = 0.35;
 const transform = (x: number, y: number, scale: number) => (scale === 1 ? `translate3d(${x}px, ${y}px, 0)` : `translate3d(${x}px, ${y}px, 0) scale(${scale})`);
 
 const TILE_CLASS =
-  'absolute top-0 left-0 origin-top-left overflow-hidden will-change-transform [contain:strict]';
+  'absolute top-0 left-0 origin-top-left overflow-hidden bg-size-[100%_100%] will-change-transform [contain:strict] [image-rendering:pixelated]';
 const IMG_CLASS =
-  'block size-full object-cover select-none [-webkit-user-drag:none] transition-opacity duration-[240ms] ease-out data-loading:opacity-0 data-loading:transition-none motion-reduce:transition-none';
+  'block size-full object-cover select-none [image-rendering:auto] [-webkit-user-drag:none] transition-opacity duration-[240ms] ease-out data-loading:opacity-0 data-loading:transition-none motion-reduce:transition-none';
 // Over the image (its poster frame), shown once it is actually playing so it never flashes black.
 const VIDEO_CLASS =
-  'pointer-events-none absolute inset-0 size-full object-cover transition-opacity duration-[240ms] ease-out data-waiting:opacity-0 data-waiting:transition-none motion-reduce:transition-none';
+  'pointer-events-none absolute inset-0 size-full object-cover [image-rendering:auto] transition-opacity duration-[240ms] ease-out data-waiting:opacity-0 data-waiting:transition-none motion-reduce:transition-none';
 /** VIDEO_CLASS's fade in, ms. */
 const VIDEO_FADE = 240;
 
@@ -173,6 +187,7 @@ const VIDEO_FADE = 240;
  * laid out large, as the one zoomed into is.
  */
 export class Renderer {
+  private readonly mosaics = new Map<number, string>();
   private readonly slots: Slot[] = [];
   private readonly active: Slot[] = [];
   private readonly free: Slot[] = [];
@@ -653,22 +668,43 @@ export class Renderer {
     return this.onScreen().map(({ slot: s, ...r }) => ({ i: s.i, j: s.j, image: s.image, ...r, opacity: s.opacity }));
   }
 
+  /** Every tile as drawn now, those just off screen too (the intro comes in from further back). */
+  introTiles(): IntroTile[] {
+    const g = this.geometry;
+    if (!g) return [];
+    return this.drawn().map(({ slot, left, top, width, height }) => ({
+      i: slot.i,
+      j: slot.j,
+      x: left + width / 2 - g.vw / 2,
+      y: top + height / 2 - g.vh / 2,
+      width,
+      height,
+      radius: (g.radius * width) / slot.width,
+      aspect: this.images[slot.image]!.aspect,
+      pixels: this.images[slot.image]!.pixels,
+    }));
+  }
+
   /** The tiles that intersect the viewport, each with its screen rectangle and lens scale (trail offsets excluded). */
-  private onScreen(): { slot: Slot; left: number; top: number; width: number; height: number; scale: number }[] {
+  private onScreen(): DrawnTile[] {
+    const g = this.geometry;
+    if (!g) return [];
+    return this.drawn().filter((c) => c.left < g.vw && c.left + c.width > 0 && c.top < g.vh && c.top + c.height > 0);
+  }
+
+  private drawn(): DrawnTile[] {
     const g = this.geometry;
     if (!g) return [];
     const z = this.camZ;
     const hx = g.vw / 2;
     const hy = g.vh / 2;
     const p: LensPoint = { x: 0, y: 0, scale: 1 };
-    return this.active
-      .map((slot) => {
-        const w = slot.width * z;
-        const h = slot.height * z;
-        this.lens.apply((slot.left - this.camX) * z + w / 2 - hx, (slot.top - this.camY) * z + h / 2 - hy, hx, hy, p, w / 2, h / 2);
-        return { slot, left: hx + p.x - (w * p.scale) / 2, top: hy + p.y - (h * p.scale) / 2, width: w * p.scale, height: h * p.scale, scale: p.scale };
-      })
-      .filter((c) => c.left < g.vw && c.left + c.width > 0 && c.top < g.vh && c.top + c.height > 0);
+    return this.active.map((slot) => {
+      const w = slot.width * z;
+      const h = slot.height * z;
+      this.lens.apply((slot.left - this.camX) * z + w / 2 - hx, (slot.top - this.camY) * z + h / 2 - hy, hx, hy, p, w / 2, h / 2);
+      return { slot, left: hx + p.x - (w * p.scale) / 2, top: hy + p.y - (h * p.scale) / 2, width: w * p.scale, height: h * p.scale, scale: p.scale };
+    });
   }
 
   /** Trail offsets of the tiles on screen, with their unlensed on-screen centres, for tests. */
@@ -833,6 +869,16 @@ export class Renderer {
     return slot;
   }
 
+  /** An image's colour grid, as a CSS image: what its tile shows until the image itself is in. */
+  private mosaic(image: number): string {
+    let url = this.mosaics.get(image);
+    if (!url) {
+      url = `url(${pixelImage(this.images[image]!)})`;
+      this.mosaics.set(image, url);
+    }
+    return url;
+  }
+
   /** The copy of the tile's video that fits the size it is laid out at, in the format this browser plays, or null if it has none. */
   private videoFor(slot: Slot): string | null {
     const { video } = this.images[slot.image]!;
@@ -857,6 +903,7 @@ export class Renderer {
   private cover(slot: Slot, covered: boolean): void {
     slot.img.parentElement!.style.visibility = covered ? 'hidden' : '';
     slot.el.style.backgroundColor = covered ? 'transparent' : this.images[slot.image]!.color;
+    slot.el.style.backgroundImage = covered ? 'none' : this.mosaic(slot.image);
   }
 
   /** Show `src` playing over the tile's image (from `at` seconds in), or (null) no video. */
@@ -944,6 +991,7 @@ export class Renderer {
     slot.image = image;
     slot.loaded = false;
     slot.el.style.backgroundColor = source.color;
+    slot.el.style.backgroundImage = this.mosaic(image);
     slot.img.alt = source.alt;
     slot.img.dataset.loading = '';
     slot.source.srcset = source.avif;

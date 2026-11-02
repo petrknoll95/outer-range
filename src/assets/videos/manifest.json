@@ -10,7 +10,8 @@
     "height": 1440,
     "color": "#d8c8b8",
     "duration": 8,
-    "source": "bettermint-pill-drop.mp4"
+    "source": "bettermint-pill-drop.mp4",
+    "pixels": "d2c8bed2c8bec8c4b5c6c2b3d2c8bed2c8bed2c8bed2c8be869a78788e6ad2c8bed2c8bed2c8bed2c8be78926c5c804fd2c8bed2c8bed2c8bed2c8beb2c3a7a2bc97d2c8bed2c8bed2c8bed2c8beb0c4a688a67ed2c8bed2c8bed2c8bed2c8be99b58d6d8c62d2c8bed2c8bed2c8bed2c8be97b48c69885fd2c8bed2c8bed2c8bed2c8beb4b7a4adb09dd2c8bed2c8be"
   },
   {
     "file": "bettermint-pill-rotate.mp4",
@@ -23,7 +24,8 @@
     "height": 1336,
     "color": "#d8d8c8",
     "duration": 8,
-    "source": "bettermint-pill-rotate.mp4"
+    "source": "bettermint-pill-rotate.mp4",
+    "pixels": "dbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbcfdabf9fd59198d48acedcbfdbdecbdbdfcb8fc78064cc535fc74e91d083dbdfcbdbdfcb8dbf815cc24863ca528cc97ddbdfccdbdecbcdd7bf88b9798cbe7bcedabedbdfcbdbdecbdbdecbdbdfccdbdfccdbdfcbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecbdbdecb"
   },
   {
     "file": "crocs-rnd.mp4",
@@ -36,7 +38,8 @@
     "height": 1080,
     "color": "#e8e8e8",
     "duration": 6,
-    "source": "crocs-rnd.mp4"
+    "source": "crocs-rnd.mp4",
+    "pixels": "dfced4ecdbdef5e5e5ece5ebe7e6ede2e6ede6e4ebe3cbcfe2d7ddecdddc6f736bbfbcc3ede8ede9eaeed4cad2ddd3dbd6d0d9566650989495eeedf0ecf0f1d2d6dbd8dbe1cdcdd34f604d8f948feff0f0f1f5f1d2cdd4d8d6dbcbc6cc4c6248b8b8b0f4f2edfbfdf7cac3cbd1c6cde2c7c8908582cbb9b0f6e6dcf8f4ecb0acb2b0abb0b3abafb7adb0c0b8b8c4bdbdc4bfbe"
   },
   {
     "file": "experimental-button-1.mp4",
@@ -49,7 +52,8 @@
     "height": 1080,
     "color": "#e8e8e8",
     "duration": 15.48,
-    "source": "experimental-button-1.mp4"
+    "source": "experimental-button-1.mp4",
+    "pixels": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1dededed4d4d4cececed9d9d9e1e1e1e1e1e1e1e1e1e1e1e1d9d9d9bbbbbbafafafcacacae1e1e1e1e1e1e1e1e1e1e1e1e1e1e1dcdcdcdbdbdbe1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
   },
   {
     "file": "experimental-navigation-1.mp4",
@@ -62,7 +66,8 @@
     "height": 1080,
     "color": "#f8f8f8",
     "duration": 20.3,
-    "source": "experimental-navigation-1.mp4"
+    "source": "experimental-navigation-1.mp4",
+    "pixels": "fdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdf8f8f8fbfbfbfafafafafafafafafafafafafdfdfdfdfdfdf9f9f9f9f9f9f9f9f9fafafafafafaf9f9f9fdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfd"
   },
   {
     "file": "offmenu-navigation.mp4",
@@ -75,7 +80,8 @@
     "height": 1080,
     "color": "#181818",
     "duration": 31.12,
-    "source": "offmenu-navigation.mp4"
+    "source": "offmenu-navigation.mp4",
+    "pixels": "1111111111111111111111111111111111111111111111111111114646465454541d1d1d1e1e1e2828281e1e1e1111111111111f1f1f2323231d1d1d1d1d1d1d1d1d1818181111111111112525252e2e2e2121212121212121211a1a1a1111111111111e1e1e2b2b2b3030301f1f1f454545393939111111111111111111111111111111111111111111111111111111"
   },
   {
     "file": "offmenu-website-reel.mp4",
@@ -88,7 +94,8 @@
     "height": 1080,
     "color": "#f8f8f8",
     "duration": 16.2,
-    "source": "offmenu-website-reel.mp4"
+    "source": "offmenu-website-reel.mp4",
+    "pixels": "e9eae5e9eae5e9eae5e8e9e4e6e7e2e9eae5e9eae5e9eae5ececeafdfdfdfdfdfdcfcfce5c5d56e6e6e6fdfdfdf2f3f1f1f1effdfdfdfdfdfdf8f8f8dadadafcfcfcfdfdfdf0f0eef1f2effdfdfdfdfdfdaeadab787775fcfbfbfdfdfdf1f1efe6e6e3f2f2f2fdfdfdd0cdc9aca7a2fdfcfcfdfdfdf3f4f1e9eae5eaebe6e9eae6e9eae6e9eae6e9eae6e9eae6e9eae5"
   },
   {
     "file": "offmenu-website.mp4",
@@ -101,7 +108,8 @@
     "height": 1080,
     "color": "#e8e8e8",
     "duration": 20,
-    "source": "offmenu-website.mp4"
+    "source": "offmenu-website.mp4",
+    "pixels": "2f2f2f3030302929293333332c2c2c2e2e2e4444444d4d4dbfbfbfc1c1c1cfcfcfc3c3c3b0b0b0b3b3b3e1e1e1e4e4e4e2e2e2e6e6e6e6e6e6c5c5c58d8d8d8c8c8cd3d3d3e4e4e4c8c8c8c8c8c8c8c8c8c3c3c3d9d9d9e8e8e8e8e8e8e1e1e19e9e9ea0a0a09f9f9f9c9c9cacacacafafafbbbbbbbbbbbb3e3e3e3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3e3e3e"
   },
   {
     "file": "oxyd-drink.mp4",
@@ -114,7 +122,8 @@
     "height": 1440,
     "color": "#080808",
     "duration": 8,
-    "source": "oxyd-drink.webm"
+    "source": "oxyd-drink.webm",
+    "pixels": "0000002121186f6d5a5d5a4b1716140000000000006f6d55e8e3acc9c08b4e4a3700000000000081807cede8ddc9c1b348433c000000000000797877e7e3ddcdc5bd48433d000000000000807f7de7e3dccdc5bc47423c000000000000807f7ee8e3ddc7c0b647423c0000000000007b7a78e7e3ddc6beb545403a0000000000002b2b2a5856533d3935272726000000"
   },
   {
     "file": "remi-logo.mp4",
@@ -127,7 +136,8 @@
     "height": 1080,
     "color": "#f8f8f8",
     "duration": 6,
-    "source": "remi-logo.mp4"
+    "source": "remi-logo.mp4",
+    "pixels": "fdfdfdfdfdfdfdfdfdfdfefee7ebf38da1c47f7da2b3c1d9fdfdfdd2d2d2979797f7f8f8eef2f7949ab64d4382c5cddefdfdfdc2c3c26b6b6beeefeff7f9fad5d6decfced8e9ebeffdfdfdfdfefefdfefefdfefefdfdfdfafafaf9f9f9fefefef8fcfceefdfce9fdfbd2fefae0fefbf4f4f4eeeeeefcfcfccdf7f3cefaf1dcf9e1d9fdf2dafdf7f9f9f9f7f7f7fcfcfc"
   },
   {
     "file": "subzero-cans.mp4",
@@ -140,7 +150,8 @@
     "height": 1440,
     "color": "#080808",
     "duration": 4,
-    "source": "subzero-cans.mp4"
+    "source": "subzero-cans.mp4",
+    "pixels": "0101010b0b0b585b5f444a510101010101010101013c3f416f757f5c6b7d1e1e210101010101014f505080848c6f79852e2f30010101010101494a4bb6b9bf97a1ad28292a010101010101464748979aa187929e252526010101010101464748676c745b657129292a0101010101014243456a707b5f70821e2022010101010101141414565c66414e5d040505010101"
   },
   {
     "file": "tangent.mp4",
@@ -153,6 +164,7 @@
     "height": 1080,
     "color": "#084828",
     "duration": 3.33,
-    "source": "tangent.mp4"
+    "source": "tangent.mp4",
+    "pixels": "7478646365485858326f6f5a7775616b6b5567694488886f56562d55584040432332462a355d43434f2d696a497474574a4b223f4a303a5f4f4b70602c67444c62416061474c4f33494b206364502b5c392c593a828b857d7c578c856263655740461d474b212d352418241e43473c5e5a3f4f5235636352464a295658403e463d5053433f4020434728585b486d6e61"
   }
 ]

@@ -22,6 +22,8 @@ const { title, description } = Astro.props;
         const theme = localStorage.getItem('theme');
         if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
       } catch {}
+      // The header and info bar wait for the intro (src/canvas/main.ts), unless there won't be one.
+      if (location.pathname === '/' && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.dataset.intro = '';
     </script>
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="data:," />
