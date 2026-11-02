@@ -1,16 +1,17 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media } from '../src/assets/media';
-import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_TITLE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, PIXEL_GRID, SEED } from '../src/canvas/config';
+import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_WAIT, PIXEL_GRID, SEED } from '../src/canvas/config';
 import type { IntroTile } from '../src/canvas/intro';
-import { INTRO_LENGTH, INTRO_STRIDE, introDistance, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
+import { INTRO_LENGTH, INTRO_STRIDE, introDistance, introFog, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
 import { hexRgb, pixelColor, pixelColors } from '../src/canvas/pixels';
 
 /** Seconds in, u of the way from launch to landing. */
 const at = (u: number) => INTRO_CRUISE + u * INTRO_DURATION;
 const frame = (t: number) => introFrame(t, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 });
 /** A portrait tile, its cells numbered in the red channel so each can be told apart. */
-const pixels = Array.from({ length: 48 }, (_, n) => `${n.toString(16).padStart(2, '0')}8040`).join('');
+const CELLS = PIXEL_GRID.portrait[0] * PIXEL_GRID.portrait[1];
+const pixels = Array.from({ length: CELLS }, (_, n) => `${(n % 256).toString(16).padStart(2, '0')}8040`).join('');
 const tile = (x: number, y: number): IntroTile => ({ i: 1, j: 2, x, y, width: 300, height: 400, radius: 12, aspect: 'portrait', pixels });
 const palette = [hexRgb('ff8040')];
 
@@ -47,6 +48,23 @@ describe('the intro camera', () => {
     const peak = at(0.2);
     for (let t = 0; t < peak; t += 0.05) expect(speed(t + 0.05)).toBeGreaterThanOrEqual(speed(t) - 1e-6);
     expect(speed(peak)).toBeGreaterThan(INTRO_CRUISE_RATE * 8);
+  });
+
+  it('flies the same way however late it launches, up to the launch', () => {
+    fc.assert(
+      fc.property(fc.double({ min: 0, max: INTRO_CRUISE, noNaN: true }), fc.double({ min: 0, max: INTRO_WAIT, noNaN: true }), (t, wait) => {
+        expect(introDistance(t, wait)).toBeCloseTo(introDistance(t));
+      }),
+    );
+  });
+
+  it('launched late, still only speeds up, and lands exactly, as far from any lull', () => {
+    const speed = (t: number) => (Math.log1p(introDistance(t, INTRO_WAIT)) - Math.log1p(introDistance(t + 0.02, INTRO_WAIT))) / 0.02;
+    const launch = INTRO_CRUISE + INTRO_WAIT;
+    for (let t = launch - 0.5; t < launch + 0.3; t += 0.05) expect(speed(t + 0.05)).toBeGreaterThanOrEqual(speed(t) - 1e-6);
+    expect(speed(launch + 0.4)).toBeGreaterThan(INTRO_CRUISE_RATE * 6);
+    expect(introDistance(INTRO_LENGTH + INTRO_WAIT, INTRO_WAIT)).toBe(0);
+    expect(introDistance(INTRO_LENGTH + INTRO_WAIT - 0.5, INTRO_WAIT)).toBeGreaterThan(0);
   });
 
   /** How fast the zoom changes, as seen: in ratios. */
@@ -88,26 +106,44 @@ describe('the intro camera', () => {
   });
 });
 
-describe('the line of text', () => {
-  it('waits below its mask, rises to its place, and leaves above it', () => {
+describe('the depth fog', () => {
+  it('leaves everything near solid, so tiles land at their true colours', () => {
+    expect(introFog(1)).toBe(1);
+    expect(introFog(INTRO_FOG_CLEAR)).toBe(1);
+  });
+
+  it('tapers without a step, always fainter further off, never gone', () => {
+    fc.assert(
+      fc.property(fc.double({ min: INTRO_FOG_CLEAR, max: 200, noNaN: true }), (depth) => {
+        const [near, far] = [introFog(depth), introFog(depth + 0.5)];
+        expect(far).toBeLessThan(near);
+        expect(near - far).toBeLessThan(0.05);
+        expect(far).toBeGreaterThanOrEqual(INTRO_FOG_FAR);
+      }),
+    );
+  });
+});
+
+describe('the controls', () => {
+  it('wait below the mask, rise to their place, and leave above it', () => {
     expect(introLetter(0, 0)).toBe(1);
     expect(introLetter(INTRO_TITLE_OUT - 0.01, 0)).toBeCloseTo(0, 2);
     expect(introLetter(introTitleEnd(10), 0)).toBe(-1);
   });
 
-  it('sets its letters off one after the other', () => {
+  it('sets them off one after the other', () => {
     const t = INTRO_TITLE_IN + 0.1;
-    expect(introLetter(t, 0)).toBeLessThan(introLetter(t, 5));
+    expect(introLetter(t, 0)).toBeLessThan(introLetter(t, 1));
     expect(introLetter(introTitleEnd(10), 9)).toBe(-1);
   });
 
-  it('stays up long enough to read: over a second, all but its last letters settled', () => {
+  it('stay up long enough to read', () => {
     const readable = INTRO_TITLE_IN + INTRO_TITLE_IN_DURATION * 0.7;
     expect(INTRO_TITLE_OUT - readable).toBeGreaterThan(1);
   });
 
-  it('is gone before the wormhole gets going', () => {
-    expect(introTitleEnd(INTRO_TITLE.length)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
+  it('are gone before the wormhole gets going', () => {
+    expect(introTitleEnd(5)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
   });
 });
 
@@ -126,12 +162,12 @@ describe('what the intro draws', () => {
       // Exactly its own part of the tile, overlapping its neighbours by a hair.
       expect(ray.offset[0]! - ray.half[0]!).toBeCloseTo(-150 + (300 * col) / cols - 0.5);
       expect(ray.offset[1]! + ray.half[1]!).toBeCloseTo(-200 + (400 * (row + 1)) / rows + 0.5);
-      expect(ray.color[0]).toBeCloseTo(n / 255);
+      expect(ray.color[0]).toBeCloseTo((n % 256) / 255);
     }
   });
 
   it('gives rays their own pace: some ahead, some behind, a few far behind', () => {
-    const paces = Array.from({ length: 48 }, (_, n) => instance(introInstances([tile(0, 0)], palette, 100, 100, SEED), n).pace);
+    const paces = Array.from({ length: CELLS }, (_, n) => instance(introInstances([tile(0, 0)], palette, 100, 100, SEED), n).pace);
     expect(Math.max(...paces) - Math.min(...paces)).toBeGreaterThan(0.25);
     for (const pace of paces) {
       expect(pace).toBeGreaterThanOrEqual(INTRO_PACE[0]);
@@ -142,7 +178,7 @@ describe('what the intro draws', () => {
   it('lets tiles differ too, so they arrive in waves', () => {
     const mean = (i: number) => {
       const data = introInstances([{ ...tile(0, 0), i }], palette, 0, 0, SEED);
-      return Array.from({ length: 48 }, (_, n) => instance(data, n).pace).reduce((a, b) => a + b) / 48;
+      return Array.from({ length: CELLS }, (_, n) => instance(data, n).pace).reduce((a, b) => a + b) / CELLS;
     };
     const means = Array.from({ length: 12 }, (_, i) => mean(i));
     expect(Math.max(...means) - Math.min(...means)).toBeGreaterThan(0.15);
@@ -161,8 +197,8 @@ describe('what the intro draws', () => {
   });
 
   it('counts every cell of every tile, whatever its shape', () => {
-    const square: IntroTile = { ...tile(0, 0), aspect: 'square', pixels: 'ff8040'.repeat(49) };
-    expect(introInstances([tile(0, 0), square], palette, 100, 100, SEED).length / INTRO_STRIDE).toBe(48 + 49 + introLineCount(100, 100));
+    const square: IntroTile = { ...tile(0, 0), aspect: 'square', pixels: 'ff8040'.repeat(21 * 21) };
+    expect(introInstances([tile(0, 0), square], palette, 100, 100, SEED).length / INTRO_STRIDE).toBe(CELLS + 21 * 21 + introLineCount(100, 100));
   });
 
   it('sends every line off screen before the tiles land', () => {
@@ -183,7 +219,7 @@ describe('what the intro draws', () => {
     const median = (values: number[]) => values.sort((a, b) => a - b)[values.length >> 1]!;
     const rayData = introInstances([tile(0, 0)], palette, 0, 0, SEED);
     const lineData = introInstances([], palette, 1440, 900, SEED);
-    const rays = Array.from({ length: 48 }, (_, n) => instance(rayData, n));
+    const rays = Array.from({ length: CELLS }, (_, n) => instance(rayData, n));
     const lines = Array.from({ length: lineData.length / INTRO_STRIDE }, (_, n) => instance(lineData, n));
     // A ray's width in flight, and a line's, which never thins.
     const rayWidth = median(rays.map((r) => r.half[0]! * r.thin));

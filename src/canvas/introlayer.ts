@@ -1,4 +1,4 @@
-import { INTRO_DPR, INTRO_FADE, INTRO_HANDOVER, INTRO_MIN_WIDTH } from './config';
+import { INTRO_DPR, INTRO_FADE, INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_MIN_WIDTH } from './config';
 import type { IntroFrame } from './intro';
 import { INTRO_STRIDE } from './intro';
 import type { Rgb } from './pixels';
@@ -25,6 +25,9 @@ uniform vec2 view;
 uniform float z, tail, closed;
 const float HANDOVER = ${INTRO_HANDOVER.toFixed(3)};
 const float MIN_HALF = ${(INTRO_MIN_WIDTH / 2).toFixed(3)};
+const float FOG_CLEAR = ${INTRO_FOG_CLEAR.toFixed(3)};
+const float FOG_DEPTH = ${INTRO_FOG_DEPTH.toFixed(3)};
+const float FOG_FAR = ${INTRO_FOG_FAR.toFixed(3)};
 out float along;
 out float fog;
 out vec2 local;
@@ -38,8 +41,8 @@ void main() {
   vec2 size = max(half_ * mix(thin, 1.0, closed) * min(w, 1.0), MIN_HALF * w);
   vec2 p = offset + vec2(corner.x, -corner.y) * size;
   local = p;
-  // Far off it fades into the distance, so the centre of the tunnel has no hard edge.
-  fog = clamp(1.3 - w / 30.0, 0.12, 1.0);
+  // introFog in intro.ts: varies along a streak too, so its far end is the faintest.
+  fog = FOG_FAR + (1.0 - FOG_FAR) * exp(-max(w - FOG_CLEAR, 0.0) / FOG_DEPTH);
   box = tile;
   along = corner.z;
   paint = color;

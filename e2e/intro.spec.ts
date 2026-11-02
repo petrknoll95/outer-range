@@ -72,23 +72,64 @@ test('hands over to the real tiles for the last of the way, then leaves them unt
   await expect(page.locator('.focus-frame')).toHaveCSS('opacity', '1');
 });
 
-test('the line rises in at the centre, the size of the wordmark, and has gone before the launch', async ({ page }) => {
+test('the controls rise in at the centre, and have gone before the launch', async ({ page }) => {
   const title = page.locator('[data-intro-title]');
-  const lastLetter = title.locator('span span').last();
+  const last = title.locator('li').last();
   await open(page);
-  await expect(title).toHaveText('The design office of Petr Knoll');
   await expect(title).toHaveAttribute('aria-hidden', 'true');
-  await expect(lastLetter).toHaveCSS('transform', /^matrix\(1, 0, 0, 1, 0, \d/);
+  await expect(title.locator('li')).toHaveCount(await page.locator('[aria-label="Controls"] li').count());
+  await expect(title).toContainText('Drag/Pinch/Scroll');
   await hold(page, 1.3);
-  await expect.poll(() => lastLetter.evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(0%)');
-  const box = (await title.locator('span').first().boundingBox())!;
+  await expect.poll(() => last.evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(0%)');
+  const box = (await title.locator('ul').boundingBox())!;
   const view = page.viewportSize()!;
   expect(Math.abs(box.x + box.width / 2 - view.width / 2)).toBeLessThan(2);
   expect(Math.abs(box.y + box.height / 2 - view.height / 2)).toBeLessThan(2);
-  const type = (el: Element) => { const css = getComputedStyle(el); return [css.fontSize, css.fontWeight, css.letterSpacing, css.fontFamily]; };
-  expect(await title.evaluate(type)).toEqual(await page.locator('h1').evaluate(type));
   await hold(page, 2.5);
   await expect(title).toHaveCount(0);
+});
+
+test('a touch screen gets the pictograms, not the keys', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await open(page);
+  const title = page.locator('[data-intro-title]');
+  await expect(title.locator('li')).toHaveCount(1);
+  await expect(title).toContainText('Drag/Pinch/Scroll');
+  await expect(title).not.toContainText('Project');
+  expect(await title.locator('img').count()).toBeGreaterThanOrEqual(3);
+  await context.close();
+});
+
+test('it waits for images that are slow to load, but not for ever', async ({ page }) => {
+  await page.route(/\.(avif|webp)$/, () => {});
+  await page.goto('/?test&intro', { waitUntil: 'commit' });
+  await playing(page);
+  const ms = await page.evaluate(
+    () =>
+      new Promise<number>((done) => {
+        const from = performance.now();
+        const look = () => ((window as unknown as { __canvas: Api }).__canvas.intro() ? requestAnimationFrame(look) : done(performance.now() - from));
+        look();
+      }),
+  );
+  expect(ms).toBeGreaterThan(5000);
+  expect(ms).toBeLessThan(8000);
+});
+
+test('the view\'s middle loads first, and what\'s off screen last', async ({ page }) => {
+  await page.goto('/?test');
+  await settled(page);
+  const priorities = await page.locator('[data-canvas-layer] > div:not([hidden]) img').evaluateAll((images) => images.map((img) => (img as HTMLImageElement).fetchPriority));
+  expect(priorities).toContain('high');
+  expect(priorities).toContain('low');
+});
+
+test('with the images in, the videos on screen are fetched ahead of playing', async ({ page }) => {
+  const videos = page.locator('[data-canvas] video');
+  await open(page);
+  await expect.poll(() => videos.evaluateAll((all) => all.some((v) => (v as HTMLVideoElement).preload === 'auto'))).toBe(true);
+  expect(await videos.evaluateAll((all) => all.every((v) => (v as HTMLVideoElement).paused))).toBe(true);
 });
 
 test('draws lines at speed', async ({ page }) => {

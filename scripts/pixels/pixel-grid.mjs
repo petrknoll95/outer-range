@@ -4,9 +4,9 @@
 import sharp from 'sharp';
 
 /** Columns and rows, near square cells, for each aspect; src/canvas/config.ts (PIXEL_GRID) reads them back. */
-const GRID = { landscape: [8, 6], portrait: [6, 8], square: [7, 7] };
+const GRID = { landscape: [24, 18], portrait: [18, 24], square: [21, 21] };
 /** Source pixels averaged per cell, each way. */
-const SAMPLES = 16;
+const SAMPLES = 8;
 
 export async function pixelGrid(input, aspect) {
   const [cols, rows] = GRID[aspect];

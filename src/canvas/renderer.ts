@@ -160,6 +160,8 @@ const IMG_CLASS =
 // Over the image (its poster frame), shown once it is actually playing so it never flashes black.
 const VIDEO_CLASS =
   'pointer-events-none absolute inset-0 size-full object-cover [image-rendering:auto] transition-opacity duration-[240ms] ease-out data-waiting:opacity-0 data-waiting:transition-none motion-reduce:transition-none';
+/** How far out from the centre of the view, as a share of it, an image loads first. */
+const PRIORITY_CENTRE = 0.5;
 /** VIDEO_CLASS's fade in, ms. */
 const VIDEO_FADE = 240;
 
@@ -371,6 +373,16 @@ export class Renderer {
     if (on === this.videos) return;
     this.videos = on;
     for (const slot of this.active) this.syncVideo(slot);
+  }
+
+  /** Fetch the videos on screen ahead of playing them, so they are moving as soon as they are let. */
+  readyVideos(): void {
+    for (const slot of this.active) {
+      const video = slot.video;
+      if (!video?.src || !slot.visible || slot.el.hidden || video.preload === 'auto') continue;
+      video.preload = 'auto';
+      video.load();
+    }
   }
 
   /** Play a tile's video if it has one, is on screen and videos are on; otherwise hold it. */
@@ -673,11 +685,14 @@ export class Renderer {
     return this.onScreen().map(({ slot: s, ...r }) => ({ i: s.i, j: s.j, image: s.image, ...r, opacity: s.opacity }));
   }
 
-  /** Every tile as drawn now, those just off screen too (the intro comes in from further back). */
-  introTiles(): IntroTile[] {
+  /** The tiles as drawn now that the intro can show: those on screen, or that are at `scale`, the smallest it draws them whole. */
+  introTiles(scale: number): IntroTile[] {
     const g = this.geometry;
     if (!g) return [];
-    return this.drawn().map(({ slot, left, top, width, height }) => ({
+    const reach = (size: number) => (size / 2) * (1 / scale - 1);
+    const seen = ({ left, top, width, height }: DrawnTile) =>
+      left < g.vw + reach(g.vw) && left + width > -reach(g.vw) && top < g.vh + reach(g.vh) && top + height > -reach(g.vh);
+    return this.drawn().filter(seen).map(({ slot, left, top, width, height }) => ({
       i: slot.i,
       j: slot.j,
       x: left + width / 2 - g.vw / 2,
@@ -874,6 +889,16 @@ export class Renderer {
     return slot;
   }
 
+  /** How soon a tile's image is wanted: the middle of the view first, what's off screen last. */
+  private loadPriority(slot: Slot): 'high' | 'auto' | 'low' {
+    const g = this.geometry!;
+    const z = this.camZ;
+    const dx = Math.abs((slot.left + slot.width / 2 - this.camX) * z - g.vw / 2) / (g.vw / 2);
+    const dy = Math.abs((slot.top + slot.height / 2 - this.camY) * z - g.vh / 2) / (g.vh / 2);
+    const out = Math.max(dx, dy);
+    return out < PRIORITY_CENTRE ? 'high' : out < this.lens.reach ? 'auto' : 'low';
+  }
+
   /** An image's colour grid, as a CSS image: what its tile shows until the image itself is in. */
   private mosaic(image: number): string {
     let url = this.mosaics.get(image);
@@ -947,6 +972,7 @@ export class Renderer {
     }
     video.hidden = false;
     video.dataset.waiting = '';
+    video.preload = 'none';
     video.src = src;
     if (at) video.currentTime = at;
     this.syncVideo(slot);
@@ -997,6 +1023,7 @@ export class Renderer {
     slot.loaded = false;
     slot.el.style.backgroundColor = source.color;
     slot.el.style.backgroundImage = this.mosaic(image);
+    slot.img.fetchPriority = this.loadPriority(slot);
     slot.img.alt = source.alt;
     slot.img.dataset.loading = '';
     slot.source.srcset = source.avif;

@@ -1,4 +1,4 @@
-import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION, INTRO_TITLE_STAGGER, PIXEL_GRID } from './config';
+import { INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION, INTRO_TITLE_STAGGER, PIXEL_GRID } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { Rgb } from './pixels';
@@ -49,6 +49,11 @@ export interface IntroFrame {
   rays: number;
 }
 
+/** How solid something at `depth` is drawn, 1 to INTRO_FOG_FAR. The layer's vertex shader works this out; here for the tests. */
+export function introFog(depth: number): number {
+  return INTRO_FOG_FAR + (1 - INTRO_FOG_FAR) * Math.exp(-Math.max(depth - INTRO_FOG_CLEAR, 0) / INTRO_FOG_DEPTH);
+}
+
 /** How long it all takes, s. */
 export const INTRO_LENGTH = INTRO_CRUISE + INTRO_DURATION;
 
@@ -57,29 +62,37 @@ const LOG_DEPTH = Math.log(1 + INTRO_DISTANCE);
 /** The cruise eases off into the launch, so its speed only ever hands over, never drops. */
 const CRUISE_EASE = 0.6;
 
-/** How far the camera has left to go, t s in: reaches exactly 0 at INTRO_LENGTH, at no speed. */
-export function introDistance(t: number): number {
-  const after = Math.min(1, Math.max(0, (t - INTRO_CRUISE) / CRUISE_EASE));
-  const cruise = INTRO_CRUISE_RATE * (Math.max(0, INTRO_CRUISE - t) + (CRUISE_EASE / 3) * (1 - after) ** 3);
-  return Math.expm1(LOG_DEPTH * (1 - introEase((t - INTRO_CRUISE) / INTRO_DURATION)) + cruise);
+/**
+ * How far the camera has left to go, t s in, launching `wait` s after INTRO_CRUISE: reaches
+ * exactly 0 at INTRO_LENGTH + wait, at no speed. Up to the launch `wait` makes no difference,
+ * so it can still be growing as the camera flies.
+ */
+export function introDistance(t: number, wait = 0): number {
+  const launch = INTRO_CRUISE + wait;
+  const after = Math.min(1, Math.max(0, (t - launch) / CRUISE_EASE));
+  const cruise = INTRO_CRUISE_RATE * (Math.max(0, launch - t) + (CRUISE_EASE / 3) * (1 - after) ** 3);
+  return Math.expm1((LOG_DEPTH - INTRO_CRUISE_RATE * wait) * (1 - introEase((t - launch) / INTRO_DURATION)) + cruise);
 }
 
-/** The camera t s in. Writes into `out`. */
-export function introFrame(t: number, out: IntroFrame): IntroFrame {
+/** The smallest a tile is drawn while still whole enough to see: further off it is only rays near the centre. */
+export const INTRO_FARTHEST = 0.5;
+
+/** The camera t s in, launching `wait` s late. Writes into `out`. */
+export function introFrame(t: number, out: IntroFrame, wait = 0): IntroFrame {
   const between = (from: number, to: number, x: number) => smoothstep(Math.min(1, Math.max(0, (x - from) / (to - from))));
-  out.z = introDistance(t);
+  out.z = introDistance(t, wait);
   out.scale = 1 / (1 + out.z);
   out.closed = 1 - between(0.2, 0.8, out.z);
   // Whole tiles still streak; the streaks draw in as the images are about to take over.
-  out.tail = out.z + (introDistance(t - INTRO_SHUTTER * INTRO_DURATION) - out.z) * between(INTRO_HANDOVER, 0.35, out.z);
+  out.tail = out.z + (introDistance(t - INTRO_SHUTTER * INTRO_DURATION, wait) - out.z) * between(INTRO_HANDOVER, 0.35, out.z);
   out.corners = 1 - between(INTRO_HANDOVER, 0.2, out.z);
   out.fade = between(0, 0.25, t);
-  // Far off they would only be a blob behind the text; the tunnel stays open until it has gone.
+  // Far off they would only be a blob behind the controls; the tunnel stays open until they have gone.
   out.rays = 1 - between(12, 34, out.z);
   return out;
 }
 
-/** Where letter n of the line is t s in, as a share of its height below (+) or above (−) its place: past ±1 it is out of the mask. */
+/** Where item n of the controls is t s in, as a share of its height below (+) or above (−) its place: past ±1 it is out of the mask. */
 export function introLetter(t: number, n: number): number {
   const delay = n * INTRO_TITLE_STAGGER;
   const progress = (start: number, duration: number) => Math.min(1, Math.max(0, (t - start - delay) / duration));
@@ -88,8 +101,8 @@ export function introLetter(t: number, n: number): number {
   return 1 - rise - leave;
 }
 
-/** When the last letter of a line `letters` long has gone, s. */
-export const introTitleEnd = (letters: number) => INTRO_TITLE_OUT + INTRO_TITLE_OUT_DURATION + letters * INTRO_TITLE_STAGGER;
+/** When the last of `items` has gone, s. */
+export const introTitleEnd = (items: number) => INTRO_TITLE_OUT + INTRO_TITLE_OUT_DURATION + items * INTRO_TITLE_STAGGER;
 
 const lightness = ([r, g, b]: Rgb) => (r + g + b) / 3;
 const vividness = ([r, g, b]: Rgb) => Math.max(r, g, b) - Math.min(r, g, b);

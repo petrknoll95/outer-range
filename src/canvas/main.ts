@@ -2,14 +2,14 @@ import { gsap } from 'gsap';
 import { ScrollSmoother } from 'gsap/ScrollSmoother';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FocusCaption } from './caption';
-import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_HANDOVER, INTRO_TITLE, SEED, STEP, ZOOM_DURATION } from './config';
+import { FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_CRUISE, INTRO_HANDOVER, INTRO_WAIT, SEED, STEP, ZOOM_DURATION } from './config';
 import type { FlightView } from './flight';
 import { flightFar, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
 import { attachInput } from './input';
 import type { IntroFrame } from './intro';
-import { INTRO_LENGTH, introFrame, introInstances, introPalette } from './intro';
+import { INTRO_FARTHEST, INTRO_LENGTH, introFrame, introInstances, introPalette } from './intro';
 import { IntroLayer } from './introlayer';
 import { IntroTitle } from './introtitle';
 import type { CellRect, Geometry } from './layout';
@@ -619,9 +619,11 @@ const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' 
 let route: Route = routeAt(location.pathname);
 
 /**
- * Opening the canvas, the camera is already flying down a tunnel of lines as a line of text
- * rises and leaves, then it speeds up into a wormhole that closes up into the tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
+ * Opening the canvas, the camera is already flying down a tunnel of lines as the controls
+ * rise and leave, then it speeds up into a wormhole that closes up into the tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
  * lines are tiles the layer fades to them, and they glide in the rest of the way themselves.
+ * The time goes on loading: once the images on screen are in the videos on screen are fetched,
+ * so they are moving on arrival, and if the images aren't in by the launch it waits for them.
  * Anything the visitor does cuts it short: they get the canvas, and what they did counts.
  */
 interface Intro {
@@ -633,6 +635,11 @@ interface Intro {
   held: number | null;
   /** The real tiles have taken over. */
   gliding: boolean;
+  /** The images on screen are in. */
+  loaded: boolean;
+  /** Set off, and how late, s. */
+  launched: boolean;
+  wait: number;
   frame: IntroFrame;
   stop: AbortController;
 }
@@ -644,13 +651,13 @@ function startIntro(): void {
   body.fillRect(0, 0, 1, 1);
   const [r, g, b] = body.getImageData(0, 0, 1, 1).data as unknown as [number, number, number];
   const background = [r / 255, g / 255, b / 255] as const;
-  const palette = introPalette(data.images.flatMap((image) => pixelColors(image.pixels)), background);
-  const instances = introInstances(renderer.introTiles(), palette, geometry.vw, geometry.vh, SEED);
+  const palette = introPalette(data.images.flatMap((image) => pixelColors(image.pixels).filter((_, n) => n % 16 === 0)), background);
+  const instances = introInstances(renderer.introTiles(INTRO_FARTHEST), palette, geometry.vw, geometry.vh, SEED);
   const lines = IntroLayer.create(root, instances, background, geometry.vw, geometry.vh, Z_LEVELS + 1, params.has('test'));
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  intro = { lines, title: new IntroTitle(root, INTRO_TITLE, Z_LEVELS + 2), start: null, held: null, gliding: false, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
+  intro = { lines, title: new IntroTitle(root, Z_LEVELS + 2), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
   lines.draw(introFrame(0, intro.frame));
   intro.title.draw(0);
   frame.conceal();
@@ -661,14 +668,23 @@ function stepIntro(): void {
   const t = now();
   i.start ??= t;
   const at = i.held ?? t - i.start;
-  if (at >= INTRO_LENGTH) return endIntro();
-  const f = introFrame(at, i.frame);
+  if (!i.loaded && renderer.visibleLoaded()) {
+    i.loaded = true;
+    if (!(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) renderer.readyVideos();
+  }
+  if (!i.launched) {
+    i.wait = i.held === null ? Math.max(0, at - INTRO_CRUISE) : 0;
+    i.launched = i.held !== null || (at >= INTRO_CRUISE && (i.loaded || i.wait >= INTRO_WAIT));
+  }
+  if (at >= INTRO_LENGTH + i.wait) return endIntro();
+  const f = introFrame(at, i.frame, i.wait);
   i.title.draw(at);
   if (f.z <= INTRO_HANDOVER && !i.gliding) {
     i.gliding = true;
     i.lines.leave();
     delete document.documentElement.dataset.intro;
     layer.style.willChange = 'transform';
+    playVideos();
   }
   if (i.gliding) layer.style.transform = `scale(${f.scale.toFixed(5)})`;
   i.lines.draw(f);
@@ -691,7 +707,7 @@ function endIntro(): void {
 /** Videos play on the canvas, unless motion is to be reduced: then each holds its poster frame. */
 function playVideos(): void {
   // (They hold still too while the project view moves: starting several at once mid-move costs frames.)
-  renderer.setVideos(!reducedMotion.matches && route !== 'about' && !projectInMotion() && !intro);
+  renderer.setVideos(!reducedMotion.matches && route !== 'about' && !projectInMotion() && (!intro || intro.gliding));
 }
 
 /** How far the flight has got, 0 (the canvas) to 1 (every image flown past), and which way it is going. */
