@@ -138,6 +138,8 @@ The current 17 are AtomsAI (a billboard, the wordmark and the mark's constructio
 
 The current eleven are the Off Menu site, its menu and a reel of it, two interaction experiments, a can render, a Crocs product render, the Remi logo, the Tangent site and two Bettermint renders (a turning mint, a refill simulation). Their sources are about 77 MB; the WebM copies come to 5.7 MB (the MP4s 7.5 MB), the small ones another 1.5 MB (1.8 MB), and each loads only once its tile is on screen.
 
+The OXYD brand reel sits beside the can turntable in Explorations. It is a 10.6-second, 60 fps After Effects export, with full-size 1080×1440 and small 360×480 MP4/WebM copies. White side padding preserves the complete 2:3 animation within the canvas’s 3:4 portrait tiles; the poster shows the wordmark at 4.25 seconds.
+
 ## Placeholder images
 
 `src/assets/placeholders/` holds 34 images from the Cosmos collection [Social Tonic](https://www.cosmos.so/petrknoll/social-tonic): 29 images plus the poster frames of 5 videos. One 360×450 image was too small and was left out, 29 were replaced by work images and videos, and 28 more (five whole sample projects) were dropped to make room for the work.
