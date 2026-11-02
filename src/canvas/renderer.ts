@@ -533,8 +533,12 @@ export class Renderer {
     if (!g) return;
     this.flight = [];
     for (const slot of this.active) {
-      // Off screen a tile only flies further off; leave it.
-      if (slot.cssX > g.vw || slot.cssY > g.vh || slot.cssX + slot.drawnWidth < 0 || slot.cssY + slot.drawnHeight < 0) continue;
+      // Mobile browser chrome can expand the viewport during the flight. Hide tiles
+      // outside its snapshot so they cannot appear along the newly exposed edge.
+      if (slot.cssX > g.vw || slot.cssY > g.vh || slot.cssX + slot.drawnWidth < 0 || slot.cssY + slot.drawnHeight < 0) {
+        slot.el.style.visibility = 'hidden';
+        continue;
+      }
       const depth = flightDepth(slot.i, slot.j, this.world.seed);
       this.flight.push({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, opacity: slot.cssOpacity, depth });
     }
@@ -561,6 +565,7 @@ export class Renderer {
   /** End the flight: every tile as it was drawn when it began. */
   endFlight(): void {
     if (!this.flight) return;
+    for (const slot of this.active) slot.el.style.visibility = slot.cssOpacity < 0.004 ? 'hidden' : '';
     for (const { slot } of this.flight) {
       slot.el.style.filter = '';
       slot.el.style.transform = transform(slot.cssX, slot.cssY, slot.cssScale);

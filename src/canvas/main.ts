@@ -382,6 +382,24 @@ applyZoomLimits();
 // Start with the world origin in the middle of the screen.
 physics.jumpTo(-geometry.vw / 2, -geometry.vh / 2, 1);
 
+// A shared image link opens the canvas at its nearest copy.
+const requestedImage = params.get('image');
+const requestedIndex = requestedImage === null ? -1 : data.images.findIndex((image) => image.title === requestedImage);
+if (requestedIndex >= 0) {
+  let nearestCell: { x: number; y: number; distance: number } | null = null;
+  for (let i = -24; i <= 24; i++) {
+    for (let j = -24; j <= 24; j++) {
+      const cell = world.cell(i, j);
+      if (cell.image !== requestedIndex) continue;
+      const x = i * geometry.pitch + cell.dx * geometry.s;
+      const y = j * geometry.pitch + cell.dy * geometry.s;
+      const distance = x * x + y * y;
+      if (!nearestCell || distance < nearestCell.distance) nearestCell = { x, y, distance };
+    }
+  }
+  if (nearestCell) physics.jumpTo(nearestCell.x - geometry.vw / 2, nearestCell.y - geometry.vh / 2, 1);
+}
+
 const now = () => ((document.timeline?.currentTime as number | null) ?? performance.now()) / 1000;
 
 let awake = false;
@@ -693,6 +711,7 @@ function go(next: Route): void {
 
 /** Send the flight on (1) or back (0) from wherever it has got to. */
 function turn(to: 0 | 1): void {
+  root.style.visibility = '';
   flight!.to = to;
   flight!.last = now();
   wake();
@@ -723,7 +742,10 @@ function stepFlight(): void {
   drawAbout(travel, still);
   if (f.u !== f.to) return;
   // Flown past: only the header is left, and nothing to draw until it turns back.
-  if (f.to === 1) return sleep();
+  if (f.to === 1) {
+    root.style.visibility = 'hidden';
+    return sleep();
+  }
   // Back where it was: browse on from exactly here.
   renderer.endFlight();
   aboutLayer.removeAttribute('style');
@@ -794,6 +816,9 @@ const smoother = ScrollSmoother.create({
 });
 reducedMotion.addEventListener('change', () => smoother.smooth(smoothing()));
 const far: FlightView = { scale: 1, opacity: 1, blur: 0 };
+// Avoid filtering the tall, scaled text surface on mobile WebKit: its composited
+// edges can flash as a pale rectangle. Touch keeps the perspective and fade.
+const touchAbout = matchMedia('(hover: none) and (pointer: coarse)');
 
 /** Which view is showing; the other is inert: no clicks, focus or scrolls. */
 function showAbout(on: boolean): void {
@@ -818,7 +843,7 @@ function drawAbout(travel: number, still: boolean): void {
   aboutLayer.style.opacity = far.opacity.toFixed(3);
   aboutLayer.style.transform = still || far.scale === 1 ? '' : `scale(${far.scale.toFixed(4)})`;
   // The blur is drawn before the scale: ask for the share that comes out at far.blur on screen.
-  const blur = still ? 0 : far.blur / far.scale;
+  const blur = still || touchAbout.matches ? 0 : far.blur / far.scale;
   aboutLayer.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
 }
 
@@ -924,6 +949,7 @@ if (route === 'about' || arriving) {
   drawAbout(flightTravel(1), reducedMotion.matches);
   // Coming back to the canvas: fly in.
   if (arriving) turn(0);
+  else root.style.visibility = 'hidden';
 } else {
   // A fresh load of the canvas, not a return to it. Tests ask for it with `?intro`.
   const opening = navigation?.type !== 'back_forward' && !reducedMotion.matches && !document.hidden && (!params.has('test') || params.has('intro'));
