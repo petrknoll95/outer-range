@@ -335,7 +335,8 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * the way, as the layer fades to them over INTRO_FADE s. Motion blur draws everything as a
  * streak from where it was INTRO_SHUTTER of the duration ago, so streaks are longest at the
  * peak. One extra line per INTRO_LINE_AREA px² of screen, at most INTRO_LINES, passes the
- * camera on the way in. Pixels are capped at INTRO_DPR.
+ * camera on the way in, as wide as a ray (half INTRO_LINE_WIDTH across, at pace 1) and as
+ * solid, so the tunnel and the images read as one field. Pixels are capped at INTRO_DPR.
  */
 export const INTRO_DURATION = 2;
 export const INTRO_DISTANCE = 40;
@@ -346,8 +347,9 @@ export const INTRO_PACE = [0.72, 1.6] as const;
 export const INTRO_TILE_PACE = 0.45;
 export const INTRO_SPREAD = 0.6;
 export const INTRO_SHUTTER = 0.12;
-export const INTRO_LINE_AREA = 1400;
-export const INTRO_LINES = 800;
+export const INTRO_LINE_AREA = 480;
+export const INTRO_LINES = 3000;
+export const INTRO_LINE_WIDTH = [3, 6] as const;
 export const INTRO_DPR = 1.5;
 export const INTRO_FADE = 0.32;
 

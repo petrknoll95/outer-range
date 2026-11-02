@@ -133,6 +133,23 @@ describe('what the intro draws', () => {
     }
   });
 
+  it('draws the lines like the rays, so the two read as one field', () => {
+    const median = (values: number[]) => values.sort((a, b) => a - b)[values.length >> 1]!;
+    const rayData = introInstances([tile(0, 0)], palette, 0, 0, SEED);
+    const lineData = introInstances([], palette, 1440, 900, SEED);
+    const rays = Array.from({ length: 48 }, (_, n) => instance(rayData, n));
+    const lines = Array.from({ length: lineData.length / INTRO_STRIDE }, (_, n) => instance(lineData, n));
+    // A ray's width in flight, and a line's, which never thins.
+    const rayWidth = median(rays.map((r) => r.half[0]! * r.thin));
+    const lineWidth = median(lines.map((l) => l.half[0]!));
+    expect(lineWidth / rayWidth).toBeGreaterThan(0.6);
+    expect(lineWidth / rayWidth).toBeLessThan(1.6);
+    expect(Math.abs(median(lines.map((l) => l.pace)) - median(rays.map((r) => r.pace)))).toBeLessThan(0.25);
+    // Solid, and most about as far back as the rays.
+    expect(median(lines.map((l) => l.depth[1]!))).toBeGreaterThan(0.6);
+    for (let n = 0; n < lines.length; n++) expect(lineData[n * INTRO_STRIDE + 13]).toBeGreaterThanOrEqual(0.85);
+  });
+
   it('scales the lines to the screen, up to a limit', () => {
     expect(introLineCount(390, 844)).toBeLessThan(introLineCount(1440, 900));
     expect(introLineCount(5000, 3000)).toBe(INTRO_LINES);

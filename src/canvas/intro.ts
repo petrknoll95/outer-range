@@ -1,4 +1,4 @@
-import { INTRO_DISTANCE, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, PIXEL_GRID } from './config';
+import { INTRO_DISTANCE, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, PIXEL_GRID } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { Rgb } from './pixels';
@@ -160,8 +160,10 @@ export function introInstances(tiles: readonly IntroTile[], palette: readonly Rg
   for (let n = 0; n < lines; n++) {
     const angle = 2 * Math.PI * unit(hash(n, 0, seed, SALT_ANGLE));
     // Outside the view at depth 1, so it has left the screen by the time the tiles land.
-    const ring = reach * (1.05 + 1.5 * unit(hash(n, 0, seed, SALT_RING)));
-    const size = 1.5 + 4.5 * unit(hash(n, 0, seed, SALT_SIZE));
+    const ring = reach * (1.05 + 1.2 * unit(hash(n, 0, seed, SALT_RING)));
+    const pace = rayPace(unit(hash(n, 0, seed, SALT_TILE_PACE)), unit(hash(n, 0, seed, SALT_PACE)));
+    // As wide as a ray at its pace, the same way: the ones that rush are the finest.
+    const size = (INTRO_LINE_WIDTH[0] + (INTRO_LINE_WIDTH[1] - INTRO_LINE_WIDTH[0]) * unit(hash(n, 0, seed, SALT_SIZE))) / pace;
     // Of two colours, the more vivid: the work is mostly pale, its accents are what light the tunnel.
     const pick = (salt: number) => palette[Math.floor(unit(hash(n, 0, seed, salt)) * palette.length)]!;
     const [r, g, b] = [pick(SALT_COLOR), pick(SALT_COLOR2)].sort((a, c) => vividness(c) - vividness(a))[0]!;
@@ -179,10 +181,11 @@ export function introInstances(tiles: readonly IntroTile[], palette: readonly Rg
       r,
       g,
       b,
-      0.45 + 0.55 * unit(hash(n, 0, seed, SALT_ALPHA)),
+      0.85 + 0.15 * unit(hash(n, 0, seed, SALT_ALPHA)),
       unit(hash(n, 0, seed, SALT_NEAR)),
-      0.05 + 0.95 * unit(hash(n, 0, seed, SALT_FAR)),
-      rayPace(0.5, unit(hash(n, 0, seed, SALT_PACE))),
+      // Mostly about as far back as the rays, carrying their field on past the edge of the tiles.
+      1 - 0.8 * unit(hash(n, 0, seed, SALT_FAR)) ** 2,
+      pace,
     );
   }
   return data;
