@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media } from '../src/assets/media';
-import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_WAIT, PIXEL_GRID, SEED } from '../src/canvas/config';
+import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_CONTROLS, INTRO_LINE, INTRO_LINE_TEXT, INTRO_WAIT, PIXEL_GRID, SEED } from '../src/canvas/config';
 import type { IntroTile } from '../src/canvas/intro';
 import { INTRO_LENGTH, INTRO_STRIDE, introDistance, introFog, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
 import { hexRgb, pixelColor, pixelColors } from '../src/canvas/pixels';
@@ -124,26 +124,31 @@ describe('the depth fog', () => {
   });
 });
 
-describe('the controls', () => {
+describe('the line and the controls', () => {
   it('wait below the mask, rise to their place, and leave above it', () => {
-    expect(introLetter(0, 0)).toBe(1);
-    expect(introLetter(INTRO_TITLE_OUT - 0.01, 0)).toBeCloseTo(0, 2);
-    expect(introLetter(introTitleEnd(10), 0)).toBe(-1);
+    expect(introLetter(0, 0, INTRO_CONTROLS)).toBe(1);
+    expect(introLetter(INTRO_CONTROLS.leave - 0.01, 0, INTRO_CONTROLS)).toBeCloseTo(0, 2);
+    expect(introLetter(introTitleEnd(5, INTRO_CONTROLS), 0, INTRO_CONTROLS)).toBe(-1);
   });
 
-  it('sets them off one after the other', () => {
-    const t = INTRO_TITLE_IN + 0.1;
-    expect(introLetter(t, 0)).toBeLessThan(introLetter(t, 1));
-    expect(introLetter(introTitleEnd(10), 9)).toBe(-1);
+  it('set off one after the other', () => {
+    const t = INTRO_CONTROLS.start + 0.1;
+    expect(introLetter(t, 0, INTRO_CONTROLS)).toBeLessThan(introLetter(t, 1, INTRO_CONTROLS));
+    expect(introLetter(introTitleEnd(5, INTRO_CONTROLS), 4, INTRO_CONTROLS)).toBe(-1);
+  });
+
+  it('come one at a time: the line has gone before the controls rise', () => {
+    expect(introTitleEnd(INTRO_LINE_TEXT.length, INTRO_LINE)).toBeLessThanOrEqual(INTRO_CONTROLS.start);
   });
 
   it('stay up long enough to read', () => {
-    const readable = INTRO_TITLE_IN + INTRO_TITLE_IN_DURATION * 0.7;
-    expect(INTRO_TITLE_OUT - readable).toBeGreaterThan(1);
+    const settled = ({ start, rise }: typeof INTRO_LINE) => start + rise * 0.7;
+    expect(INTRO_LINE.leave - settled(INTRO_LINE)).toBeGreaterThan(0.6);
+    expect(INTRO_CONTROLS.leave - settled(INTRO_CONTROLS)).toBeGreaterThan(0.8);
   });
 
   it('are gone before the wormhole gets going', () => {
-    expect(introTitleEnd(5)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
+    expect(introTitleEnd(5, INTRO_CONTROLS)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
   });
 });
 

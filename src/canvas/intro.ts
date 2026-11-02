@@ -1,4 +1,4 @@
-import { INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION, INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION, INTRO_TITLE_STAGGER, PIXEL_GRID } from './config';
+import { INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, PIXEL_GRID } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { Rgb } from './pixels';
@@ -92,17 +92,26 @@ export function introFrame(t: number, out: IntroFrame, wait = 0): IntroFrame {
   return out;
 }
 
-/** Where item n of the controls is t s in, as a share of its height below (+) or above (−) its place: past ±1 it is out of the mask. */
-export function introLetter(t: number, n: number): number {
-  const delay = n * INTRO_TITLE_STAGGER;
-  const progress = (start: number, duration: number) => Math.min(1, Math.max(0, (t - start - delay) / duration));
-  const rise = 1 - (1 - progress(INTRO_TITLE_IN, INTRO_TITLE_IN_DURATION)) ** 4;
-  const leave = progress(INTRO_TITLE_OUT, INTRO_TITLE_OUT_DURATION) ** 3;
-  return 1 - rise - leave;
+/** When something at the centre rises and leaves, s (see config.ts). */
+export interface IntroReveal {
+  start: number;
+  rise: number;
+  leave: number;
+  fall: number;
+  stagger: number;
+}
+
+/** Where item n of a reveal is t s in, as a share of its height below (+) or above (−) its place: past ±1 it is out of the mask. */
+export function introLetter(t: number, n: number, { start, rise, leave, fall, stagger }: IntroReveal): number {
+  const delay = n * stagger;
+  const progress = (from: number, duration: number) => Math.min(1, Math.max(0, (t - from - delay) / duration));
+  const up = 1 - (1 - progress(start, rise)) ** 4;
+  const out = progress(leave, fall) ** 3;
+  return 1 - up - out;
 }
 
 /** When the last of `items` has gone, s. */
-export const introTitleEnd = (items: number) => INTRO_TITLE_OUT + INTRO_TITLE_OUT_DURATION + items * INTRO_TITLE_STAGGER;
+export const introTitleEnd = (items: number, { leave, fall, stagger }: IntroReveal) => leave + fall + items * stagger;
 
 const lightness = ([r, g, b]: Rgb) => (r + g + b) / 3;
 const vividness = ([r, g, b]: Rgb) => Math.max(r, g, b) - Math.min(r, g, b);

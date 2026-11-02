@@ -26,13 +26,13 @@ test('plays on opening the canvas, then gets out of the way', async ({ page }) =
   await playing(page);
   await expect(layer(page)).toHaveCount(1);
   expect(await page.locator('header').evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
-  await page.waitForFunction(() => !(window as unknown as { __canvas: Api }).__canvas.intro(), null, { timeout: 8000 });
+  await page.waitForFunction(() => !(window as unknown as { __canvas: Api }).__canvas.intro(), null, { timeout: 10_000 });
   await expect(layer(page)).toHaveCount(0);
   await settled(page);
   await expect(page.locator('header')).toHaveCSS('opacity', '1');
 });
 
-test('takes about four seconds', async ({ page }) => {
+test('takes under six seconds', async ({ page }) => {
   await page.goto('/?test&intro', { waitUntil: 'commit' });
   await playing(page);
   const ms = await page.evaluate(
@@ -43,8 +43,8 @@ test('takes about four seconds', async ({ page }) => {
         look();
       }),
   );
-  expect(ms).toBeGreaterThan(3200);
-  expect(ms).toBeLessThan(5500);
+  expect(ms).toBeGreaterThan(4400);
+  expect(ms).toBeLessThan(6800);
 });
 
 test('lands on the canvas as it opens without one', async ({ page }) => {
@@ -62,7 +62,7 @@ test('hands over to the real tiles for the last of the way, then leaves them unt
   const scale = () => page.locator('[data-canvas-layer]').evaluate((el) => (el as HTMLElement).style.transform);
   await open(page);
   expect(await scale()).toBe('');
-  await hold(page, 4.1);
+  await hold(page, 5.3);
   await page.waitForFunction(() => document.querySelector<HTMLElement>('[data-canvas-layer]')!.style.transform !== '');
   expect(await waiting(page)).toBe(false);
   await expect(layer(page)).toHaveCount(0);
@@ -72,6 +72,22 @@ test('hands over to the real tiles for the last of the way, then leaves them unt
   await expect(page.locator('.focus-frame')).toHaveCSS('opacity', '1');
 });
 
+test('first the line, set like the wordmark, then the controls', async ({ page }) => {
+  const line = page.locator('[data-intro-line]');
+  const controls = page.locator('[data-intro-title] li').first();
+  await open(page);
+  await expect(line).toHaveText('The office of Petr Knoll');
+  await expect(line).toHaveAttribute('aria-hidden', 'true');
+  await hold(page, 1.1);
+  await expect.poll(() => line.locator('span span').last().evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(0%)');
+  expect(await controls.evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(170%)');
+  const type = (el: Element) => { const css = getComputedStyle(el); return [css.fontSize, css.fontWeight, css.letterSpacing]; };
+  expect(await line.locator('span').first().evaluate(type)).toEqual(await page.locator('h1').evaluate(type));
+  await hold(page, 1.9);
+  await expect(line).toHaveCount(0);
+  await expect.poll(() => controls.evaluate((el) => (el as HTMLElement).style.transform)).not.toBe('translateY(170%)');
+});
+
 test('the controls rise in at the centre, and have gone before the launch', async ({ page }) => {
   const title = page.locator('[data-intro-title]');
   const last = title.locator('li').last();
@@ -79,13 +95,13 @@ test('the controls rise in at the centre, and have gone before the launch', asyn
   await expect(title).toHaveAttribute('aria-hidden', 'true');
   await expect(title.locator('li')).toHaveCount(await page.locator('[aria-label="Controls"] li').count());
   await expect(title).toContainText('Drag/Pinch/Scroll');
-  await hold(page, 1.3);
+  await hold(page, 2.8);
   await expect.poll(() => last.evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(0%)');
   const box = (await title.locator('ul').boundingBox())!;
   const view = page.viewportSize()!;
   expect(Math.abs(box.x + box.width / 2 - view.width / 2)).toBeLessThan(2);
   expect(Math.abs(box.y + box.height / 2 - view.height / 2)).toBeLessThan(2);
-  await hold(page, 2.5);
+  await hold(page, 3.7);
   await expect(title).toHaveCount(0);
 });
 
@@ -113,9 +129,9 @@ test('it waits for images that are slow to load, but not for ever', async ({ pag
         look();
       }),
   );
-  // Longer than the 4.4 s it takes with the images in. (The clock here starts a little after it does.)
-  expect(ms).toBeGreaterThan(4600);
-  expect(ms).toBeLessThan(8000);
+  // Longer than the 5.6 s it takes with the images in. (The clock here starts a little after it does.)
+  expect(ms).toBeGreaterThan(5800);
+  expect(ms).toBeLessThan(9000);
 });
 
 test('the view\'s middle loads first, and what\'s off screen last', async ({ page }) => {
@@ -135,7 +151,7 @@ test('with the images in, the videos on screen are fetched ahead of playing', as
 
 test('draws lines at speed', async ({ page }) => {
   await open(page);
-  await hold(page, 3.1);
+  await hold(page, 4.3);
   await page.waitForTimeout(200);
   const lines = await page.screenshot();
   await hold(page, 0);
@@ -155,6 +171,7 @@ for (const [what, act] of [
     expect(await waiting(page)).toBe(false);
     await expect(layer(page)).toHaveCount(0);
     await expect(page.locator('[data-intro-title]')).toHaveCount(0);
+    await expect(page.locator('[data-intro-line]')).toHaveCount(0);
     await expect(page.locator('[data-canvas-layer]')).toHaveCSS('transform', 'none');
   });
 }

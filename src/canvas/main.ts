@@ -625,8 +625,8 @@ const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' 
 let route: Route = routeAt(location.pathname);
 
 /**
- * Opening the canvas, the camera is already flying down a tunnel of lines as the controls
- * rise and leave, then it speeds up into a wormhole that closes up into the tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
+ * Opening the canvas, the camera is already flying down a tunnel of lines as a line of text
+ * and then the controls rise and leave, then it speeds up into a wormhole that closes up into the tiles (intro.ts). The tiles lie ready under it the whole way, loading as they would; once the
  * lines are tiles the layer fades to them, and they glide in the rest of the way themselves.
  * The time goes on loading: once the images on screen are in the videos on screen are fetched,
  * so they are moving on arrival, and if the images aren't in by the launch it waits for them.
@@ -634,6 +634,7 @@ let route: Route = routeAt(location.pathname);
  */
 interface Intro {
   lines: IntroLayer;
+  line: IntroTitle;
   title: IntroTitle;
   /** Timed from its first frame, so the page's own start doesn't eat into it. */
   start: number | null;
@@ -663,8 +664,9 @@ function startIntro(): void {
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  intro = { lines, title: new IntroTitle(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
+  intro = { lines, line: IntroTitle.line(root, Z_LEVELS + 3), title: IntroTitle.controls(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
   lines.draw(introFrame(0, intro.frame));
+  intro.line.draw(0);
   intro.title.draw(0);
   frame.conceal();
 }
@@ -684,6 +686,7 @@ function stepIntro(): void {
   }
   if (at >= INTRO_LENGTH + i.wait) return endIntro();
   const f = introFrame(at, i.frame, i.wait);
+  i.line.draw(at);
   i.title.draw(at);
   if (f.z <= INTRO_HANDOVER && !i.gliding) {
     i.gliding = true;
@@ -699,6 +702,7 @@ function stepIntro(): void {
 function endIntro(): void {
   if (!intro) return;
   intro.lines.leave();
+  intro.line.remove();
   intro.title.remove();
   intro.stop.abort();
   intro = null;

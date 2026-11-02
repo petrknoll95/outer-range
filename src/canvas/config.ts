@@ -336,10 +336,10 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * Opening the canvas, the camera is already flying: it cruises down the tunnel for
  * INTRO_CRUISE s, its depth falling by INTRO_CRUISE_RATE (in natural log) a second, the lines
  * streaming past. If the images on screen haven't all loaded by then it cruises on until they
- * have, for up to INTRO_WAIT s more. Meanwhile the controls rise in at the centre and leave
- * again (the info bar's, or on a touch screen only its pictograms): each item through a mask,
- * INTRO_TITLE_STAGGER s after the last, in from INTRO_TITLE_IN s over INTRO_TITLE_IN_DURATION s,
- * out from INTRO_TITLE_OUT s over INTRO_TITLE_OUT_DURATION s.
+ * have, for up to INTRO_WAIT s more. Meanwhile INTRO_LINE_TEXT and then the controls (the
+ * info bar's, or on a touch screen only its pictograms) each rise in at the centre and leave
+ * again, as INTRO_LINE and INTRO_CONTROLS say: each letter or item through a mask, `stagger` s
+ * after the last, in from `start` s over `rise` s, out from `leave` s over `fall` s.
  *
  * Then it accelerates from INTRO_DISTANCE focal lengths away (intro.ts) and arrives over
  * INTRO_DURATION s. A zoom is seen in ratios, so INTRO_EASE eases the logarithm of the zoom: it launches hard, peaks a fifth of the way in, and spends the rest easing out. Each
@@ -358,14 +358,12 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * smoothly over INTRO_FOG_DEPTH more, towards INTRO_FOG_FAR opacity. Pixels are capped at
  * INTRO_DPR.
  */
-export const INTRO_CRUISE = 2.4;
+export const INTRO_LINE_TEXT = 'The office of Petr Knoll';
+export const INTRO_LINE = { start: 0.25, rise: 0.55, leave: 1.3, fall: 0.3, stagger: 0.008 };
+export const INTRO_CONTROLS = { start: 1.8, rise: 0.55, leave: 3.05, fall: 0.3, stagger: 0.05 };
+export const INTRO_CRUISE = 3.6;
 export const INTRO_WAIT = 1.5;
 export const INTRO_CRUISE_RATE = 0.25;
-export const INTRO_TITLE_IN = 0.3;
-export const INTRO_TITLE_IN_DURATION = 0.7;
-export const INTRO_TITLE_OUT = 1.8;
-export const INTRO_TITLE_OUT_DURATION = 0.35;
-export const INTRO_TITLE_STAGGER = 0.05;
 export const INTRO_DURATION = 2;
 export const INTRO_DISTANCE = 40;
 export const INTRO_EASE = [0.34, 0, 0.06, 1] as const;
@@ -381,7 +379,7 @@ export const INTRO_LINE_WIDTH = [1, 2] as const;
 export const INTRO_MIN_WIDTH = 1;
 export const INTRO_FOG_CLEAR = 1.5;
 export const INTRO_FOG_DEPTH = 14;
-export const INTRO_FOG_FAR = 0.2;
+export const INTRO_FOG_FAR = 0.07;
 export const INTRO_DPR = 1.5;
 export const INTRO_FADE = 0.32;
 
