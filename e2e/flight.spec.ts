@@ -113,7 +113,7 @@ test('the About link sits at the top right, set exactly like the wordmark', asyn
     });
   expect(await style('header a')).toEqual(await style('header h1'));
   const box = (await link.boundingBox())!;
-  const mark = (await page.getByRole('heading', { name: 'Petr Knoll' }).boundingBox())!;
+  const mark = (await page.getByRole('heading', { name: 'Outer Range' }).boundingBox())!;
   expect(box.x + box.width).toBeCloseTo(1440 - 24, 0);
   expect(box.y + box.height / 2).toBeCloseTo(mark.y + mark.height / 2, 0);
 });
@@ -129,7 +129,7 @@ test('About flies the camera into the canvas: every image grows outward at its o
   await enterAbout(page);
   await page.waitForTimeout(500);
   const shots = await video.stop();
-  await expect(page).toHaveTitle('About · Petr Knoll');
+  await expect(page).toHaveTitle('About · Outer Range');
 
   const { tiles: sizes, frames } = await samples(page);
   const tiles = sizes.length;
@@ -307,7 +307,7 @@ test('Back flies the canvas back in, the opposite way, to exactly the view it le
     expect(back[n]![1]).toBeGreaterThanOrEqual(back[n - 1]![1] - 1e-9);
   }
   expect(await view(page)).toEqual(before);
-  await expect(page).toHaveTitle('Petr Knoll');
+  await expect(page).toHaveTitle('Outer Range');
   expect(await label(page)).toEqual(['About', '/about']);
   await expect(page.locator('.focus-caption')).toBeVisible();
 });

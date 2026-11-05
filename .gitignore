@@ -23,8 +23,6 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 
-# placeholder download cache
-scripts/placeholders/.cache/
 
 # test output
 test-results/

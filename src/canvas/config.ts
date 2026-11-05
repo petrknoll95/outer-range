@@ -395,7 +395,7 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * smoothly over INTRO_FOG_DEPTH more, towards INTRO_FOG_FAR opacity. Pixels are capped at
  * INTRO_DPR.
  */
-export const INTRO_LINE_TEXT = 'The office of Petr Knoll';
+export const INTRO_LINE_TEXT = 'Outer Range';
 export const INTRO_LINE = { start: 0.25, rise: 0.55, leave: 1.3, fall: 0.3, stagger: 0.008 };
 export const INTRO_CONTROLS = { start: 1.8, rise: 0.55, leave: 3.05, fall: 0.3, stagger: 0.05 };
 export const INTRO_CRUISE = 3.6;

@@ -44,6 +44,8 @@ export interface ClientImage extends WorldImage {
   title: string;
   category: string;
   alt: string;
+  /** Its content entry's id, under `astro dev` only: for "X", which deletes it (devdelete.ts). */
+  id?: string;
 }
 
 /** Everything the page hands the canvas. */
@@ -246,7 +248,6 @@ export class Renderer {
   private flight:
     | { slot: Slot; x: number; y: number; scale: number; restX: number; restY: number; restScale: number; opacity: number; depth: number; now: FlightPose }[]
     | null = null;
-
   private readonly view: FlightView = { scale: 1, opacity: 1, blur: 0 };
   /** The flight's finer grids, by image, sampled when the page has a moment once each has loaded (introTiles). */
   private readonly fine = new Map<number, NonNullable<IntroTile['fine']>>();

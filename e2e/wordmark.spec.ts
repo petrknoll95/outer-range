@@ -12,7 +12,7 @@ async function open(page: Page): Promise<void> {
 
 test('the wordmark sits at the top centre', async ({ page }) => {
   await open(page);
-  const wordmark = page.getByRole('heading', { level: 1, name: 'Petr Knoll' });
+  const wordmark = page.getByRole('heading', { level: 1, name: 'Outer Range' });
   await expect(wordmark).toBeVisible();
   const box = (await wordmark.boundingBox())!;
   expect(box.x + box.width / 2).toBeCloseTo(1440 / 2, 0);
@@ -59,7 +59,7 @@ test('Timeless Serif is there to use, upright and italic, each weight loading on
 
 test('dragging across the wordmark moves the canvas', async ({ page }) => {
   await open(page);
-  const box = (await page.getByRole('heading', { name: 'Petr Knoll' }).boundingBox())!;
+  const box = (await page.getByRole('heading', { name: 'Outer Range' }).boundingBox())!;
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   // The canvas is what's under the pointer there, not the wordmark.

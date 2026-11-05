@@ -76,7 +76,7 @@ test('first the line, set like the wordmark, then the controls', async ({ page }
   const line = page.locator('[data-intro-line]');
   const controls = page.locator('[data-intro-title] li').first();
   await open(page);
-  await expect(line).toHaveText('The office of Petr Knoll');
+  await expect(line).toHaveText('Outer Range');
   await expect(line).toHaveAttribute('aria-hidden', 'true');
   await hold(page, 1.1);
   await expect.poll(() => line.locator('span span').last().evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(0%)');

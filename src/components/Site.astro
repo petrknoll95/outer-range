@@ -24,7 +24,7 @@ interface Props {
 
 const { route } = Astro.props;
 
-const files = import.meta.glob<{ default: ImageMetadata }>(['../assets/placeholders/*.jpg', '../assets/work/*.webp', '../assets/videos/*.jpg'], {
+const files = import.meta.glob<{ default: ImageMetadata }>(['../assets/work/*.webp', '../assets/videos/*.jpg'], {
   eager: true,
 });
 const videos = import.meta.glob<string>('../assets/videos/*.{mp4,webm}', { eager: true, query: '?url', import: 'default' });
@@ -55,10 +55,10 @@ const images: ClientImage[] = await Promise.all(
     const widths = edges.map((e) => Math.round((m.width * e) / short));
     const detail = m.detail ?? false;
     const [avif, webp] = await Promise.all([srcset(src, 'avif', widths, detail), srcset(src, 'webp', widths, detail)]);
-    const { title, category, alt } = content[n]!;
+    const { id, title, category, alt } = content[n]!;
     const url = (path: string) => videos[`../assets/${path}`]!;
     const video = m.video && { webm: url(m.video.webm), mp4: url(m.video.mp4), smallWebm: url(m.video.smallWebm), smallMp4: url(m.video.smallMp4) };
-    return { aspect: m.aspect, color: m.color, pixels: m.pixels, avif, webp, src: webp.split(' ')[0]!, video, title, category, alt };
+    return { aspect: m.aspect, color: m.color, pixels: m.pixels, avif, webp, src: webp.split(' ')[0]!, video, title, category, alt, ...(import.meta.env.DEV ? { id } : {}) };
   }),
 );
 

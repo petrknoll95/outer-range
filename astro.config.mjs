@@ -2,6 +2,7 @@
 import { defineConfig, fontProviders } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
+import { deleteImage } from './scripts/dev/delete-image.mjs';
 
 /**
  * The local variants of one Timeless family, from `src/assets/fonts/timeless/<prefix><Name>[Italic].woff2`:
@@ -26,6 +27,8 @@ export default defineConfig({
   // GitHub Pages serves it from a subpath (the deploy workflow sets both); everywhere else it's at the root.
   site: process.env.SITE_URL,
   base: process.env.BASE_PATH || '/',
+  // /about as about.html, so it's served at /about as is (the history API's URL) by GitHub Pages and vite preview alike.
+  build: { format: 'file' },
   devToolbar: { enabled: false },
   // Self-hosted from src/assets/fonts/timeless, each with a metric-matched fallback so nothing shifts when it loads.
   // Every weight is declared; a browser only downloads the ones the page uses.
@@ -50,6 +53,7 @@ export default defineConfig({
     },
   ],
   vite: {
-    plugins: [tailwindcss()]
+    // deleteImage: "X" on the canvas deletes the active image, under `astro dev` only (scripts/dev/delete-image.mjs).
+    plugins: [tailwindcss(), deleteImage()]
   }
 });

@@ -13,9 +13,6 @@
     "check": "astro check",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "placeholders:collect": "node scripts/placeholders/collect-cosmos.mjs https://www.cosmos.so/petrknoll/social-tonic",
-    "placeholders:build": "node scripts/placeholders/build-placeholders.mjs",
-    "placeholders:projects": "node scripts/placeholders/sample-projects.mjs",
     "videos:build": "node scripts/videos/build-videos.mjs",
     "work:build": "node scripts/work/build-work.mjs",
     "pixels:build": "node scripts/pixels/build-pixels.mjs"

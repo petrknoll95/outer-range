@@ -7,7 +7,6 @@ import { pixelGrid } from './pixel-grid.mjs';
 const ASSETS = 'src/assets';
 
 for (const [folder, still] of [
-  ['placeholders', (entry) => entry.file],
   ['work', (entry) => entry.file],
   ['videos', (entry) => entry.poster],
 ]) {

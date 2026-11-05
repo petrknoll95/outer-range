@@ -1,6 +1,6 @@
 /**
  * The active image's project name, a small translucent pill above the top-left corner of the
- * focus frame, zoomed out and in (zoomed in, the caption adds the image's category and alt).
+ * focus frame, zoomed out and in (zoomed in, the caption adds the image's category).
  *
  * It lives inside the frame element (`.focus-project` in global.css), so it goes wherever the
  * frame goes, handing over from image to image with it, and hides whenever the frame does:

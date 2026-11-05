@@ -30,25 +30,25 @@ const activeAlt = (page: Page) =>
 /** The focused image's project, as the page's data has it. */
 const project = (page: Page) =>
   page.evaluate(() => {
-    const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as { projects: { title: string; images: number[] }[]; images: { alt: string }[] };
+    const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as { projects: { title: string; images: number[] }[]; images: { alt: string; video?: object }[] };
     const image = (window as unknown as { __canvas: Api }).__canvas.activeImage()!.image;
     const p = data.projects.find((p) => p.images.includes(image))!;
-    return { title: p.title, alts: p.images.map((n) => data.images[n]!.alt) };
+    return { title: p.title, alts: p.images.map((n) => data.images[n]!.alt), videos: p.images.filter((n) => data.images[n]!.video).length };
   });
 
-/** Zoomed in on an image of a project with `min` to `max` images. */
-async function focusOnProject(page: Page, min = 3, max = 99): Promise<void> {
+/** Zoomed in on an image of a project with `min` to `max` images (and, if asked, at least one video). */
+async function focusOnProject(page: Page, min = 3, max = 99, withVideo = false): Promise<void> {
   await page.goto('/?test');
   await settled(page);
   await page.keyboard.press(' ');
   await settled(page);
   for (let n = 0; n < 40; n++) {
-    const size = (await project(page)).alts.length;
-    if (size >= min && size <= max) return;
+    const p = await project(page);
+    if (p.alts.length >= min && p.alts.length <= max && (!withVideo || p.videos > 0)) return;
     await page.keyboard.press('ArrowRight');
     await settled(page);
   }
-  throw new Error(`No project of ${min}–${max} images within reach.`);
+  throw new Error(`No project of ${min}–${max} images${withVideo ? ' with a video' : ''} within reach.`);
 }
 
 /** The tiles drawn now that can be seen: what they show, where, and how visible. */
@@ -329,7 +329,7 @@ test('it moves as one smooth motion, and closing returns to exactly the focused 
 });
 
 test('a change of mind mid-way turns it round smoothly: the zoom never jumps, and turns without a jolt', async ({ page }) => {
-  await focusOnProject(page, 3);
+  await focusOnProject(page, 3, 8);
   const rec = recordCamera(page, 2200);
   await page.keyboard.press('p');
   await page.waitForTimeout(300);
@@ -347,8 +347,8 @@ test('a change of mind mid-way turns it round smoothly: the zoom never jumps, an
 });
 
 test('videos hold still while it moves, and play once it has landed', async ({ page }) => {
-  // Off Menu, the big project, has videos.
-  await focusOnProject(page, 9);
+  // A project with videos: Off Menu, Explorations, OXYD or Bettermint.
+  await focusOnProject(page, 3, 99, true);
   const playing = () => page.evaluate(() => [...document.querySelectorAll('video')].filter((v) => !v.paused && !v.closest('[hidden]')).length);
   await page.keyboard.press('p');
   await page.waitForTimeout(250);

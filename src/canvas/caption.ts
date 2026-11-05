@@ -3,15 +3,14 @@ import { CAPTION_IN, CAPTION_OUT, CAPTION_OUT_STAGGER, CAPTION_STAGGER } from '.
 /** What the caption shows, from the image's content entry. */
 export interface CaptionContent {
   category: string;
-  alt: string;
 }
 
 /** Top to bottom, the order they rise in. */
-const LINES = ['category', 'alt'] as const;
+const LINES = ['category'] as const;
 
 /**
- * The focused image's category and alt text, centred below it (above it, the project label
- * names its project: projectlabel.ts). Anchored to the focus frame (`.focus-caption` in
+ * The focused image's category, centred below it (above it, the project label names its
+ * project: projectlabel.ts). Its alt text stays on the image, for screen readers, not here. Anchored to the focus frame (`.focus-caption` in
  * global.css), so it sits under whichever image the frame frames; leaving, it is pinned where
  * it is drawn first, so it never rides along with the frame as the view moves on.
  *

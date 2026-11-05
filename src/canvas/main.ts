@@ -46,7 +46,7 @@ physics.snapper = (x, y, z) => snapper(x, y, z);
 const renderer = new Renderer(layer, world, data.images, lens, debug);
 // The frame around the active image, on top of the tiles; it follows the active image as it changes.
 const frame = new FocusFrame(root);
-// Zoomed in, the active image's category and alt text below it.
+// Zoomed in, the active image's category below it.
 const caption = new FocusCaption(document.body);
 // The active image's project, above the frame, zoomed out and in.
 const projectLabel = new ProjectLabel(frame.el);
@@ -937,6 +937,21 @@ function restoreView(): boolean {
   return true;
 }
 
+/**
+ * Dev only: until when a reload comes back to the saved view instead of playing the intro,
+ * set as "X" deletes an image (devdelete.ts). A time, not a one-off flag, so it covers both the
+ * dev server's own reload and the one devdelete.ts makes after it.
+ */
+const DEV_RESUME_KEY = 'canvas:dev-resume';
+const DEV_RESUME_FOR = 10_000;
+function devResuming(): boolean {
+  try {
+    return Date.now() < Number(sessionStorage.getItem(DEV_RESUME_KEY) ?? 0);
+  } catch {
+    return false;
+  }
+}
+
 // The about view's text (Site.astro), a layer behind the canvas.
 const about = document.querySelector<HTMLElement>('[data-about]')!;
 const aboutContent = about.querySelector<HTMLElement>('[data-about-content]')!;
@@ -1087,6 +1102,8 @@ const navigation = performance.getEntriesByType('navigation')[0] as PerformanceN
 const arriving = route === 'home' && navigation?.type === 'back_forward' && restoreView();
 if (route === 'about') restoreView();
 if (route === 'about' || arriving) document.documentElement.dataset.leaving = '';
+// Dev only: reloaded after "X" deleted an image (devdelete.ts), back in the view it was in, with no intro.
+const resumed = import.meta.env.DEV && route === 'home' && !arriving && devResuming() && restoreView();
 
 // First frame now, so tiles are in place before the first paint.
 draw(0, 0, true);
@@ -1100,7 +1117,7 @@ if (route === 'about' || arriving) {
   else root.style.visibility = 'hidden';
 } else {
   // A fresh load of the canvas, not a return to it. Tests ask for it with `?intro`.
-  const opening = navigation?.type !== 'back_forward' && !reducedMotion.matches && !document.hidden && (!params.has('test') || params.has('intro'));
+  const opening = !resumed && navigation?.type !== 'back_forward' && !reducedMotion.matches && !document.hidden && (!params.has('test') || params.has('intro'));
   if (opening) startIntro();
   if (!intro) readyFlightRays();
   wake();
@@ -1108,6 +1125,26 @@ if (route === 'about' || arriving) {
 if (!intro) delete document.documentElement.dataset.intro;
 playVideos();
 glass?.draw();
+
+// Dev only, and out of the built site: "X" deletes the active image for good (devdelete.ts).
+if (import.meta.env.DEV) {
+  import('./devdelete').then((m) =>
+    m.attachDevDelete({
+      images: data.images,
+      activeImage: () => renderer.activeImage(),
+      onCanvas: () => route === 'home' && !flight,
+      holdView: (hold) => {
+        if (hold) saveView();
+        try {
+          if (hold) sessionStorage.setItem(DEV_RESUME_KEY, String(Date.now() + DEV_RESUME_FOR));
+          else sessionStorage.removeItem(DEV_RESUME_KEY);
+        } catch {
+          // Storage blocked: the reload plays the intro.
+        }
+      },
+    }),
+  );
+}
 
 if (debug || params.has('test')) {
   const api = {

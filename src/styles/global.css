@@ -309,8 +309,8 @@
   }
 
   /*
-   * The focused image's caption (src/canvas/caption.ts): its category and alt text centred
-   * below the focus frame, so they move with it. (Its project is named above, in the label.)
+   * The focused image's caption (src/canvas/caption.ts): its category centred below the focus
+   * frame, so it moves with it. (Its project is named above, in the label.)
    */
   .focus-caption {
     display: contents;
@@ -341,13 +341,6 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
     opacity: 0.55;
-  }
-  .focus-caption-alt {
-    margin-top: 6px;
-    font-size: 13px;
-    line-height: 18px;
-    opacity: 0.65;
-    text-wrap: pretty;
   }
   /* Below the mask until shown; rising in line by line; leaving upwards, quicker, in the same order. */
   .focus-caption p > span {
