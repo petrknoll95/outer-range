@@ -1,4 +1,4 @@
-import { INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, PIXEL_GRID } from './config';
+import { INTRO_ABERRATION, INTRO_ABERRATION_SPEED, INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, PIXEL_GRID } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { Rgb } from './pixels';
@@ -31,6 +31,10 @@ export interface IntroTile {
   aspect: Aspect;
   /** Its colour grid. */
   pixels: string;
+  /** A finer grid, sampled from its image as drawn: columns, rows and RGBA bytes, in place of `pixels`. */
+  fine?: { cols: number; rows: number; rgba: Uint8ClampedArray };
+  /** How opaque it is drawn (faded round a focused image or a project): its rays are as faint. 1 if not given. */
+  opacity?: number;
 }
 
 export interface IntroFrame {
@@ -47,6 +51,16 @@ export interface IntroFrame {
   fade: number;
   /** 0 while the tiles' rays are held back, to 1: out of the vanishing point as the launch builds. */
   rays: number;
+  /** How solid the tube's lines are, 0 to 1. */
+  lines: number;
+  /** 1 on the flight to the about view (flight.ts): things are `z` and `tail` along, as they are, and fade before they reach the camera. */
+  flight: number;
+  /** 1 flying back: a streak's head, where it is now, is its far end. */
+  back: number;
+  /** How far apart red and blue are drawn at the screen's corners, CSS px: none at rest, more the faster the camera goes. */
+  aberration: number;
+  /** How much of each image is still on the page under its rays (flightHandover): a faded one's rays make up the rest of it, no more. */
+  handover: number;
 }
 
 /** How solid something at `depth` is drawn, 1 to INTRO_FOG_FAR. The layer's vertex shader works this out; here for the tests. */
@@ -89,6 +103,12 @@ export function introFrame(t: number, out: IntroFrame, wait = 0): IntroFrame {
   out.fade = between(0, 0.25, t);
   // Far off they would only be a blob behind the controls; the tunnel stays open until they have gone.
   out.rays = 1 - between(12, 34, out.z);
+  out.lines = 1;
+  out.flight = 0;
+  out.back = 0;
+  out.handover = 0;
+  // By how much the camera closes in over a shutter, as a ratio: steady through the cruise, peaking at the launch.
+  out.aberration = INTRO_ABERRATION * between(INTRO_ABERRATION_SPEED[0], INTRO_ABERRATION_SPEED[1], Math.log1p(out.tail) - Math.log1p(out.z));
   return out;
 }
 
@@ -142,8 +162,16 @@ function rayPace(tile: number, ray: number): number {
   return slowest + (fastest - slowest) * (INTRO_TILE_PACE * tile + (1 - INTRO_TILE_PACE) * ray ** 2);
 }
 
-/** Per instance: pos 2, offset 2, half 2, thin 1, tile 3, colour 4, depth 2, pace 1. */
-export const INTRO_STRIDE = 17;
+/** Per instance: pos 2, offset 2, half 2, thin 1, detail 1 (see Detail), tile 3, colour 4, depth 2, pace 1. */
+export const INTRO_STRIDE = 18;
+
+/**
+ * Which grid a ray is drawn for. A coarse ray and its finer² finer ones move as one: the layer draws
+ * the coarse one while the finer would be under a pixel wide (and so each drawn a pixel wide, finer²
+ * times the work for nothing to see), and the finer ones once they would show their detail.
+ */
+export const Detail = { Always: 0, Coarse: 1, Fine: 2 } as const;
+export type Detail = (typeof Detail)[keyof typeof Detail];
 
 /** How far along the tunnel a line has to be for the camera to be past it before the tiles land. */
 export const LINE_CLEAR = 2;
@@ -162,89 +190,151 @@ const SALT_COLOR2 = 18;
 
 /** What the layer draws, per INTRO_STRIDE: every tile's rays, then the tunnel's lines. */
 export function introInstances(tiles: readonly IntroTile[], palette: readonly Rgb[], vw: number, vh: number, seed: number): Float32Array {
+  const build = introBuild(tiles, palette, vw, vh, seed);
+  for (;;) {
+    const step = build.next();
+    if (step.done) return step.value;
+  }
+}
+
+/** introInstances a tile at a time: it pauses after each, so the work can be spread over frames. */
+export function* introBuild(tiles: readonly IntroTile[], palette: readonly Rgb[], vw: number, vh: number, seed: number): Generator<void, Float32Array> {
   const lines = introLineCount(vw, vh);
-  const rays = tiles.reduce((sum, tile) => sum + tile.pixels.length / 6, 0);
-  const data = new Float32Array((rays + lines) * INTRO_STRIDE);
-  let at = 0;
-  const put = (...values: number[]) => {
-    data.set(values, at);
-    at += values.length;
-  };
+  const { data, put } = instances(tiles, lines, true);
 
   for (const tile of tiles) {
-    const [cols, rows] = PIXEL_GRID[tile.aspect];
-    const hx = tile.width / 2;
-    const hy = tile.height / 2;
+    yield;
     const tilePace = unit(hash(tile.i, tile.j, seed, SALT_TILE_PACE));
-    for (let n = 0; n < cols * rows; n++) {
-      const col = n % cols;
-      const row = (n - col) / cols;
-      const [r, g, b] = hexRgb(pixelColor(tile.pixels, n));
-      const pace = rayPace(tilePace, unit(hash(tile.i, tile.j, seed, SALT_PACE + n * 100)));
-      // A little over its share, so no gap shows between cells as they close up.
-      put(
-        tile.x,
-        tile.y,
-        ((2 * col + 1) / cols - 1) * hx,
-        ((2 * row + 1) / rows - 1) * hy,
-        hx / cols + 0.5,
-        hy / rows + 0.5,
-        // The ones that hang back and rush are the finest.
-        INTRO_THIN / pace,
-        hx,
-        hy,
-        tile.radius,
-        r,
-        g,
-        b,
-        1,
-        1,
-        1 + INTRO_SPREAD * unit(hash(tile.i, tile.j, seed, SALT_RAY + n * 100)),
-        pace,
-      );
-    }
+    // Each cell of the coarse grid, and of the finer one its finer cells, at the coarse cell's pace and depth.
+    const ray = (n: number, out: RayDepth) => {
+      out.pace = rayPace(tilePace, unit(hash(tile.i, tile.j, seed, SALT_PACE + n * 100)));
+      // The ones that hang back and rush are the finest.
+      out.thin = INTRO_THIN / out.pace;
+      out.depth = 1;
+      out.travel = 1 + INTRO_SPREAD * unit(hash(tile.i, tile.j, seed, SALT_RAY + n * 100));
+    };
+    putRays(put, { ...tile, fine: undefined }, tile.fine ? Detail.Coarse : Detail.Always, ray);
+    if (tile.fine) putRays(put, tile, Detail.Fine, ray);
   }
 
   const reach = Math.hypot(vw, vh) / 2;
   const START = introDistance(0);
   for (let n = 0; n < lines; n++) {
-    const angle = 2 * Math.PI * unit(hash(n, 0, seed, SALT_ANGLE));
+    const u = lineUnits(n, seed);
     const pace = rayPace(unit(hash(n, 0, seed, SALT_TILE_PACE)), unit(hash(n, 0, seed, SALT_PACE)));
-    const meet = 1 + 0.5 * unit(hash(n, 0, seed, SALT_FAR));
+    const meet = 1 + 0.5 * u.meet;
     // Somewhere along the tunnel, between here and where the camera sets out: more of them
     // nearer the tiles, where it goes fastest.
-    const along = Math.expm1(unit(hash(n, 0, seed, SALT_NEAR)) * Math.log1p(meet * START));
+    const along = Math.expm1(u.along * Math.log1p(meet * START));
     // Far along it can be anywhere, up close to the very middle: the camera is past it long
     // before it lands (and just off centre it goes off screen as it passes, unlike dead on it).
     // Near the tiles it has to be outside the view, to be off screen when they land.
     const inner = along > LINE_CLEAR ? 0.03 : 1.05;
-    const ring = reach * (inner + (2.25 - inner) * unit(hash(n, 0, seed, SALT_RING)));
+    const ring = reach * (inner + (2.25 - inner) * u.ring);
     // As wide as a ray at its pace, the same way: the ones that rush are the finest.
-    const size = (INTRO_LINE_WIDTH[0] + (INTRO_LINE_WIDTH[1] - INTRO_LINE_WIDTH[0]) * unit(hash(n, 0, seed, SALT_SIZE))) / pace;
-    // Of two colours, the more vivid: the work is mostly pale, its accents are what light the tunnel.
-    const pick = (salt: number) => palette[Math.floor(unit(hash(n, 0, seed, salt)) * palette.length)]!;
-    const [r, g, b] = [pick(SALT_COLOR), pick(SALT_COLOR2)].sort((a, c) => vividness(c) - vividness(a))[0]!;
-    put(
-      Math.cos(angle) * ring,
-      Math.sin(angle) * ring,
-      0,
-      0,
-      size,
-      size,
-      1,
-      1e4,
-      1e4,
-      0,
-      r,
-      g,
-      b,
-      0.85 + 0.15 * unit(hash(n, 0, seed, SALT_ALPHA)),
-      // A speed of 1 is the camera's; a little over and the line comes to meet it. Lines go by
-      // at their own depth, so at no pace of their own.
-      1 - along,
-      meet,
-      1,
-    );
+    const size = lineWidth(n, seed) / pace;
+    // A speed of 1 is the camera's; a little over and the line comes to meet it. Lines go by
+    // at their own depth, so at no pace of their own.
+    putLine(put, n, 2 * Math.PI * u.angle, ring, size, palette, seed, 1 - along, meet);
   }
   return data;
+}
+
+/** One instance's INTRO_STRIDE values, in order. */
+type Put = (...values: Instance) => void;
+type Instance = [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number];
+
+/** Room for `tiles`' rays and `lines` lines, and a way to fill it in order. */
+export function instances(tiles: readonly IntroTile[], lines: number, coarse = false): { data: Float32Array; put: Put } {
+  // (With `coarse`, room for each tile's coarse grid alongside its finer one.)
+  const rays = tiles.reduce((sum, tile) => sum + (tile.fine ? tile.fine.cols * tile.fine.rows : 0) + (!tile.fine || coarse ? tile.pixels.length / 6 : 0), 0);
+  const data = new Float32Array((rays + lines) * INTRO_STRIDE);
+  let at = 0;
+  // Each value written as it is: a flight's finer grids are tens of thousands of these, put while the visitor waits.
+  return {
+    data,
+    put: (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) => {
+      data[at] = a;
+      data[at + 1] = b;
+      data[at + 2] = c;
+      data[at + 3] = d;
+      data[at + 4] = e;
+      data[at + 5] = f;
+      data[at + 6] = g;
+      data[at + 7] = h;
+      data[at + 8] = i;
+      data[at + 9] = j;
+      data[at + 10] = k;
+      data[at + 11] = l;
+      data[at + 12] = m;
+      data[at + 13] = n;
+      data[at + 14] = o;
+      data[at + 15] = p;
+      data[at + 16] = q;
+      data[at + 17] = r;
+      at += INTRO_STRIDE;
+    },
+  };
+}
+
+/** A ray's thinness at speed and its depth, at the focal plane and per unit of travel, and its pace (see the shader). */
+export interface RayDepth {
+  thin: number;
+  depth: number;
+  travel: number;
+  pace: number;
+}
+
+/** Line n's draws, each 0 to 1: its angle, how far out, how far along, and how fast it comes. */
+export const lineUnits = (n: number, seed: number) => ({
+  angle: unit(hash(n, 0, seed, SALT_ANGLE)),
+  ring: unit(hash(n, 0, seed, SALT_RING)),
+  along: unit(hash(n, 0, seed, SALT_NEAR)),
+  meet: unit(hash(n, 0, seed, SALT_FAR)),
+});
+
+const rayDepth: RayDepth = { thin: 0, depth: 0, travel: 0, pace: 0 };
+
+/**
+ * Put `tile`'s colour grid, its finer one if it has one, a ray per cell where it lands, drawn
+ * for `detail`: `ray(n, out)` writes the RayDepth of cell n of the coarse grid, which a finer cell shares.
+ */
+export function putRays(put: Put, tile: IntroTile, detail: Detail, ray: (n: number, out: RayDepth) => void): void {
+  const { fine } = tile;
+  const [coarseCols] = PIXEL_GRID[tile.aspect];
+  const [cols, rows] = fine ? [fine.cols, fine.rows] : PIXEL_GRID[tile.aspect];
+  const finer = cols / coarseCols;
+  const hx = tile.width / 2;
+  const hy = tile.height / 2;
+  // A little over its share, so no gap shows between cells as they close up.
+  const cx = hx / cols + 0.5;
+  const cy = hy / rows + 0.5;
+  const opacity = tile.opacity ?? 1;
+  for (let n = 0; n < cols * rows; n++) {
+    const col = n % cols;
+    const row = (n - col) / cols;
+    ray(finer === 1 ? n : Math.floor(row / finer) * coarseCols + Math.floor(col / finer), rayDepth);
+    const { thin, depth, travel, pace } = rayDepth;
+    const x = ((2 * col + 1) / cols - 1) * hx;
+    const y = ((2 * row + 1) / rows - 1) * hy;
+    if (fine) {
+      const { rgba } = fine;
+      put(tile.x, tile.y, x, y, cx, cy, thin, detail, hx, hy, tile.radius, rgba[n * 4]! / 255, rgba[n * 4 + 1]! / 255, rgba[n * 4 + 2]! / 255, opacity, depth, travel, pace);
+    } else {
+      const [r, g, b] = hexRgb(pixelColor(tile.pixels, n));
+      put(tile.x, tile.y, x, y, cx, cy, thin, detail, hx, hy, tile.radius, r, g, b, opacity, depth, travel, pace);
+    }
+  }
+}
+
+/** Line n's width before its pace, px. */
+export const lineWidth = (n: number, seed: number) => INTRO_LINE_WIDTH[0] + (INTRO_LINE_WIDTH[1] - INTRO_LINE_WIDTH[0]) * unit(hash(n, 0, seed, SALT_SIZE));
+
+/** Put line n of the tube, `ring` px out at `angle` at the focal plane, and its depth there and per unit of travel. */
+export function putLine(put: Put, n: number, angle: number, ring: number, size: number, palette: readonly Rgb[], seed: number, depth: number, travel: number): void {
+  // Of two colours, the more vivid: the work is mostly pale, its accents are what light the tunnel.
+  const pick = (salt: number) => palette[Math.floor(unit(hash(n, 0, seed, salt)) * palette.length)]!;
+  const [r, g, b] = [pick(SALT_COLOR), pick(SALT_COLOR2)].sort((a, c) => vividness(c) - vividness(a))[0]!;
+  // A box this big marks a line: no tile corners to cut, and the tiles' fade doesn't apply.
+  put(Math.cos(angle) * ring, Math.sin(angle) * ring, 0, 0, size, size, 1, Detail.Always, 1e4, 1e4, 0, r, g, b, 0.85 + 0.15 * unit(hash(n, 0, seed, SALT_ALPHA)), depth, travel, 1);
 }

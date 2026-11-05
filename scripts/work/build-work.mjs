@@ -18,7 +18,7 @@ import { extname, join } from 'node:path';
 const OUT = fileURLToPath(new URL('../../src/assets/work/', import.meta.url));
 const RATIOS = { landscape: 4 / 3, portrait: 3 / 4, square: 1 };
 /** Images a centred crop would cut into: where the crop sits, 0 (left or top edge) to 1 (right or bottom). */
-const ANCHOR = { 'flex-posters': 0 };
+const ANCHOR = { 'flex-posters': 0, 'oxyd-sip': 0.2 };
 
 const source = process.argv[2];
 if (!source) {

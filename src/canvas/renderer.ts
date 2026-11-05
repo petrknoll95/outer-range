@@ -2,6 +2,7 @@ import {
   ACTIVE_SWITCH_MARGIN,
   FADE_OPACITY,
   FADE_TAU,
+  FLIGHT_GRID_FINER,
   FLIGHT_TRAIL_TAU,
   LEAD_MAX,
   LEAD_TIME,
@@ -21,7 +22,7 @@ import type { Lens, LensPoint } from './lens';
 import type { Guest } from './project';
 import type { Trail } from './trail';
 import type { IntroTile } from './intro';
-import { pixelImage } from './pixels';
+import { finerGrid, pixelImage } from './pixels';
 import { easeLag, limitOffset, placeTrail, relaxTrail, restingTrail, stepTrail, taperedLag, taperWeight, zoomTaperWeight } from './trail';
 import type { Cell, World, WorldImage } from './world';
 import { emptyCell, Z_LEVELS } from './world';
@@ -229,11 +230,14 @@ export class Renderer {
   onActiveChange: ((tile: HTMLElement | null) => void) | null = null;
   /** Called when a tile element is about to be reused for another image. */
   onRelease: ((tile: HTMLElement) => void) | null = null;
-  /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began. */
-  /** How much of each tile's trail is left, 1 to 0. */
+  /** How much of each tile's trail is left on the flight, 1 to 0. */
   private flightTrail = 1;
+  /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began. */
   private flight: { slot: Slot; x: number; y: number; scale: number; restX: number; restY: number; restScale: number; opacity: number; depth: number }[] | null = null;
   private readonly view: FlightView = { scale: 1, opacity: 1, blur: 0 };
+  /** The flight's finer grids, by image, sampled when the page has a moment once each has loaded (introTiles). */
+  private readonly fine = new Map<number, NonNullable<IntroTile['fine']>>();
+  private readonly fineQueue = new Set<Slot>();
   private videos = true;
   /**
    * The project view (project.ts): its guests, by their tiles' keys, or null; the cells of their
@@ -586,8 +590,8 @@ export class Renderer {
     return { x: f.restX + (f.x - f.restX) * k, y: f.restY + (f.y - f.restY) * k, scale: f.restScale + (f.scale - f.restScale) * k };
   }
 
-  /** Draw the flight with the camera `travel` in (see flightTravel). `still`: fade only, nothing moves (reduced motion). */
-  drawFlight(travel: number, still = false): void {
+  /** Draw the flight with the camera `travel` in (see flightTravel), and `left` of each image. `still`: fade only, nothing moves (reduced motion). */
+  drawFlight(travel: number, still = false, left = 1): void {
     const g = this.geometry;
     if (!this.flight || !g) return;
     // The vanishing point is the viewport centre: each tile's corner moves away from it as much as the tile grows.
@@ -598,7 +602,7 @@ export class Renderer {
       const s = still ? 1 : v.scale;
       const from = this.flightPlace(f);
       f.slot.el.style.transform = transform(cx + (from.x - cx) * s, cy + (from.y - cy) * s, from.scale * s);
-      f.slot.el.style.opacity = (f.opacity * v.opacity).toFixed(3);
+      f.slot.el.style.opacity = (f.opacity * v.opacity * left).toFixed(3);
       // The blur is drawn before the tile is scaled: ask for the share that comes out at v.blur on screen.
       const blur = still ? 0 : v.blur / (from.scale * s);
       f.slot.el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
@@ -742,14 +746,19 @@ export class Renderer {
     return this.onScreen().map(({ slot: s, ...r }) => ({ i: s.i, j: s.j, image: s.image, ...r, opacity: s.opacity }));
   }
 
-  /** The tiles as drawn now that the intro can show: those on screen, or that are at `scale`, the smallest it draws them whole. */
-  introTiles(scale: number): IntroTile[] {
+  /**
+   * The tiles as drawn now that the intro can show: those on screen, or that are at `scale`, the
+   * smallest it draws them whole. With `finer`, each on screen with its grid FLIGHT_GRID_FINER times
+   * finer (pixels.ts): sampled now if it has to be, or, with `sample` false, only those already sampled.
+   */
+  introTiles(scale: number, finer = false, sample = true): IntroTile[] {
     const g = this.geometry;
     if (!g) return [];
     const reach = (size: number) => (size / 2) * (1 / scale - 1);
     const seen = ({ left, top, width, height }: DrawnTile) =>
       left < g.vw + reach(g.vw) && left + width > -reach(g.vw) && top < g.vh + reach(g.vh) && top + height > -reach(g.vh);
-    return this.drawn().filter(seen).map(({ slot, left, top, width, height }) => ({
+    // One faded right out isn't seen, nor are its rays.
+    return this.drawn().filter((tile) => tile.slot.cssOpacity >= 0.004 && seen(tile)).map(({ slot, left, top, width, height }) => ({
       i: slot.i,
       j: slot.j,
       x: left + width / 2 - g.vw / 2,
@@ -759,7 +768,45 @@ export class Renderer {
       radius: (g.radius * width) / slot.width,
       aspect: this.images[slot.image]!.aspect,
       pixels: this.images[slot.image]!.pixels,
+      opacity: slot.cssOpacity,
+      // Finer only where it lands on screen: further out it is only ever seen small and far off.
+      ...(finer && left < g.vw && left + width > 0 && top < g.vh && top + height > 0 && { fine: this.fine.get(slot.image) ?? (sample ? this.sampleFine(slot) : undefined) }),
     }));
+  }
+
+  /** Sample the finer grids of the loaded images on screen, for about `budget` ms at most: whether all of them are in. */
+  sampleOnScreen(budget: number): boolean {
+    const until = performance.now() + budget;
+    for (const { slot } of this.onScreen()) {
+      if (!slot.loaded || this.fine.has(slot.image)) continue;
+      if (performance.now() > until) return false;
+      this.sampleFine(slot);
+    }
+    return true;
+  }
+
+  /** Slot's image's finer grid, sampled now: kept once its image has loaded. */
+  private sampleFine(slot: Slot): NonNullable<IntroTile['fine']> {
+    const grid = finerGrid(slot.img, this.images[slot.image]!, FLIGHT_GRID_FINER);
+    if (slot.loaded) this.fine.set(slot.image, grid);
+    return grid;
+  }
+
+  /** Sample a loaded image's finer grid when the page next has a moment, so a flight doesn't wait on it. */
+  private queueFine(slot: Slot): void {
+    // (Without idle callbacks, as in Safari, the flight samples what it needs as it sets off.)
+    if (this.fine.has(slot.image) || !('requestIdleCallback' in window)) return;
+    const idle = this.fineQueue.size === 0;
+    this.fineQueue.add(slot);
+    if (!idle) return;
+    const work = (deadline: IdleDeadline) => {
+      for (const s of this.fineQueue) {
+        if (deadline.timeRemaining() < 3) return void requestIdleCallback(work);
+        this.fineQueue.delete(s);
+        if (s.loaded && !this.fine.has(s.image)) this.sampleFine(s);
+      }
+    };
+    requestIdleCallback(work);
   }
 
   /** The tiles that intersect the viewport, each with its screen rectangle and lens scale (trail offsets excluded). */
@@ -1094,6 +1141,7 @@ export class Renderer {
       if (slot.token !== token) return;
       slot.loaded = true;
       delete slot.img.dataset.loading;
+      this.queueFine(slot);
     };
     slot.img.decode().then(reveal, reveal);
   }

@@ -1,14 +1,14 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media } from '../src/assets/media';
-import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_CONTROLS, INTRO_LINE, INTRO_LINE_TEXT, INTRO_WAIT, PIXEL_GRID, SEED } from '../src/canvas/config';
+import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_CONTROLS, INTRO_LINE, INTRO_LINE_TEXT, INTRO_WAIT, FLIGHT_GRID_FINER, INTRO_ABERRATION, PIXEL_GRID, SEED } from '../src/canvas/config';
 import type { IntroTile } from '../src/canvas/intro';
-import { INTRO_LENGTH, INTRO_STRIDE, introDistance, introFog, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
+import { Detail, INTRO_LENGTH, INTRO_STRIDE, introDistance, introFog, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
 import { hexRgb, pixelColor, pixelColors } from '../src/canvas/pixels';
 
 /** Seconds in, u of the way from launch to landing. */
 const at = (u: number) => INTRO_CRUISE + u * INTRO_DURATION;
-const frame = (t: number) => introFrame(t, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 });
+const frame = (t: number) => introFrame(t, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 });
 /** A portrait tile, its cells numbered in the red channel so each can be told apart. */
 const CELLS = PIXEL_GRID.portrait[0] * PIXEL_GRID.portrait[1];
 const pixels = Array.from({ length: CELLS }, (_, n) => `${(n % 256).toString(16).padStart(2, '0')}8040`).join('');
@@ -18,8 +18,17 @@ const palette = [hexRgb('ff8040')];
 /** What the layer gets for one instance. */
 const instance = (data: Float32Array, n: number) => {
   const v = [...data.subarray(n * INTRO_STRIDE, (n + 1) * INTRO_STRIDE)];
-  return { pos: v.slice(0, 2), offset: v.slice(2, 4), half: v.slice(4, 6), thin: v[6]!, color: v.slice(10, 13), depth: v.slice(14, 16), pace: v[16]! };
+  return { pos: v.slice(0, 2), offset: v.slice(2, 4), half: v.slice(4, 6), thin: v[6]!, detail: v[7]!, color: v.slice(11, 14), depth: v.slice(15, 17), pace: v[17]! };
 };
+
+describe('the chromatic aberration', () => {
+  it('comes with speed: none through the cruise or on landing, at full strength only at the rush', () => {
+    for (let t = 0; t < INTRO_CRUISE; t += 0.05) expect(frame(t).aberration).toBe(0);
+    for (let t = INTRO_LENGTH - 0.6; t <= INTRO_LENGTH; t += 0.05) expect(frame(t).aberration).toBeLessThan(0.05);
+    const peak = Math.max(...Array.from({ length: 200 }, (_, k) => frame(INTRO_CRUISE + (k / 200) * INTRO_DURATION).aberration));
+    expect(peak).toBeCloseTo(INTRO_ABERRATION, 6);
+  });
+});
 
 describe('the intro camera', () => {
   it('sets out far off and lands exactly', () => {
@@ -234,7 +243,29 @@ describe('what the intro draws', () => {
     expect(Math.abs(median(lines.map((l) => l.pace)) - median(rays.map((r) => r.pace)))).toBeLessThan(0.25);
     // Solid, and most about as far back as the rays.
     expect(median(lines.map((l) => l.depth[1]!))).toBeGreaterThan(0.6);
-    for (let n = 0; n < lines.length; n++) expect(lineData[n * INTRO_STRIDE + 13]).toBeGreaterThanOrEqual(0.85);
+    for (let n = 0; n < lines.length; n++) expect(lineData[n * INTRO_STRIDE + 14]).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it('with a finer grid, keeps the coarse one too: each finer ray moves with its coarse cell, filling it', () => {
+    const [cols, rows] = PIXEL_GRID.portrait;
+    const finer = FLIGHT_GRID_FINER;
+    const rgba = new Uint8ClampedArray(cols * finer * rows * finer * 4).map((_, k) => k % 251);
+    const data = introInstances([{ ...tile(0, 0), fine: { cols: cols * finer, rows: rows * finer, rgba } }], palette, 0, 0, SEED);
+    const coarse = Array.from({ length: CELLS }, (_, n) => instance(data, n));
+    const fine = Array.from({ length: CELLS * finer * finer }, (_, n) => instance(data, CELLS + n));
+    expect(coarse.every((r) => r.detail === Detail.Coarse)).toBe(true);
+    expect(fine.every((r) => r.detail === Detail.Fine)).toBe(true);
+    fine.forEach((r, n) => {
+      const col = n % (cols * finer);
+      const row = Math.floor(n / (cols * finer));
+      const parent = coarse[Math.floor(row / finer) * cols + Math.floor(col / finer)]!;
+      expect([r.pace, r.thin, ...r.depth]).toEqual([parent.pace, parent.thin, ...parent.depth]);
+      // Inside its coarse cell, a finer² share of it.
+      expect(Math.abs(r.offset[0]! - parent.offset[0]!)).toBeLessThan(parent.half[0]!);
+      expect(Math.abs(r.offset[1]! - parent.offset[1]!)).toBeLessThan(parent.half[1]!);
+      expect(r.half[0]! - 0.5).toBeCloseTo((parent.half[0]! - 0.5) / finer, 6);
+    });
+    expect(fine[1]!.color[0]).toBeCloseTo(4 / 255, 6);
   });
 
   it('strings the lines out along the tunnel, for the camera to pass from the start', () => {

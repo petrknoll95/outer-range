@@ -29,3 +29,6 @@ scripts/placeholders/.cache/
 # test output
 test-results/
 playwright-report/
+
+# After Effects working files and renders
+art/

@@ -7,6 +7,7 @@ interface Api {
   zoomState: () => 'out' | 'in';
   physics: { x: number; y: number };
   flight: () => { u: number; to: 0 | 1 } | null;
+  holdFlight: (u: number | null) => void;
   route: () => 'home' | 'about';
   activeImage: () => { image: number } | null;
 }
@@ -449,3 +450,39 @@ for (const [how, wait, gesture] of [
     expect(Math.max(...moves.slice(landing, landing + 30).map((m) => m.d))).toBeLessThan(wait === 1 ? 2 : 12);
   });
 }
+
+test("the flight goes through the intro's rays: made ahead, shown only while flying, the images' finer grids", async ({ page }) => {
+  // (Only where they can be drawn smoothly, which a test's software renderer can't: `?rays` asks for them anyway.)
+  await page.goto('/?test&rays');
+  await settled(page);
+  const rays = page.locator('canvas[data-flight-rays]');
+  // Made while the page is idle, hidden until needed.
+  await expect(rays).toHaveCount(1);
+  await expect(rays).toBeHidden();
+  await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.holdFlight(0.2));
+  await page.keyboard.press('a');
+  await expect(rays).toBeVisible();
+  // Drawn: what it shows is a good part of the screen.
+  await page.waitForTimeout(300);
+  const shown = PNG.sync.read(await page.screenshot());
+  await rays.evaluate((canvas) => (canvas.style.visibility = 'hidden'));
+  const without = PNG.sync.read(await page.screenshot());
+  await rays.evaluate((canvas) => (canvas.style.visibility = ''));
+  const differ = pixelmatch(shown.data, without.data, null, shown.width, shown.height, { threshold: 0.1 });
+  expect(differ / (shown.width * shown.height)).toBeGreaterThan(0.05);
+  await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.holdFlight(null));
+  await landed(page, 1);
+  await page.keyboard.press('Escape');
+  await landed(page, 0);
+  await expect(rays).toBeHidden();
+});
+
+test('with reduced motion there are no rays', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?test&rays');
+  await settled(page);
+  await page.waitForTimeout(2500);
+  await page.keyboard.press('a');
+  await landed(page, 1);
+  await expect(page.locator('canvas[data-flight-rays]')).toHaveCount(0);
+});

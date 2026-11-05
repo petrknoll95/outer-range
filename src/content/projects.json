@@ -138,7 +138,8 @@
     "images": [
       "atomsai-billboard",
       "atomsai-wordmark",
-      "atomsai-construction"
+      "atomsai-construction",
+      "atomsai-applications"
     ]
   },
   {
@@ -167,10 +168,20 @@
     "title": "Explorations",
     "year": 2025,
     "images": [
+      "topset-carousel",
+      "ts-logo-spin",
       "crocs-rnd",
       "remi-logo",
       "3d-icons",
-      "chill-pill-vial",
+      "chill-pill-vial"
+    ]
+  },
+  {
+    "id": "oxyd",
+    "title": "OXYD",
+    "year": 2025,
+    "images": [
+      "oxyd-sip",
       "oxyd-drink",
       "oxyd-brand-reel"
     ]

@@ -426,6 +426,15 @@ test('panning 20 screens away and back is pixel-identical', async ({ page }) => 
   const shoot = async () => PNG.sync.read(await page.screenshot({ animations: 'disabled' }));
   const tiles = () =>
     page.evaluate(() => window.__canvas.renderer.visibleCells().sort((a, b) => a.i - b.i || a.j - b.j));
+  // Settled isn't loaded: a video's poster can still be on its way, its tile showing the colour grid.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll<HTMLImageElement>('[data-canvas-layer] img')].every((img) => {
+      const r = img.getBoundingClientRect();
+      const seen = r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+      return !seen || (img.complete && !('loading' in img.dataset));
+    }),
+  );
+  await page.waitForTimeout(300); // let fade-ins finish
   const start = await shoot();
   const startTiles = await tiles();
   const origin = await camera(page);

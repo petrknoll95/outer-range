@@ -23,6 +23,10 @@ function timeless(prefix, weights, uprightOnly = []) {
 
 // https://astro.build/config
 export default defineConfig({
+  // GitHub Pages serves it from a subpath (the deploy workflow sets both); everywhere else it's at the root.
+  site: process.env.SITE_URL,
+  base: process.env.BASE_PATH || '/',
+  devToolbar: { enabled: false },
   // Self-hosted from src/assets/fonts/timeless, each with a metric-matched fallback so nothing shifts when it loads.
   // Every weight is declared; a browser only downloads the ones the page uses.
   fonts: [

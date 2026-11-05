@@ -37,7 +37,7 @@ test('the about view has the same header, with Back in place of About', async ({
   expect([about.link.type, about.link.top, about.link.bottom, about.link.right]).toEqual([home.link.type, home.link.top, home.link.bottom, home.link.right]);
   await expect(page.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/');
   await expect(page.getByRole('link', { name: 'About' })).toHaveCount(0);
-  await expect(page).toHaveTitle('About · Petr Knoll');
+  await expect(page).toHaveTitle('About · Outer Range');
 });
 
 test('its text sits in a narrow column, centred, over the flown-past canvas', async ({ page }) => {

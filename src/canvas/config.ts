@@ -265,6 +265,41 @@ export const FLIGHT_FAR_FADE = 0.35;
 export const FLIGHT_FAR_BLUR = 8;
 /** With reduced motion there is no flight, just a fade this long, s. */
 export const FLIGHT_REDUCED_DURATION = 0.3;
+/**
+ * The flight goes through the intro's wormhole (flight.ts, drawn by introlayer.ts): each image
+ * on screen breaks into its colour grid, one ray per cell, and the rays thin into streaks and
+ * rush past the camera, each FLIGHT_RAY_PACE times as fast as its image comes at it, through a
+ * tube of lines, FLIGHT_LINES as many as the intro's. A streak's tail is where it was
+ * FLIGHT_SHUTTER of the flight ago. Coming back it all runs in reverse, closing up into the images.
+ */
+export const FLIGHT_RAY_PACE = [1.25, 1.6] as const;
+export const FLIGHT_LINES = 0.15;
+export const FLIGHT_SHUTTER = 0.05;
+/** Calmer than the intro: the lines are at most this solid, and the rays thin only this far towards INTRO_THIN. */
+export const FLIGHT_LINE_ALPHA = 0.5;
+export const FLIGHT_THINNING = 0.6;
+/**
+ * The wormhole is drawn as if through a lens with chromatic aberration (introlayer.ts): red
+ * pushed out from the centre and blue in, by nothing at the centre to this many CSS px at the
+ * corners, growing with the square of the distance so the middle stays sharp. It comes with
+ * speed: in the intro, as the camera closes in by a log ratio over a shutter between the two
+ * of INTRO_ABERRATION_SPEED (steady through the cruise, peaking at the launch); on the flight,
+ * as it travels up to FLIGHT_ABERRATION_SPEED over a shutter.
+ */
+export const INTRO_ABERRATION = 10;
+/** And round the centre, this share of it: the streaks run out from the centre, so that split shows only at their ends, this one along their sides. */
+export const ABERRATION_TWIST = 0.4;
+export const INTRO_ABERRATION_SPEED = [0.1, 1] as const;
+export const FLIGHT_ABERRATION = 12;
+export const FLIGHT_ABERRATION_SPEED = 0.25;
+/**
+ * The flight's images go from under their rays over this span of the flight (flightHandover):
+ * once the rays are solid, and not before their cells have come well apart, so the gaps opening
+ * between them show the image rather than the page.
+ */
+export const FLIGHT_HANDOVER = [0.14, 0.34] as const;
+/** The flight's grids, and the intro's once the images are in, are this many times finer than PIXEL_GRID each way, sampled from the images. */
+export const FLIGHT_GRID_FINER = 3;
 
 // ── Caption (zoomed in) ────────────────────────────────────────────────────
 

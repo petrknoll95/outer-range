@@ -35,3 +35,41 @@ export function pixelImage({ aspect, pixels }: { aspect: Aspect; pixels: string 
   context.putImageData(image, 0, 0);
   return canvas.toDataURL();
 }
+
+let sampler: CanvasRenderingContext2D | null = null;
+
+/**
+ * A grid `finer` times finer each way than the image's own: from the image itself as drawn
+ * (cropped to fill, as the tile does), or, until it has loaded, its colour grid cell by cell.
+ */
+export function finerGrid(img: HTMLImageElement, { aspect, pixels }: { aspect: Aspect; pixels: string }, finer: number): { cols: number; rows: number; rgba: Uint8ClampedArray } {
+  const [c, r] = PIXEL_GRID[aspect];
+  const cols = c * finer;
+  const rows = r * finer;
+  if (img.complete && img.naturalWidth > 0) {
+    try {
+      sampler ??= document.createElement('canvas').getContext('2d', { willReadFrequently: true })!;
+      const { canvas } = sampler;
+      canvas.width = cols;
+      canvas.height = rows;
+      sampler.imageSmoothingQuality = 'high';
+      // The whole image, scaled to fill and centred. (Not cut by a source rectangle: from a srcset its
+      // natural size is in CSS px, a source rectangle in the file's own, so that would take a corner.)
+      const scale = Math.max(cols / img.naturalWidth, rows / img.naturalHeight);
+      const w = img.naturalWidth * scale;
+      const h = img.naturalHeight * scale;
+      sampler.drawImage(img, (cols - w) / 2, (rows - h) / 2, w, h);
+      return { cols, rows, rgba: sampler.getImageData(0, 0, cols, rows).data };
+    } catch {
+      // Can't be read back: its grid will do.
+    }
+  }
+  const rgba = new Uint8ClampedArray(cols * rows * 4);
+  for (let n = 0; n < cols * rows; n++) {
+    const col = n % cols;
+    const row = (n - col) / cols;
+    const [red, green, blue] = hexRgb(pixelColor(pixels, Math.floor(row / finer) * c + Math.floor(col / finer)));
+    rgba.set([red * 255, green * 255, blue * 255, 255], n * 4);
+  }
+  return { cols, rows, rgba };
+}

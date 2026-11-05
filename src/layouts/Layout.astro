@@ -8,6 +8,8 @@ interface Props {
 }
 
 const { title, description } = Astro.props;
+// The canvas's path: the root, or /outer-range/ on GitHub Pages.
+const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 
 <!doctype html>
@@ -17,13 +19,13 @@ const { title, description } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <!-- The theme last picked with "L" (src/canvas/main.ts), set before the first paint so it never flashes the other one. -->
-    <script is:inline>
+    <script is:inline define:vars={{ home }}>
       try {
         const theme = localStorage.getItem('theme');
         if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
       } catch {}
       // The header and info bar wait for the intro (src/canvas/main.ts), unless there won't be one.
-      if (location.pathname === '/' && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.dataset.intro = '';
+      if (location.pathname === home && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.dataset.intro = '';
     </script>
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="data:," />

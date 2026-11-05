@@ -4,12 +4,12 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FocusCaption } from './caption';
 import { LONG, FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_CRUISE, INTRO_HANDOVER, INTRO_WAIT, SEED, STEP, ZOOM_DURATION, ZOOM_NARROW } from './config';
 import type { FlightView } from './flight';
-import { flightFar, flightTravel } from './flight';
+import { flightFar, flightFrame, flightHandover, flightInstances, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
 import { attachInput } from './input';
 import type { IntroFrame } from './intro';
-import { INTRO_FARTHEST, INTRO_LENGTH, introFrame, introInstances, introPalette } from './intro';
+import { INTRO_FARTHEST, INTRO_LENGTH, INTRO_STRIDE, introBuild, introFrame, introInstances, introPalette } from './intro';
 import { IntroLayer } from './introlayer';
 import { IntroTitle } from './introtitle';
 import type { CellRect, Geometry } from './layout';
@@ -23,6 +23,7 @@ import { clusterBounds, projectGuests } from './project';
 import type { ClientProject } from './projects';
 import { createProjectIndex } from './projects';
 import type { CameraStep, CanvasData } from './renderer';
+import type { Rgb } from './pixels';
 import { pixelColors } from './pixels';
 import { Renderer } from './renderer';
 import { createWorld, Z_LEVELS } from './world';
@@ -617,11 +618,14 @@ document.addEventListener('visibilitychange', () => {
  * change of mind mid-flight turns it round from wherever it has got to.
  */
 type Route = 'home' | 'about';
+// Both under the site's base: the root, or /outer-range/ on GitHub Pages.
+const HOME = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const ABOUT = `${HOME}about`;
 const ROUTES: Record<Route, { path: string; title: string; link: { href: string; label: string } }> = {
-  home: { path: '/', title: 'Petr Knoll', link: { href: '/about', label: 'About' } },
-  about: { path: '/about', title: 'About · Petr Knoll', link: { href: '/', label: 'Back' } },
+  home: { path: HOME, title: 'Outer Range', link: { href: ABOUT, label: 'About' } },
+  about: { path: ABOUT, title: 'About · Outer Range', link: { href: HOME, label: 'Back' } },
 };
-const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === '/about' ? 'about' : 'home');
+const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === ABOUT ? 'about' : 'home');
 let route: Route = routeAt(location.pathname);
 
 /**
@@ -648,23 +652,36 @@ interface Intro {
   launched: boolean;
   wait: number;
   frame: IntroFrame;
+  /** The lines' colours, to rebuild the rays with the finer grids (refineIntro). */
+  palette: readonly Rgb[];
+  /** The rebuild, under way, and whether it is over, done or given up. */
+  build: Generator<void, Float32Array> | null;
+  refined: boolean;
   stop: AbortController;
 }
 let intro: Intro | null = null;
 
-function startIntro(): void {
+/** The page's background now (it follows the theme), 0 to 1 a channel. */
+function pageBackground(): Rgb {
   const body = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!;
   body.fillStyle = getComputedStyle(document.body).backgroundColor;
   body.fillRect(0, 0, 1, 1);
   const [r, g, b] = body.getImageData(0, 0, 1, 1).data as unknown as [number, number, number];
-  const background = [r / 255, g / 255, b / 255] as const;
-  const palette = introPalette(data.images.flatMap((image) => pixelColors(image.pixels).filter((_, n) => n % 16 === 0)), background);
+  return [r / 255, g / 255, b / 255];
+}
+
+/** The colours the tunnel's lines are drawn in: the work's, those that show up on `background`. */
+const linePalette = (background: Rgb) => introPalette(data.images.flatMap((image) => pixelColors(image.pixels).filter((_, n) => n % 16 === 0)), background);
+
+function startIntro(): void {
+  const background = pageBackground();
+  const palette = linePalette(background);
   const instances = introInstances(renderer.introTiles(INTRO_FARTHEST), palette, geometry.vw, geometry.vh, SEED);
   const lines = IntroLayer.create(root, instances, background, geometry.vw, geometry.vh, Z_LEVELS + 2, params.has('test'));
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  intro = { lines, line: IntroTitle.line(root, Z_LEVELS + 3), title: IntroTitle.controls(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0 }, stop };
+  intro = { lines, line: IntroTitle.line(root, Z_LEVELS + 3), title: IntroTitle.controls(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 }, palette, build: null, refined: false, stop };
   lines.draw(introFrame(0, intro.frame));
   intro.line.draw(0);
   intro.title.draw(0);
@@ -680,6 +697,7 @@ function stepIntro(): void {
     i.loaded = true;
     if (!(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) renderer.readyVideos();
   }
+  refineIntro(i);
   if (!i.launched) {
     i.wait = i.held === null ? Math.max(0, at - INTRO_CRUISE) : 0;
     i.launched = i.held !== null || (at >= INTRO_CRUISE && (i.loaded || i.wait >= INTRO_WAIT));
@@ -699,6 +717,36 @@ function stepIntro(): void {
   i.lines.draw(f);
 }
 
+/** A frame's share of the intro's refining, ms: well inside a frame at 120 Hz, beside the drawing. */
+const REFINE_BUDGET = 3;
+
+/**
+ * Once the images are in, while their rays are still held back, rebuild the rays from the images,
+ * finer (FLIGHT_GRID_FINER): sampled and put a little each frame, never a frame's worth at once.
+ * If the rays come out before it's done, they stay as they were.
+ */
+function refineIntro(i: Intro): void {
+  if (!i.loaded || i.refined) return;
+  if (i.frame.rays > 0) {
+    i.refined = true;
+    return;
+  }
+  // (The clock, not now(): that is the frame's time, which stands still while it is worked on.)
+  const until = performance.now() + REFINE_BUDGET;
+  if (!i.build) {
+    if (!renderer.sampleOnScreen(REFINE_BUDGET)) return;
+    i.build = introBuild(renderer.introTiles(INTRO_FARTHEST, true, false), i.palette, geometry.vw, geometry.vh, SEED);
+  }
+  while (performance.now() < until) {
+    const step = i.build.next();
+    if (step.done) {
+      i.lines.load(step.value, geometry.vw, geometry.vh);
+      i.refined = true;
+      return;
+    }
+  }
+}
+
 function endIntro(): void {
   if (!intro) return;
   intro.lines.leave();
@@ -712,6 +760,7 @@ function endIntro(): void {
   frame.reveal();
   playVideos();
   wake();
+  readyFlightRays();
 }
 
 /** Videos play on the canvas, unless motion is to be reduced: then each holds its poster frame. */
@@ -727,6 +776,8 @@ interface Flight {
   last: number;
 }
 let flight: Flight | null = null;
+/** For tests: hold the flight this far along. */
+let flightHeld: number | null = null;
 
 function go(next: Route): void {
   if (next === route) return;
@@ -755,7 +806,7 @@ function leaveCanvas(): void {
   physics.halt();
   saveView();
   document.documentElement.dataset.leaving = '';
-  renderer.beginFlight();
+  beginFlight();
   flight = { u: 0, to: 1, last: now() };
   updateCaption();
   wake();
@@ -766,12 +817,14 @@ function stepFlight(): void {
   const t = now();
   const still = reducedMotion.matches;
   const duration = still ? FLIGHT_REDUCED_DURATION : f.to === 1 ? FLIGHT_DURATION : FLIGHT_RETURN_DURATION;
-  f.u = Math.min(1, Math.max(0, f.u + ((f.to === 1 ? 1 : -1) * (t - f.last)) / duration));
+  f.u = flightHeld ?? Math.min(1, Math.max(0, f.u + ((f.to === 1 ? 1 : -1) * (t - f.last)) / duration));
   renderer.relaxFlight(t - f.last);
   f.last = t;
   const travel = flightTravel(f.u);
-  renderer.drawFlight(travel, still);
+  const rays = !still && flightRays !== null;
+  renderer.drawFlight(travel, still, rays ? flightHandover(f.u) : 1);
   drawAbout(travel, still);
+  if (rays) flightRays!.draw(flightFrame(f.u, f.to, rayFrame));
   if (f.u !== f.to) return;
   // Flown past: only the header is left, and nothing to draw until it turns back.
   if (f.to === 1) {
@@ -779,12 +832,43 @@ function stepFlight(): void {
     return sleep();
   }
   // Back where it was: browse on from exactly here.
+  flightRays?.hide();
   renderer.endFlight();
   aboutLayer.removeAttribute('style');
   flight = null;
   delete document.documentElement.dataset.leaving;
   relayout();
   resettle(t);
+}
+
+/**
+ * The flight's rays (flight.ts): drawn with the intro's layer, made once and kept, as making
+ * it costs a frame or two. Null until then, or where it can't be drawn: the flight is just the images.
+ */
+let flightRays: IntroLayer | null = null;
+let raysTried = false;
+const rayFrame: IntroFrame = { z: 0, tail: 0, scale: 1, closed: 1, corners: 1, fade: 0, rays: 0, lines: 0, flight: 1, back: 0, aberration: 0, handover: 0 };
+
+function makeFlightRays(): void {
+  if (raysTried || reducedMotion.matches) return;
+  raysTried = true;
+  // Only where it is smooth: a software renderer (tests run on one) draws a frame of it in a fifth of a second. Tests ask for it with `?rays`.
+  // One invisible ray, drawn once now, so the first flight doesn't wait on the GPU getting it ready.
+  flightRays = IntroLayer.create(root, new Float32Array(INTRO_STRIDE), null, geometry.vw, geometry.vh, Z_LEVELS + 2, params.has('rays'));
+  flightRays?.draw(rayFrame);
+  flightRays?.hide();
+}
+
+/** Make the rays' layer when the page has a moment, a little after it opens. */
+function readyFlightRays(): void {
+  window.setTimeout(() => ('requestIdleCallback' in window ? requestIdleCallback(makeFlightRays, { timeout: 2000 }) : makeFlightRays()), 1000);
+}
+
+/** Set the flight off from the tiles as drawn now, and their rays with them. */
+function beginFlight(): void {
+  renderer.beginFlight();
+  makeFlightRays();
+  flightRays?.load(flightInstances(renderer.introTiles(1, true), linePalette(pageBackground()), geometry.vw, geometry.vh, SEED), geometry.vw, geometry.vh);
 }
 
 /** Back from a flight: finish settling into the zoom state, on an image's centre when zoomed in. */
@@ -976,7 +1060,7 @@ if (route === 'about' || arriving) document.documentElement.dataset.leaving = ''
 // First frame now, so tiles are in place before the first paint.
 draw(0, 0, true);
 if (route === 'about' || arriving) {
-  renderer.beginFlight();
+  beginFlight();
   flight = { u: 1, to: 1, last: now() };
   renderer.drawFlight(flightTravel(1), reducedMotion.matches);
   drawAbout(flightTravel(1), reducedMotion.matches);
@@ -987,6 +1071,7 @@ if (route === 'about' || arriving) {
   // A fresh load of the canvas, not a return to it. Tests ask for it with `?intro`.
   const opening = navigation?.type !== 'back_forward' && !reducedMotion.matches && !document.hidden && (!params.has('test') || params.has('intro'));
   if (opening) startIntro();
+  if (!intro) readyFlightRays();
   wake();
 }
 if (!intro) delete document.documentElement.dataset.intro;
@@ -1010,6 +1095,10 @@ if (debug || params.has('test')) {
     /** The view, and the flight between the two, or null. */
     route: () => route,
     flight: () => (flight ? { u: flight.u, to: flight.to } : null),
+    holdFlight: (u: number | null) => {
+      flightHeld = u;
+      wake();
+    },
     /** Whether the intro is playing; hold it this many seconds in to look at it. */
     intro: () => intro !== null,
     holdIntro: (at: number) => {
