@@ -15,6 +15,7 @@ import {
 } from './config';
 import type { FlightView } from './flight';
 import { flightDepth, flightView } from './flight';
+import type { GlassTile } from './glass';
 import { hash, unit } from './hash';
 import type { CellRange, CellRect, Geometry } from './layout';
 import { cellRange } from './layout';
@@ -77,6 +78,15 @@ export interface CameraStep {
   anchorY: number;
   /** How far zoomed in, 0 (out) to 1 (in): fades every image but the active one. */
   focus: number;
+}
+
+/** A tile as the flight draws it: its top-left corner, screen px, its scale, opacity and blur (px on screen). */
+interface FlightPose {
+  x: number;
+  y: number;
+  scale: number;
+  opacity: number;
+  blur: number;
 }
 
 /** A tile's screen rectangle and lens scale, trail offsets excluded. */
@@ -232,8 +242,11 @@ export class Renderer {
   onRelease: ((tile: HTMLElement) => void) | null = null;
   /** How much of each tile's trail is left on the flight, 1 to 0. */
   private flightTrail = 1;
-  /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began. */
-  private flight: { slot: Slot; x: number; y: number; scale: number; restX: number; restY: number; restScale: number; opacity: number; depth: number }[] | null = null;
+  /** The flight out of the canvas (flight.ts), or null: each on-screen tile as drawn when it began, and as drawn now. */
+  private flight:
+    | { slot: Slot; x: number; y: number; scale: number; restX: number; restY: number; restScale: number; opacity: number; depth: number; now: FlightPose }[]
+    | null = null;
+
   private readonly view: FlightView = { scale: 1, opacity: 1, blur: 0 };
   /** The flight's finer grids, by image, sampled when the page has a moment once each has loaded (introTiles). */
   private readonly fine = new Map<number, NonNullable<IntroTile['fine']>>();
@@ -563,7 +576,8 @@ export class Renderer {
         continue;
       }
       const depth = flightDepth(slot.i, slot.j, this.world.seed);
-      this.flight.push({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, ...this.restPlace(slot), opacity: slot.cssOpacity, depth });
+      const now = { x: slot.cssX, y: slot.cssY, scale: slot.cssScale, opacity: slot.cssOpacity, blur: 0 };
+      this.flight.push({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, ...this.restPlace(slot), opacity: slot.cssOpacity, depth, now });
     }
   }
 
@@ -601,10 +615,16 @@ export class Renderer {
       const v = flightView(f.depth, travel, this.view);
       const s = still ? 1 : v.scale;
       const from = this.flightPlace(f);
-      f.slot.el.style.transform = transform(cx + (from.x - cx) * s, cy + (from.y - cy) * s, from.scale * s);
-      f.slot.el.style.opacity = (f.opacity * v.opacity * left).toFixed(3);
+      const now = f.now;
+      now.x = cx + (from.x - cx) * s;
+      now.y = cy + (from.y - cy) * s;
+      now.scale = from.scale * s;
+      now.opacity = f.opacity * v.opacity * left;
+      now.blur = still ? 0 : v.blur;
+      f.slot.el.style.transform = transform(now.x, now.y, now.scale);
+      f.slot.el.style.opacity = now.opacity.toFixed(3);
       // The blur is drawn before the tile is scaled: ask for the share that comes out at v.blur on screen.
-      const blur = still ? 0 : v.blur / (from.scale * s);
+      const blur = now.blur / now.scale;
       f.slot.el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
     }
   }
@@ -772,6 +792,39 @@ export class Renderer {
       // Finer only where it lands on screen: further out it is only ever seen small and far off.
       ...(finer && left < g.vw && left + width > 0 && top < g.vh && top + height > 0 && { fine: this.fine.get(slot.image) ?? (sample ? this.sampleFine(slot) : undefined) }),
     }));
+  }
+
+  /** The tiles as drawn on the page now, bottom to top, flight and all, for the glass edges (glass.ts). */
+  glassTiles(): GlassTile[] {
+    const g = this.geometry;
+    if (!g) return [];
+    const poses = this.flight
+      ? this.flight.map((f) => ({ slot: f.slot, ...f.now }))
+      : this.active.map((slot) => ({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, opacity: slot.cssOpacity, blur: 0 }));
+    const level = (slot: Slot) => (slot === this.activeSlot ? Z_LEVELS : slot.z);
+    // Stacked as on the page: by z-index, then in the order the elements are in.
+    return poses
+      .filter((p) => p.opacity >= 0.004 && Number.isFinite(p.x))
+      .sort((a, b) => level(a.slot) - level(b.slot) || this.slots.indexOf(a.slot) - this.slots.indexOf(b.slot))
+      .map(({ slot, x, y, scale, opacity, blur }) => {
+        const video = slot.video;
+        // The video once it shows (see setVideo), over its image once that is in, over the colour grid.
+        const playing = video !== null && slot.videoSrc !== null && video.dataset.waiting === undefined && video.readyState >= 2;
+        const image = this.images[slot.image]!;
+        return {
+          left: x,
+          top: y,
+          width: Math.round(slot.width * slot.layout * 100) / 100 * scale,
+          height: Math.round(slot.height * slot.layout * 100) / 100 * scale,
+          radius: Math.round(g.radius * slot.layout * 100) / 100 * scale,
+          opacity,
+          blur,
+          source: playing ? video : slot.loaded ? slot.img : null,
+          pixels: image.pixels,
+          aspect: image.aspect,
+          live: !slot.loaded || (video !== null && slot.videoSrc !== null && !video.paused),
+        };
+      });
   }
 
   /** Sample the finer grids of the loaded images on screen, for about `budget` ms at most: whether all of them are in. */

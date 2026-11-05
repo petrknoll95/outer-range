@@ -7,6 +7,8 @@ import type { FlightView } from './flight';
 import { flightFar, flightFrame, flightHandover, flightInstances, flightTravel } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
+import { GlassLayer } from './glass';
+import { GlassText } from './glasstext';
 import { attachInput } from './input';
 import type { IntroFrame } from './intro';
 import { INTRO_FARTHEST, INTRO_LENGTH, INTRO_STRIDE, introBuild, introFrame, introInstances, introPalette } from './intro';
@@ -421,7 +423,26 @@ function draw(vx: number, vy: number, zoomAtRest: boolean): void {
 /** At rest: no motion, no image still trailing, fading or still to be snapped to. */
 const atRest = () => physics.isAtRest() && renderer.isAtRest() && !projectMoving();
 
+/** The tile layer's scale about the centre: the intro's glide, or 1. */
+let layerScale = 1;
+
+// The glass edges, on the canvas and the about view: drawn last each frame, from the tiles and text as drawn. Tests ask for it with `?glass`.
+const glass = GlassLayer.create(
+  root,
+  layer,
+  new GlassText(document.querySelector<HTMLElement>('[data-about-layer]')!, document.querySelector<HTMLElement>('[data-about]')!),
+  params.has('glass'),
+  // (The window as it is: on the about view the canvas is only laid out again on the way back.)
+  () => ({ tiles: renderer.glassTiles(), vw: root.clientWidth, vh: root.clientHeight, scale: layerScale }),
+  () => awake,
+);
+
 function tick(): void {
+  advance();
+  glass?.draw();
+}
+
+function advance(): void {
   if (intro) {
     stepIntro();
     return;
@@ -713,7 +734,10 @@ function stepIntro(): void {
     layer.style.willChange = 'transform';
     playVideos();
   }
-  if (i.gliding) layer.style.transform = `scale(${f.scale.toFixed(5)})`;
+  if (i.gliding) {
+    layerScale = Number(f.scale.toFixed(5));
+    layer.style.transform = `scale(${layerScale})`;
+  }
   i.lines.draw(f);
 }
 
@@ -755,6 +779,7 @@ function endIntro(): void {
   intro.stop.abort();
   intro = null;
   delete document.documentElement.dataset.intro;
+  layerScale = 1;
   layer.style.transform = '';
   layer.style.willChange = '';
   frame.reveal();
@@ -930,6 +955,10 @@ const smoother = ScrollSmoother.create({
   smooth: smoothing(),
   smoothTouch: false,
   effects: false,
+  // The text under the glass moves with it. (Mid-flight the canvas's loop draws it.)
+  onUpdate: () => {
+    if (!awake) glass?.draw();
+  },
 });
 reducedMotion.addEventListener('change', () => smoother.smooth(smoothing()));
 const far: FlightView = { scale: 1, opacity: 1, blur: 0 };
@@ -1028,6 +1057,8 @@ window.addEventListener('keydown', (e) => {
   const html = document.documentElement;
   const next = (html.dataset.theme ?? (systemDark.matches ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark';
   html.dataset.theme = next;
+  // The about text's colours fade (global.css) under the glass too.
+  glass?.liveFor(0.35);
   try {
     localStorage.setItem(THEME_KEY, next);
   } catch {
@@ -1076,6 +1107,7 @@ if (route === 'about' || arriving) {
 }
 if (!intro) delete document.documentElement.dataset.intro;
 playVideos();
+glass?.draw();
 
 if (debug || params.has('test')) {
   const api = {

@@ -49,7 +49,7 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   await expect(article.locator(':scope > h2 + p')).toHaveText('Currently at Off Menu');
   // Each numeral is dead centre, in the statement's serif and size, with "Chapter" on its left and its title on its right.
   await expect(article.locator(':scope > h3 .numeral')).toHaveText(['I', 'II', 'III', 'IV']);
-  await expect(article.locator(':scope > h3')).toHaveText(['I On Intent', 'II On Philosophy', 'III On Process', 'IV On Ethics']);
+  await expect(article.locator(':scope > h3')).toHaveText(['Chapter I On Intent', 'Chapter II On Philosophy', 'Chapter III On Process', 'Chapter IV On Ethics']);
   const type = await article.evaluate((el) => {
     const s = (sel: string) => getComputedStyle(el.querySelector(sel)!);
     const column = el.getBoundingClientRect();
@@ -60,11 +60,12 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
       sections: [...el.querySelectorAll(':scope > h3')].map((h) => {
         const n = h.querySelector('.numeral')!.getBoundingClientRect();
         const t = h.querySelector('.title')!.getBoundingClientRect();
+        const c = h.querySelector('.chapter')!.getBoundingClientRect();
         return {
           offCentre: Math.abs((n.left + n.right) / 2 - (column.left + column.right) / 2),
           rightOf: t.left >= n.right,
           offMiddle: Math.abs((t.top + t.bottom) / 2 - (n.top + n.bottom) / 2),
-          before: getComputedStyle(h, '::before').content,
+          leftOf: c.right <= n.left,
         };
       }),
     };
@@ -76,7 +77,7 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
     expect(section.offCentre).toBeLessThan(1);
     expect(section.rightOf).toBe(true);
     expect(section.offMiddle).toBeLessThan(2);
-    expect(section.before).toBe('"Chapter"');
+    expect(section.leftOf).toBe(true);
   }
   const sections = article.locator(':scope > h3 + p');
   await expect(sections).toHaveCount(4);
@@ -90,7 +91,7 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   const services = article.getByRole('region', { name: 'Services' });
   expect(await services.evaluate((s) => [s.previousElementSibling!.textContent, s.nextElementSibling!.textContent])).toEqual([
     'Currently at Off Menu',
-    'I On Intent',
+    'Chapter I On Intent',
   ]);
   await expect(services.getByRole('heading', { level: 3 })).toHaveText(['Digital Design', 'Branding', 'Print Design']);
   await expect(services.getByRole('listitem')).toHaveText([

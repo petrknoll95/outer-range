@@ -177,9 +177,13 @@
   .about-layer {
     transform-origin: 50% 50vh;
   }
-  /* Scrolled, the text fades out under the header band instead of running into the wordmark. */
+  /* Scrolled, the text fades out under the header band instead of running into the wordmark;
+     with the glass edges (glass.ts) it bends away under them instead, as the canvas does. */
   .about-view {
     mask-image: linear-gradient(to bottom, transparent 56px, black 104px);
+  }
+  html[data-glass] .about-view {
+    mask-image: none;
   }
   /* All of it centred, set from the copy's own hierarchy: a statement, then sections. */
   .about {
@@ -236,13 +240,12 @@
     letter-spacing: -0.015em;
   }
   /* "Chapter" mirrors the title on the numeral's left. */
-  .about > h3::before {
-    content: "Chapter";
+  .about h3 .chapter {
     grid-column: 1;
     grid-row: 1;
     justify-self: end;
   }
-  .about > h3::before,
+  .about h3 .chapter,
   .about h3 .title {
     font-size: 13px;
     line-height: 18px;

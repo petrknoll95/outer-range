@@ -148,13 +148,13 @@ void main() {
 }`;
 
 /** Whether `gl` is drawn on the CPU (SwiftShader, llvmpipe, Microsoft's Basic Render Driver and the like). */
-function software(gl: WebGL2RenderingContext): boolean {
+export function software(gl: WebGL2RenderingContext): boolean {
   const info = gl.getExtension('WEBGL_debug_renderer_info');
   const renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
   return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(renderer);
 }
 
-function program(gl: WebGL2RenderingContext, vertex: string, fragment: string): WebGLProgram | null {
+export function program(gl: WebGL2RenderingContext, vertex: string, fragment: string): WebGLProgram | null {
   const p = gl.createProgram()!;
   for (const [type, source] of [
     [gl.VERTEX_SHADER, vertex],

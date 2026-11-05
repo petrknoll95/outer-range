@@ -420,5 +420,20 @@ export const INTRO_FOG_FAR = 0.07;
 export const INTRO_DPR = 1.5;
 export const INTRO_FADE = 0.32;
 
+// ── Glass edges ────────────────────────────────────────────────────────────
+
+/**
+ * The top and bottom of the canvas are seen through glass (glass.ts): GLASS_BAND of the
+ * viewport's height at each, bent like the edge of a lens. Nothing bends at the band's inner
+ * edge, and most at the screen edge, by GLASS_STRENGTH of the band; GLASS_CURVE above 1 holds
+ * the bend closer to the edge. Light splits as it bends, into a spectrum GLASS_DISPERSION of the
+ * bend long per unit (red one way, blue the other). Pixels are capped at GLASS_DPR.
+ */
+export const GLASS_BAND = 0.08;
+export const GLASS_STRENGTH = 1;
+export const GLASS_CURVE = 1;
+export const GLASS_DISPERSION = 0.3;
+export const GLASS_DPR = 2;
+
 /** Columns and rows of an image's colour grid (scripts/pixels), by its aspect: near square cells. */
 export const PIXEL_GRID = { landscape: [24, 18], portrait: [18, 24], square: [21, 21] } as const;
