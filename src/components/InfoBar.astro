@@ -27,7 +27,7 @@ import dragHorizontal from '../assets/infobar/drag-horizontal.svg?url';
 import pinch from '../assets/infobar/pinch.svg?url';
 import scrollVertical from '../assets/infobar/scroll-vertical.svg?url';
 import KeyHint from './KeyHint.astro';
-import { glyph, label, pill, SCALE } from './hint';
+import { ESC_GAP, ESC_MOVE, ESC_WIDTH, glyph, label, pill, SCALE } from './hint';
 
 interface Props {
   route: 'home' | 'about' | 'start';
@@ -75,9 +75,15 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
         activeLabel="Back"
         edge="left"
         data-project-trigger
-        class:list={[button, 'transition-opacity duration-500 [html[data-info-open]_&]:pointer-events-none [html[data-info-open]_&]:opacity-0']}
+        class:list={[button, 'peer/project transition-opacity duration-500 [html[data-info-open]_&]:pointer-events-none [html[data-info-open]_&]:opacity-0']}
       />
-      <KeyHint as="button" type="button" name="info" letter="I" label="Project info" activeLabel="Close" edge="left" data-info-trigger class={button} />
+      <!-- Over by as much as Back moves for the ESC beside P (KeyHint.astro), with it. -->
+      <span
+        class:list={['flex transition-[translate] peer-data-active/project:translate-x-(--esc-room) peer-data-active/project:delay-150', ESC_MOVE]}
+        style={`--esc-room: ${ESC_WIDTH + ESC_GAP}px`}
+      >
+        <KeyHint as="button" type="button" name="info" letter="I" label="Project info" activeLabel="Close" edge="left" data-info-trigger class={button} />
+      </span>
     </li>
     <li class:list={['flex items-center gap-[9.6px]', underMenu, canvasSet, left]}>
       <span class="flex items-center gap-[4.8px]" aria-hidden="true">

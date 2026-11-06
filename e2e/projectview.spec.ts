@@ -99,6 +99,14 @@ test('zoomed in, the info bar’s moving and theme hints give way to the project
   await bar.getByRole('button', { name: 'Project', exact: true }).click();
   await covered(page);
   await expect(bar.getByRole('button', { name: 'Back' })).toBeVisible();
+  // I moves over for the ESC beside P, as Back does: clear of it, as far as the other hints are apart.
+  const clear = () =>
+    bar.evaluate((el) => {
+      const back = el.querySelector('[data-hint="project"] [data-hint-label]')!.getBoundingClientRect();
+      const i = el.querySelector('[data-hint="info"] [data-hint-key]')!.getBoundingClientRect();
+      return Math.round(i.left - back.right);
+    });
+  await expect.poll(clear).toBeGreaterThanOrEqual(16);
   await bar.getByRole('button', { name: 'Back' }).click();
   await page.waitForFunction(() => (window as unknown as { __canvas: { backing: () => unknown } }).__canvas.backing() === null);
 

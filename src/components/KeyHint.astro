@@ -7,10 +7,11 @@
  * the view. The label never moves for it: the ESC comes in over where the key was. That is for a
  * hint at the window's right edge (`edge`, the default); one at its left edge would be pushed out
  * past it, so there the key stays, the ESC comes in just to its right, and the label moves right
- * to make room. Only opacity and transforms change.
+ * to make room. Only opacity and transforms change, so the hint's box doesn't grow for it: a hint
+ * after a left-edge one has to move over by as much itself (InfoBar.astro, I after P).
  */
 import type { HTMLAttributes } from 'astro/types';
-import { ESC_GAP, ESC_WIDTH, glyph, label, pill } from './hint';
+import { ESC_GAP, ESC_MOVE, ESC_WIDTH, glyph, label, pill } from './hint';
 
 interface Props extends HTMLAttributes<'a'> {
   /** Which view's (setHint finds it by this). */
@@ -33,7 +34,7 @@ const { name, letter, label: text, activeLabel, active = false, as = 'li', keysO
 // Typed as a link or list item: their attributes pass through as they are, a button's `type` included.
 const Tag = as as 'a' | 'li';
 // After the label has changed, the ESC comes in and the key makes room; leaving, both go at once.
-const move = 'transition-[translate,opacity,scale] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-data-active/hint:delay-150 motion-reduce:transition-none';
+const move = `transition-[translate,opacity,scale] ${ESC_MOVE} group-data-active/hint:delay-150`;
 /** The key's width (w-6), design px. */
 const KEY_WIDTH = 24;
 const left = edge === 'left';
