@@ -104,4 +104,6 @@ Timeless Sans is the site font (Tailwind's `font-sans`), and Timeless Serif is t
 
 ## Deployment
 
+The production site is hosted on Vercel at https://outerrange.studio, using the Outer Range team’s `outerrange-studio` project. `vercel.json` configures the Astro build and clean URLs for `/about` and `/start`. The default site URL is `https://outerrange.studio`; `SITE_URL` can override it for another host.
+
 Every push to `main` builds the site and deploys it to GitHub Pages ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)). The workflow sets `SITE_URL` and `BASE_PATH` from the Pages configuration, so the site works under a subpath as well as on a custom domain.

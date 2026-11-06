@@ -25,7 +25,7 @@ function timeless(prefix, weights, uprightOnly = []) {
 // https://astro.build/config
 export default defineConfig({
   // GitHub Pages serves it from a subpath (the deploy workflow sets both); everywhere else it's at the root.
-  site: process.env.SITE_URL,
+  site: process.env.SITE_URL || 'https://outerrange.studio',
   base: process.env.BASE_PATH || '/',
   // /about as about.html, so it's served at /about as is (the history API's URL) by GitHub Pages and vite preview alike.
   build: { format: 'file' },

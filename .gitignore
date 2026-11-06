@@ -30,3 +30,8 @@ playwright-report/
 
 # After Effects working files and renders
 art/
+
+# Vercel project link
+.vercel/
+.vercel
+.env*
