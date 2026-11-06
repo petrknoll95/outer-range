@@ -1,4 +1,4 @@
-import { GLASS_BAND, GLASS_CURVE, GLASS_DISPERSION, GLASS_DPR, GLASS_STRENGTH } from './config';
+import { GLASS_BAND, GLASS_CURVE, GLASS_DISPERSION, GLASS_DPR, GLASS_FEATHER, GLASS_STRENGTH } from './config';
 import type { GlassText } from './glasstext';
 import { program, software } from './introlayer';
 import { pixelColor } from './pixels';
@@ -6,11 +6,13 @@ import { pixelColor } from './pixels';
 /**
  * The glass edges: the top and bottom GLASS_BAND of the window, seen as through the edge of a
  * lens, on the canvas and the about view alike. The tiles and the about text are elements, which
- * no shader can see, so the bands are cut out of both (a clip) and drawn again here, on a canvas
+ * no shader can see, so the bands are masked out of both and drawn again here, on a canvas
  * of their own just under the tile layer: the about text in or near a band (glasstext.ts), then
  * over it each tile, as it is drawn on the page (image or video, its colour grid until either is
  * in, faded and rounded alike), into a scene, then onto the canvas through the glass. Between the
- * bands the canvas is clear and the page shows as it is.
+ * bands the canvas is clear and the page shows as it is. Not cut at a line: the page fades out
+ * over the glass's copy through a strip at each band's inner edge (GLASS_FEATHER), where nothing
+ * bends yet, so the two never meet at an edge however slightly they differ.
  *
  * In a band, each row shows the scene from nearer the band's inner edge, the more so towards
  * the screen edge (a circular lens's sag, flat where it meets the page, so there is no seam),
@@ -158,6 +160,8 @@ export class GlassLayer {
   /** Drawing on its own until then (performance.now()), whatever it shows: the theme's colours fading. */
   private liveUntil = 0;
   private lost = false;
+  /** What the layer's mask was last set for (see clip), so it is only set again when that changes. */
+  private masked = '';
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -186,8 +190,8 @@ export class GlassLayer {
     canvas.addEventListener('webglcontextlost', () => {
       this.lost = true;
       this.canvas.remove();
-      this.layer.style.clipPath = '';
-      this.text?.clip(0);
+      this.unmask();
+      this.text?.clip(0, 0);
       delete document.documentElement.dataset.glass;
     });
   }
@@ -310,12 +314,14 @@ export class GlassLayer {
     const width = Math.round(vw * ratio);
     const height = Math.round(vh * ratio);
     this.size(width, height);
-    // Whole device px, so the clip and the bands meet on a pixel edge.
+    // Whole device px, so the mask and the bands meet on a pixel edge.
     const band = Math.round(height * GLASS_BAND);
-    this.clip(band / ratio, vw, vh, scale);
-    this.text?.clip(band / ratio);
-    // How far into the page the glass looks from a band: a bend past the band, and the spectrum either side of it.
-    const reach = Math.min(Math.floor(height / 2), band + Math.ceil(band * (Math.max(0, GLASS_STRENGTH - 1) + (GLASS_DISPERSION * GLASS_STRENGTH) / 2)) + 2);
+    // The strip at each band's inner edge where the page fades out over the glass's copy, unbent.
+    const feather = Math.round(band * GLASS_FEATHER);
+    this.clip(band / ratio, feather / ratio, vw, vh, scale);
+    this.text?.clip(band / ratio, feather / ratio);
+    // How far into the page the glass looks from a band: a bend past the band, and the spectrum either side of it; and the strip past it.
+    const reach = Math.min(Math.floor(height / 2), Math.max(band + feather, band + Math.ceil(band * (Math.max(0, GLASS_STRENGTH - 1) + (GLASS_DISPERSION * GLASS_STRENGTH) / 2))) + 2);
     this.draws++;
 
     // The tiles, into the scene: those in reach of a band, each band on its own.
@@ -370,7 +376,7 @@ export class GlassLayer {
       }
     }
 
-    // Through the glass, onto the canvas: only the bands, the rest left clear.
+    // Through the glass, onto the canvas: only the bands and the strips past them, the rest left clear.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.disable(gl.SCISSOR_TEST);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -380,9 +386,9 @@ export class GlassLayer {
     gl.bindTexture(gl.TEXTURE_2D, this.sceneTexture);
     gl.uniform1f(this.glassUniforms.band, band / height);
     gl.uniform1f(this.glassUniforms.pixel, 1 / height);
-    gl.scissor(0, height - band, width, band);
+    gl.scissor(0, height - band - feather, width, band + feather);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.scissor(0, 0, width, band);
+    gl.scissor(0, 0, width, band + feather);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.SCISSOR_TEST);
 
@@ -412,12 +418,36 @@ export class GlassLayer {
     return true;
   }
 
-  /** Cut the bands, `band` px each, out of the tile layer: in its own px, which its `scale` about the centre draws on the page. */
-  private clip(band: number, vw: number, vh: number, scale: number): void {
+  /**
+   * Mask the bands, `band` px each, out of the tile layer, the page fading out over the glass's
+   * copy through the `feather` px before each: in the layer's own px, which its `scale` about the
+   * centre draws on the page. The mask covers the window (a px over at each side), wherever that
+   * is in the layer's px; outside it nothing shows, as nothing is seen there.
+   */
+  private clip(band: number, feather: number, vw: number, vh: number, scale: number): void {
     const cx = vw / 2;
     const cy = vh / 2;
-    const at = (screen: number, centre: number) => (centre + (screen - centre) / scale).toFixed(2);
-    const [x0, x1, y0, y1] = [at(-1, cx), at(vw + 1, cx), at(band, cy), at(vh - band, cy)];
-    this.layer.style.clipPath = `polygon(${x0}px ${y0}px, ${x1}px ${y0}px, ${x1}px ${y1}px, ${x0}px ${y1}px)`;
+    const at = (screen: number, centre: number) => centre + (screen - centre) / scale;
+    const [x0, x1, y0, y1] = [at(-1, cx), at(vw + 1, cx), at(0, cy), at(vh, cy)];
+    // Down the window, as a share of its height (the same in the layer's px as on the page).
+    const stop = (screen: number) => `${((screen / vh) * 100).toFixed(4)}%`;
+    const key = `${band}:${feather}:${vw}:${vh}:${scale}`;
+    if (key === this.masked) return;
+    this.masked = key;
+    const style = this.layer.style;
+    style.clipPath = '';
+    const mask = `linear-gradient(to bottom, transparent ${stop(band)}, black ${stop(band + feather)}, black ${stop(vh - band - feather)}, transparent ${stop(vh - band)})`;
+    style.setProperty('-webkit-mask-image', mask);
+    style.maskImage = mask;
+    style.maskRepeat = 'no-repeat';
+    style.maskSize = `${(x1 - x0).toFixed(2)}px ${(y1 - y0).toFixed(2)}px`;
+    style.maskPosition = `${x0.toFixed(2)}px ${y0.toFixed(2)}px`;
+    style.setProperty('mask-clip', 'no-clip');
+  }
+
+  /** No mask: the whole layer shows (the glass gone). */
+  private unmask(): void {
+    for (const property of ['-webkit-mask-image', 'mask-image', 'mask-repeat', 'mask-size', 'mask-position', 'mask-clip']) this.layer.style.removeProperty(property);
+    this.masked = '';
   }
 }

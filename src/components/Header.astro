@@ -8,6 +8,10 @@
  * The link is the about view's key hint (KeyHint.astro): "A", About. Where there are no keys (a
  * touch screen) it is the label alone. On the about view it says Back, and ESC joins the A, as
  * either goes back (main.ts, setHint). The header stays put through the flight between the two.
+ *
+ * In the project view (html[data-showing-project]) both give way to a Back button in the same
+ * place, its keys P and ESC, as either closes the view (main.ts): the one faded out as the other
+ * fades in. Where there are no keys it is the label alone here too.
  */
 import KeyHint from './KeyHint.astro';
 import { SCALE } from './hint';
@@ -21,7 +25,7 @@ const { route } = Astro.props;
 const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 
-<header class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference transition-opacity duration-500 select-none [html[data-intro]_&]:opacity-0 [html[data-menu-open]_&]:opacity-0">
+<header class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference transition-opacity duration-500 select-none [html[data-info-open]_&]:opacity-0 [html[data-intro]_&]:opacity-0 [html[data-menu-open]_&]:opacity-0">
   <!--
     In the project view (projectview.ts) the wordmark is followed by a cross and the project's name
     (main.ts, showProject), all three kept centred: the wordmark slides left by half of what comes
@@ -44,7 +48,8 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
       </span>
     </span>
   </div>
-  <nav class="absolute inset-y-0 right-6 flex items-center">
+  <!-- All in one cell, at the right, so each takes the place of the others as it shows. -->
+  <nav class="absolute inset-y-0 right-6 grid items-center justify-items-end *:col-start-1 *:row-start-1">
     <KeyHint
       as="a"
       name="about"
@@ -59,9 +64,28 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
       class:list={[
         // Padded out (and pulled back by as much) so it is easier to hit, the label alone on a phone especially.
         'pointer-events-auto -m-3 rounded-full p-3 text-white',
-        'transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-white',
+        'transition-[opacity,visibility] duration-500 hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-white',
         // Mid-flight it doesn't stay dimmed under the pointer.
         '[html[data-leaving]_&]:opacity-100',
+        // The project view's Back takes its place (over data-leaving, which the view sets too).
+        '[html[data-showing-project]_&]:invisible [html[data-showing-project]_&]:opacity-0!',
+      ]}
+      style={`zoom: ${SCALE}`}
+    />
+    <KeyHint
+      as="button"
+      type="button"
+      name="project"
+      letter="P"
+      label="Back"
+      activeLabel="Back"
+      active
+      keysOnlyWithKeyboard
+      data-project-back
+      class:list={[
+        'pointer-events-auto -m-3 rounded-full p-3 text-white',
+        'invisible opacity-0 transition-[opacity,visibility] duration-500 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-white',
+        '[html[data-showing-project]_&]:visible [html[data-showing-project]_&]:opacity-100 [html[data-showing-project]_&]:hover:opacity-60',
       ]}
       style={`zoom: ${SCALE}`}
     />

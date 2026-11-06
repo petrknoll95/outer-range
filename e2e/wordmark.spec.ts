@@ -80,15 +80,41 @@ test('the wordmark is a size smaller on a phone', async ({ page }) => {
   await expect(page.locator('h1')).toHaveCSS('font-size', '20px');
 });
 
-test('on a touch screen the link is its label alone, with no key to press', async ({ browser }) => {
+test('on a touch screen the header link is its label alone, About on the canvas and Back on the about view; the menu is the info bar’s, and its About goes to the about view', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   await page.goto('/?test');
-  const link = page.getByRole('link', { name: 'About' });
-  await expect(link).toBeVisible();
-  await expect(link.locator('span').first()).toBeHidden();
+  const about = page.locator('header').getByRole('link', { name: 'About' });
+  await expect(about).toBeVisible();
+  await expect(about.locator('span').first()).toBeHidden();
   // Still easy to hit: its tap area is padded out round the label.
-  const box = (await link.boundingBox())!;
-  expect(box.height).toBeGreaterThanOrEqual(24);
+  expect((await about.boundingBox())!.height).toBeGreaterThanOrEqual(24);
+  await expect(page.locator('header').getByRole('button', { name: 'Menu' })).toHaveCount(0);
+  await page.getByRole('complementary', { name: 'Controls' }).getByRole('button', { name: 'Menu' }).tap();
+  await expect(page.locator('dialog[data-menu]')).toHaveJSProperty('open', true);
+  await page.locator('dialog[data-menu]').getByRole('link', { name: 'About' }).tap();
+  await expect(page).toHaveURL(/\/about(\?|$)/);
+  await expect(page.locator('dialog[data-menu]')).toHaveJSProperty('open', false);
+  await page.waitForFunction(() => (window as unknown as { __canvas: { route: () => string } }).__canvas.route() === 'about');
+  const back = page.locator('header').getByRole('link', { name: 'Back' });
+  await expect(back).toBeVisible();
+  await expect(back.locator('span').first()).toBeHidden();
   await context.close();
+});
+
+test('with keys, M opens the menu, and its About goes to the about view', async ({ page }) => {
+  await page.goto('/?test');
+  await expect(page.getByRole('link', { name: 'About' })).toBeVisible();
+  // The menu is the info bar's (InfoBar.astro).
+  await expect(page.locator('header').getByRole('button', { name: 'Menu' })).toHaveCount(0);
+  await page.keyboard.press('m');
+  const dialog = page.locator('dialog[data-menu]');
+  await expect(dialog).toHaveJSProperty('open', true);
+  await dialog.getByRole('link', { name: 'About' }).click();
+  await expect(page).toHaveURL(/\/about(\?|$)/);
+  await expect(dialog).toHaveJSProperty('open', false);
+  await page.waitForFunction(() => (window as unknown as { __canvas: { route: () => string } }).__canvas.route() === 'about');
+  // Back from it comes back to the canvas, as from the header's link.
+  await page.goBack();
+  await page.waitForFunction(() => (window as unknown as { __canvas: { route: () => string } }).__canvas.route() === 'home');
 });

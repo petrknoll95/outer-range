@@ -1,0 +1,190 @@
+---
+/**
+ * The project's info: in the project view (html[data-showing-project], the project's id), or
+ * zoomed in on one of its images on the canvas (html[data-focused-project]), "I" opens it, as "M" opens the menu, and it comes in exactly as the menu does: the same native modal
+ * <dialog>, and the same square of glass, in from behind the camera, big and soft, settling sharp,
+ * running back out on Esc, "I" again or a click off it. Its hint is the info bar's "I" (InfoBar.astro),
+ * which says Close while it is open, ESC joining its key; html[data-info-open] fades the header and
+ * the info bar's other hints, as html[data-menu-open] does for the menu. Behind it the project view
+ * backs away from the camera, as the canvas does behind the menu, and comes home as it closes
+ * (the 'info' event: main.ts, backProject; projectview.ts, backAway).
+ *
+ * Over the glass, a veil of the canvas colour: darker on the dark canvas, lighter on the light one,
+ * always away from the ink, so the text reads over the lightest or darkest image the view backs
+ * away with (at least 4.5:1, its labels included, over white or black, either theme).
+ *
+ * What it says comes from the projects collection (src/content/projects.json) and the images'
+ * entries, as the page already has them (CanvasData): the project's name at the top, its year,
+ * disciplines (its images' categories) and how much work it has, then the pieces by title at the
+ * bottom. Placeholder copy until projects have write-ups of their own.
+ *
+ * The square's classes are the menu's own (Menu.astro): change one, change both.
+ */
+// The flight's ease (FLIGHT_EASE, config.ts).
+const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
+const row = 'grid grid-cols-[19cqi_1fr] gap-x-[3cqi]';
+const muted = 'text-ink/70';
+---
+
+<dialog
+  data-project-info
+  aria-label="Project info"
+  tabindex="-1"
+  class="m-0 size-full max-h-none max-w-none place-items-center overflow-hidden border-0 bg-transparent p-0 text-ink outline-none backdrop:bg-transparent open:grid"
+>
+  <section
+    data-project-info-box
+    aria-labelledby="project-info-title"
+    class:list={[
+      // As the menu's square (Menu.astro): as big as fits, up to 36 rem, glass, and in from behind the camera.
+      '@container relative aspect-square w-[min(36rem,calc(100vw_-_2rem),calc(100svh_-_2rem))]',
+      'rounded-2xl bg-ink/6 backdrop-blur-xl backdrop-brightness-(--glass-brightness) backdrop-saturate-150 min-[760px]:rounded-3xl',
+      'transition-[opacity,scale] duration-800 starting:scale-[1.4] starting:opacity-0',
+      ease,
+      'in-data-closing:scale-[1.4] in-data-closing:opacity-0 in-data-closing:duration-550 in-data-closing:ease-[cubic-bezier(0.5,0,0.75,0.6)]',
+      'motion-reduce:transition-opacity motion-reduce:duration-300 motion-reduce:starting:scale-100 motion-reduce:in-data-closing:scale-100',
+    ]}
+  >
+    <div aria-hidden="true" class="pointer-events-none absolute inset-0 rounded-[inherit] bg-canvas/35"></div>
+    <div
+      class:list={[
+        'relative flex h-full flex-col p-[6cqi] text-[3.4cqi] leading-[1.3] tracking-[-0.01em]',
+        // Out of focus coming from behind the camera, sharp as the square settles; soft again leaving.
+        'transition-[filter] duration-800 starting:blur-[12px]',
+        ease,
+        'in-data-closing:blur-[12px] in-data-closing:duration-550 in-data-closing:ease-[cubic-bezier(0.5,0,0.75,0.6)]',
+        'motion-reduce:transition-none motion-reduce:starting:blur-none motion-reduce:in-data-closing:blur-none',
+      ]}
+    >
+      <h2 id="project-info-title" data-info-title class="text-[9cqi] leading-[1.1] font-medium tracking-[-0.03em]"></h2>
+      <dl class="mt-[5cqi] flex flex-col gap-[1.6cqi]">
+        <div data-info-year-row class={row}><dt class={muted}>Year</dt><dd data-info-year></dd></div>
+        <div class={row}><dt class={muted}>Disciplines</dt><dd data-info-disciplines></dd></div>
+        <div class={row}><dt class={muted}>Work</dt><dd data-info-work></dd></div>
+      </dl>
+      <div class:list={['mt-auto', row]}>
+        <h3 class={muted}>Pieces</h3>
+        <ul data-info-pieces class="columns-2 gap-x-[3cqi] text-[3cqi] leading-[1.35]"></ul>
+      </div>
+    </div>
+  </section>
+</dialog>
+
+<script>
+  import { setHint } from '../canvas/hints';
+  import type { ClientProject } from '../canvas/projects';
+  import { projectCategories } from '../canvas/projects';
+
+  const dialog = document.querySelector<HTMLDialogElement>('[data-project-info]')!;
+  const box = dialog.querySelector('[data-project-info-box]')!;
+  const html = document.documentElement;
+  const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as {
+    images: { title: string; category: string; video?: unknown }[];
+    projects: ClientProject[];
+  };
+
+  /** The project the view is showing (main.ts, showProject), or else the focused view's (main.ts, markFocus), or none. */
+  const showing = () => data.projects.find((p) => p.id === (html.dataset.showingProject ?? html.dataset.focusedProject)) ?? null;
+
+  const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+
+  /** Fill it in for `project`. */
+  function fill(project: ClientProject): void {
+    const images = project.images.map((n) => data.images[n]!);
+    const videos = images.filter((image) => image.video).length;
+    dialog.querySelector('[data-info-title]')!.textContent = project.title;
+    dialog.querySelector<HTMLElement>('[data-info-year-row]')!.hidden = project.year === undefined;
+    dialog.querySelector('[data-info-year]')!.textContent = project.year === undefined ? '' : String(project.year);
+    dialog.querySelector('[data-info-disciplines]')!.textContent = projectCategories(project, data.images).join(', ');
+    dialog.querySelector('[data-info-work]')!.textContent = [count(images.length - videos, 'image'), videos && count(videos, 'video')].filter(Boolean).join(', ');
+    dialog.querySelector('[data-info-pieces]')!.replaceChildren(
+      ...images.map((image) => {
+        const li = document.createElement('li');
+        li.className = 'break-inside-avoid';
+        li.textContent = image.title;
+        return li;
+      }),
+    );
+  }
+
+  /** Tell the project view (main.ts: it backs away), and the header and info bar: open, or not. */
+  const say = (open: boolean) => {
+    if (open) html.dataset.infoOpen = '';
+    else delete html.dataset.infoOpen;
+    // Its hint (InfoBar.astro): Project info to Close, ESC joining the I.
+    setHint('info', open);
+    window.dispatchEvent(new CustomEvent('info', { detail: open }));
+  };
+
+  /** Counts closes, so one that a reopen has overtaken doesn't close the dialog once it has run. */
+  let closes = 0;
+
+  function open(): void {
+    const project = showing();
+    if (!project) return;
+    closes++;
+    delete dialog.dataset.closing;
+    if (!dialog.open) {
+      fill(project);
+      dialog.showModal();
+      dialog.focus();
+    }
+    say(true);
+  }
+
+  async function close(): Promise<void> {
+    if (!dialog.open || dialog.dataset.closing !== undefined) return;
+    const turn = ++closes;
+    dialog.dataset.closing = '';
+    say(false);
+    await Promise.allSettled(dialog.getAnimations({ subtree: true }).map((a) => a.finished));
+    if (turn !== closes) return;
+    dialog.close();
+    delete dialog.dataset.closing;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 'i' || e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || !showing()) return;
+    e.preventDefault();
+    open();
+  });
+  // Its hint is a button too (InfoBar.astro). (Open, the dialog covers it: a click there is off the square, and closes it.)
+  for (const trigger of document.querySelectorAll('[data-info-trigger]')) trigger.addEventListener('click', () => open());
+
+  // Open, it has the keyboard to itself, as the menu does: no key reaches the project view under it
+  // (P and Esc would close that). Tab still moves, and the browser's shortcuts still work.
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!dialog.open) return;
+      e.stopPropagation();
+      if (e.altKey || e.metaKey || e.ctrlKey || e.key === 'Tab') return;
+      e.preventDefault();
+      if (e.repeat) return;
+      // On its way out, "I" brings it back.
+      if (e.key.toLowerCase() === 'i' && dialog.dataset.closing !== undefined) open();
+      else if (e.key === 'Escape' || e.key.toLowerCase() === 'i') close();
+    },
+    true,
+  );
+
+  dialog.addEventListener('cancel', (e) => {
+    e.preventDefault();
+    close();
+  });
+
+  // A click anywhere but the square closes it.
+  dialog.addEventListener('click', (e) => {
+    if (!box.contains(e.target as Node)) close();
+  });
+
+  // The browser's back button, under it, closes the project view too (main.ts), so it goes.
+  window.addEventListener('popstate', () => close());
+
+  // The column scrolls on these: not under it.
+  const hold = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  for (const type of ['wheel', 'touchmove', 'gesturestart', 'gesturechange', 'gestureend']) dialog.addEventListener(type, hold, { passive: false });
+</script>

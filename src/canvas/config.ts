@@ -459,8 +459,14 @@ export const INTRO_FADE = 0.32;
  * edge, and most at the screen edge, by GLASS_STRENGTH of the band; GLASS_CURVE above 1 holds
  * the bend closer to the edge. Light splits as it bends, into a spectrum GLASS_DISPERSION of the
  * bend long per unit (red one way, blue the other). Pixels are capped at GLASS_DPR.
+ *
+ * The page and the glass's copy of it never quite agree (a video's colour comes to WebGL a little
+ * unlike the browser shows it; filtering differs), so they aren't cut over at a line: through
+ * the last GLASS_FEATHER of the band's height before its inner edge, unbent there, the page fades
+ * out over the glass's copy, and whatever difference is left has no edge to show.
  */
 export const GLASS_BAND = 0.08;
+export const GLASS_FEATHER = 0.35;
 export const GLASS_STRENGTH = 1;
 export const GLASS_CURVE = 1;
 export const GLASS_DISPERSION = 0.3;

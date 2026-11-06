@@ -3,8 +3,11 @@
  * The info bar: how to move around, fixed along the bottom, the full width in from the header's
  * 24 px: moving and the theme at the left, Start a project and the menu at the right. Set like the header: white with
  * a difference blend, so it reads on the light or dark canvas and over any image under it, and
- * it takes no pointer events, so the canvas drags and scrolls under it too. A keyboard and
- * trackpad hint, it shows only where there is a fine pointer and room for it.
+ * it takes no pointer events, so the canvas drags and scrolls under it too, but for Start a
+ * project and Menu, which are buttons too: a link to the view (main.ts) and the menu's trigger
+ * (Menu.astro). Those two show everywhere, phones included, keys and all (a tap does what the
+ * key does); the hints for moving and the theme only where there is a fine pointer and room
+ * for them. On a phone it keeps clear of the home indicator.
  *
  * Each hint is its keys, then what they do (hint.ts; the icons are the design's own SVGs,
  * src/assets/infobar). About isn't one of them: the header's link is its hint. Start a project and
@@ -13,6 +16,12 @@
  * With the menu open (Menu.astro) only the menu's hint stays, the rest fading as their keys do
  * nothing under it. There it is plain ink, not blended: the canvas behind is faint by then, so it
  * looks the same, and blending over the canvas as it backs away costs frames.
+ *
+ * Zoomed in on an image (html[data-focused-project], main.ts) and in the project view
+ * (html[data-showing-project]) moving and the theme give way, at the left, to the project's: "P",
+ * Project, which opens the project view (Back while it is open), and "I", Project info, which
+ * opens the project's info (ProjectInfo.astro) as "M" opens the menu, a click on either doing
+ * what its key does. Open, Project info is the only hint that stays, saying Close, ESC joining its key.
  */
 import dragHorizontal from '../assets/infobar/drag-horizontal.svg?url';
 import pinch from '../assets/infobar/pinch.svg?url';
@@ -27,15 +36,50 @@ interface Props {
 const { route } = Astro.props;
 
 /** The hints that fade with the menu open. */
-const underMenu = 'transition-opacity duration-500 [html[data-menu-open]_&]:opacity-0';
+const underMenu = 'transition-[opacity,visibility,translate] duration-500 [html[data-menu-open]_&]:opacity-0 [html[data-info-open]_&]:opacity-0';
+/**
+ * The hints for moving around and the theme, and the project's, which take their place zoomed in
+ * on one of its images and in the project view: one set drops away as the other rises in, just
+ * after it (hidden too, so it isn't read out or clicked).
+ */
+const canvasSet = [
+  'delay-150',
+  '[html[data-focused-project]_&]:invisible [html[data-focused-project]_&]:translate-y-[40%] [html[data-focused-project]_&]:opacity-0 [html[data-focused-project]_&]:delay-0',
+  '[html[data-showing-project]_&]:invisible [html[data-showing-project]_&]:translate-y-[40%] [html[data-showing-project]_&]:opacity-0 [html[data-showing-project]_&]:delay-0',
+].join(' ');
+const projectSet = [
+  'invisible translate-y-[40%] opacity-0 transition-[opacity,visibility,translate] duration-500',
+  '[html[data-focused-project]:not([data-menu-open])_&]:visible [html[data-focused-project]:not([data-menu-open])_&]:translate-y-0 [html[data-focused-project]:not([data-menu-open])_&]:opacity-100 [html[data-focused-project]:not([data-menu-open])_&]:delay-150',
+  '[html[data-showing-project]:not([data-menu-open])_&]:visible [html[data-showing-project]:not([data-menu-open])_&]:translate-y-0 [html[data-showing-project]:not([data-menu-open])_&]:opacity-100 [html[data-showing-project]:not([data-menu-open])_&]:delay-150',
+].join(' ');
+/** The hints at the left, which a narrow window leaves out. */
+const left = 'max-[760px]:hidden [@media(hover:none),(pointer:coarse)]:hidden';
+/** A hint that is a button too: it takes the pointer (not while faded out), dims under it, and is ringed when focused. Padded out round it (and pulled back by as much), more for a finger. */
+const button = 'pointer-events-auto -m-2 rounded-full p-2 [@media(pointer:coarse)]:-m-3 [@media(pointer:coarse)]:p-3 transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-current';
+const offUnderMenu = '[html[data-menu-open]_&]:pointer-events-none [html[data-info-open]_&]:pointer-events-none';
+const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 
 <aside
   aria-label="Controls"
-  class="pointer-events-none fixed inset-x-6 bottom-4 z-20 hidden h-9 items-center text-white mix-blend-difference transition-opacity duration-500 select-none [html[data-intro]_&]:opacity-0 [html[data-menu-open]_&]:text-ink [html[data-menu-open]_&]:mix-blend-normal [@media(hover:hover)_and_(pointer:fine)_and_(min-width:760px)]:flex"
+  class="pointer-events-none fixed inset-x-6 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 flex h-9 items-center text-white mix-blend-difference transition-opacity duration-500 select-none [html[data-intro]_&]:opacity-0 [html[data-info-open]_&]:text-ink [html[data-info-open]_&]:mix-blend-normal [html[data-menu-open]_&]:text-ink [html[data-menu-open]_&]:mix-blend-normal"
 >
-  <ul class="flex flex-1 items-center gap-[19.2px]" style={`zoom: ${SCALE}`}>
-    <li class:list={['flex items-center gap-[9.6px]', underMenu]}>
+  <ul class="relative flex flex-1 items-center gap-[19.2px] [@media(pointer:coarse)]:gap-6" style={`zoom: ${SCALE}`}>
+    <li class:list={['absolute left-0 flex items-center gap-[19.2px] [@media(pointer:coarse)]:gap-6', projectSet, left]}>
+      <KeyHint
+        as="button"
+        type="button"
+        name="project"
+        letter="P"
+        label="Project"
+        activeLabel="Back"
+        edge="left"
+        data-project-trigger
+        class:list={[button, 'transition-opacity duration-500 [html[data-info-open]_&]:pointer-events-none [html[data-info-open]_&]:opacity-0']}
+      />
+      <KeyHint as="button" type="button" name="info" letter="I" label="Project info" activeLabel="Close" edge="left" data-info-trigger class={button} />
+    </li>
+    <li class:list={['flex items-center gap-[9.6px]', underMenu, canvasSet, left]}>
       <span class="flex items-center gap-[4.8px]" aria-hidden="true">
         <span class:list={[pill, 'w-7']}><img src={dragHorizontal} width="15.6971" height="8.84853" alt="" /></span>
         <img src={pinch} width="28" height="24" alt="" class="shrink-0" />
@@ -43,11 +87,25 @@ const underMenu = 'transition-opacity duration-500 [html[data-menu-open]_&]:opac
       </span>
       <span class={label}>Drag/Pinch/Scroll</span>
     </li>
-    <li class:list={['flex items-center gap-[9.6px]', underMenu]}>
+    <li class:list={['flex items-center gap-[9.6px]', underMenu, canvasSet, left]}>
       <span class:list={[pill, 'w-6']} aria-hidden="true"><span class={glyph}>L</span></span>
       <span class={label}>Theme</span>
     </li>
-    <KeyHint name="start" letter="S" label="Start a project" activeLabel="Back" active={route === 'start'} class:list={['ml-auto', underMenu]} />
-    <KeyHint name="menu" letter="M" label="Menu" activeLabel="Close" />
+    <li class:list={['ml-auto flex', underMenu]}>
+      <KeyHint
+        as="a"
+        name="start"
+        letter="S"
+        label="Start a project"
+        activeLabel="Back"
+        active={route === 'start'}
+        href={`${home}start`}
+        data-view-link="start"
+        class:list={[button, offUnderMenu]}
+      />
+    </li>
+    <li class="flex transition-opacity duration-500 [html[data-info-open]_&]:opacity-0">
+      <KeyHint as="button" type="button" name="menu" letter="M" label="Menu" activeLabel="Close" data-menu-trigger class:list={[button, '[html[data-info-open]_&]:pointer-events-none']} />
+    </li>
   </ul>
 </aside>

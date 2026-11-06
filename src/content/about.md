@@ -1,19 +1,19 @@
 ---
-# Listed where the text has `<!-- services -->`, each group in its own column.
+# Listed where the text has `<!-- services -->`, each group in its own column, its line under its name.
 services:
-  - group: Digital Design
-    items: [UX/UI Design, Motion Design, 3D Design, Social Media]
-  - group: Branding
-    items: [Identity Design, Art Direction, Brand Guidelines, Storytelling]
-  - group: Print Design
-    items: [Packaging, Editorial, Wayfinding, Signage]
+  - group: Brand & Experience Design
+    line: Design delivered without compromise.
+    items: [Brand Design, Web & Experiential, Prototyping as Design, Agent Native Interfaces, Agentic Design Systems, User Testing]
+  - group: Software Development
+    line: Human architected. Agent accelerated.
+    items: [Web Apps, iOS Development, Native Mac Apps, Vibe Coded Slop Remediation, Cloud Infrastructure & DevOps]
 # Listed after the text, under an Awards title.
 awards: [Awwwards x4, DDA x2, CSSDA x2, The FWA x2]
 ---
 
-## Good design gives you something to feel, something to recognize, and very little to figure out.
+## Founders building at the frontier of AI turn to us to help reach new heights.
 
-A design studio
+A design and software studio
 
 <!-- services -->
 

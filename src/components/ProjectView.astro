@@ -18,7 +18,14 @@
 ---
 
 <section data-project-view aria-label="Project" inert class="project-view fixed inset-0 z-10 bg-canvas text-ink">
-  <!-- The column scrolls in a box of its own, the window's size, so the glass can cut its bands out of it (projectview.ts) and leave the background whole. -->
+  <!--
+    The depth: all of it backs away from the camera under the menu or the project's info, as the
+    canvas does, and comes home (projectview.ts, backAway). Inside it, the stage: the column and its glass, which come in from in front of the camera and leave
+    past it (projectview.ts, moveStage). The column scrolls in a box of its own, the window's
+    size, so the glass can cut its bands out of it and leave the background whole.
+  -->
+  <div data-project-depth class="fixed inset-0">
+  <div data-project-stage class="fixed inset-0">
   <div
     data-project-scroll
     tabindex="-1"
@@ -26,16 +33,18 @@
   >
     <ol data-project-images class="mx-auto flex w-full flex-col gap-4 min-[760px]:w-(--project-column,58vw) min-[760px]:gap-6"></ol>
   </div>
+  </div>
+  </div>
 </section>
 
 <style is:global>
   /* Closed it is still there, drawn but at no opacity, so its images are ready to show the moment it opens. */
-  /* In over the canvas backing away (FLIGHT_DURATION, FLIGHT_EASE in config.ts), so it is seen going back; out quicker, so it is seen coming home. */
+  /* In over the canvas backing away (FLIGHT_DURATION, FLIGHT_EASE in config.ts), so it is seen going back; out as the menu's square goes, quick, past the camera, so the canvas is seen coming home. */
   .project-view {
     opacity: 0;
     pointer-events: none;
     will-change: opacity;
-    transition: opacity 0.5s cubic-bezier(0.33, 0, 0.2, 1);
+    transition: opacity 0.55s cubic-bezier(0.5, 0, 0.75, 0.6);
   }
   .project-view[data-open] {
     opacity: 1;
@@ -69,35 +78,6 @@
   /* (Not hidden: at no opacity, each stays drawn, so showing it again as the copy lands costs nothing.) */
   [data-flying] {
     opacity: 0 !important;
-  }
-
-  /* Zoomed in on the canvas, the key for this view (projecthint.ts), below the focus frame's
-     bottom-right corner, centred on the row of the project's categories (24 px high). */
-  .focus-hint {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    display: flex;
-    align-items: center;
-    height: 24px;
-    color: var(--color-ink);
-    transition:
-      opacity 0.2s ease-out,
-      translate 0.2s ease-out;
-  }
-  .focus-hint[data-hidden] {
-    opacity: 0;
-    translate: 0 -3px;
-  }
-  @media not ((hover: hover) and (pointer: fine)) {
-    .focus-hint {
-      display: none;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .focus-hint {
-      transition: none;
-    }
   }
 
   /* Each image as wide as the column, in its own shape, but no taller than a 3:4 one: a taller

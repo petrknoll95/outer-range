@@ -69,33 +69,60 @@ async function focusOnProject(page: Page, min = 3, { withVideo = false, notFirst
   throw new Error(`No project of ${min}+ images${withVideo ? ' with a video' : ''} within reach.`);
 }
 
-test('zoomed in, the key for it shows below the frame’s bottom-right corner, on the row of the project’s categories', async ({ page }) => {
+test('zoomed in, the info bar’s moving and theme hints give way to the project’s, P and I, and come back zoomed out; a click on P opens the project view', async ({ page }) => {
   await page.goto('/?test');
   await settled(page);
-  const hint = page.locator('.focus-hint');
-  const opacity = () => hint.evaluate((el) => Number(getComputedStyle(el).opacity));
-  expect(await opacity()).toBe(0);
+  const bar = page.getByRole('complementary', { name: 'Controls' });
+  const shown = (text: string) => bar.getByText(text, { exact: true }).evaluate((el) => {
+    const css = getComputedStyle(el.closest('li')!);
+    return css.visibility === 'visible' && Number(css.opacity) === 1;
+  });
+  const gone = (text: string) => bar.getByText(text, { exact: true }).evaluate((el) => getComputedStyle(el.closest('li')!).visibility === 'hidden');
+  expect(await shown('Drag/Pinch/Scroll')).toBe(true);
+  expect(await gone('Project info')).toBe(true);
+  // No hint below the image any more: the bar is the hint.
+  await expect(page.locator('.focus-frame').getByText('Project')).toHaveCount(0);
+
   await page.keyboard.press(' ');
   await settled(page);
-  await expect.poll(opacity).toBe(1);
-  await expect(hint).toHaveText('PProject');
-  const [h, frame, categories] = await Promise.all([hint.boundingBox(), page.locator('.focus-frame').boundingBox(), page.locator('.focus-categories').boundingBox()]);
-  expect(Math.abs(h!.x + h!.width - (frame!.x + frame!.width))).toBeLessThan(1);
-  expect(Math.abs(h!.y + h!.height / 2 - (categories!.y + categories!.height / 2))).toBeLessThan(1);
-  // Set like the header's key hint (hint.ts): its key in the same outlined pill, the same type, at the same scale.
-  const style = (key: string, text: string) =>
-    page.evaluate(
-      ({ key, text }) => {
-        const css = (s: string) => getComputedStyle(document.querySelector(s)!);
-        const k = css(key);
-        const t = css(text);
-        return [k.width, k.height, k.borderTopWidth, k.borderRadius, t.fontSize, t.letterSpacing];
-      },
-      { key, text },
-    );
-  expect(await style('.focus-hint [aria-hidden]', '.focus-hint [aria-hidden] + span')).toEqual(await style('[data-route-link] [aria-hidden]', '[data-route-label]'));
+  await expect.poll(() => shown('Project')).toBe(true);
+  await expect.poll(() => shown('Project info')).toBe(true);
+  await expect.poll(() => gone('Drag/Pinch/Scroll')).toBe(true);
+  await expect.poll(() => gone('Theme')).toBe(true);
+  const project = await page.evaluate(() => document.documentElement.dataset.focusedProject);
+  expect(project).toBeTruthy();
+  // In the same place the moving hint was, rising in rather than popping.
+  const transition = await bar.getByText('Project info', { exact: true }).evaluate((el) => getComputedStyle(el.closest('li')!).transitionProperty);
+  expect(transition).toContain('translate');
+
+  // P, clicked, does what the key does; there it says Back.
+  await bar.getByRole('button', { name: 'Project', exact: true }).click();
+  await covered(page);
+  await expect(bar.getByRole('button', { name: 'Back' })).toBeVisible();
+  await bar.getByRole('button', { name: 'Back' }).click();
+  await page.waitForFunction(() => (window as unknown as { __canvas: { backing: () => unknown } }).__canvas.backing() === null);
+
   await page.keyboard.press('Escape');
-  await expect.poll(opacity).toBe(0);
+  await expect.poll(() => shown('Drag/Pinch/Scroll')).toBe(true);
+  await expect.poll(() => gone('Project info')).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.dataset.focusedProject ?? null)).toBeNull();
+});
+
+test('zoomed in on the canvas, I opens the project’s info too: the canvas backs away behind it, as for the menu, and comes home when it closes', async ({ page }) => {
+  await focusOnProject(page);
+  const p = await project(page);
+  const info = page.locator('dialog[data-project-info]');
+  const backing = () => page.evaluate(() => (window as unknown as { __canvas: { backing: () => { u: number; to: 0 | 1 } | null } }).__canvas.backing());
+  await page.keyboard.press('i');
+  await expect(info).toHaveJSProperty('open', true);
+  await expect(info.locator('[data-info-title]')).toHaveText(p.title);
+  await expect.poll(async () => (await backing())?.u).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(info).toHaveJSProperty('open', false);
+  await expect.poll(backing).toBeNull();
+  // A click on its hint opens it too.
+  await page.getByRole('complementary', { name: 'Controls' }).getByRole('button', { name: 'Project info' }).click();
+  await expect(info).toHaveJSProperty('open', true);
 });
 
 test('in the project view the header reads Outer Range, a drawn cross, and the project’s name, centred; and the wordmark alone again after', async ({ page }) => {
@@ -160,7 +187,7 @@ test('P swaps the canvas for the project: every one of its images in order, name
   expect(await page.locator('[data-canvas]').evaluate((el) => (el as HTMLElement).inert)).toBe(true);
 });
 
-test('the canvas backs away, as for the menu, as the image comes forward to its place in the column; and comes home as it goes back', async ({ page }) => {
+test('as for the menu, the canvas backs away as the image comes forward to its place and the column comes in from in front of the camera; leaving, the column goes on past the camera as the canvas comes home', async ({ page }) => {
   await focusOnProject(page, 4);
   const image = await active(page);
   type Rect = { left: number; top: number; width: number };
@@ -171,7 +198,7 @@ test('the canvas backs away, as for the menu, as the image comes forward to its 
     expect(Math.abs(a.width - b.width)).toBeLessThan(1.5);
   };
   const backing = () => page.evaluate(() => (window as unknown as { __canvas: { backing: () => { u: number; to: 0 | 1 } | null } }).__canvas.backing());
-  /** The copy's animation, held at `at` of the way (0 to 1); its duration, ms. */
+  /** The copy's animation, and the column's coming in with it, held at `at` of the way (0 to 1); the copy's duration, ms. */
   const hold = (at: number) =>
     page.evaluate(
       (at) =>
@@ -179,17 +206,20 @@ test('the canvas backs away, as for the menu, as the image comes forward to its 
           const go = () => {
             const copy = document.querySelector('.project-flight');
             if (!copy) return requestAnimationFrame(go);
-            const a = copy.getAnimations()[0]!;
-            const duration = Number(a.effect!.getTiming().duration);
-            a.pause();
-            a.currentTime = (duration - 1) * at;
+            let duration = 0;
+            for (const a of [copy, document.querySelector('[data-project-stage]')!].flatMap((el) => el.getAnimations())) {
+              const d = Number(a.effect!.getTiming().duration);
+              duration ||= d;
+              a.pause();
+              a.currentTime = (d - 1) * at;
+            }
             resolve(duration);
           };
           go();
         }),
       at,
     );
-  const release = () => page.evaluate(() => document.querySelector('.project-flight')!.getAnimations().forEach((a) => a.play()));
+  const release = () => page.evaluate(() => [document.querySelector('.project-flight')!, document.querySelector('[data-project-stage]')!].flatMap((el) => el.getAnimations()).forEach((a) => a.play()));
   const tile = await page.evaluate(() => {
     const el = document.querySelector('.focus-frame')!;
     const r = el.getBoundingClientRect();
@@ -218,6 +248,13 @@ test('the canvas backs away, as for the menu, as the image comes forward to its 
   await page.keyboard.press('p');
   // On the backing's own time: away over the flight's.
   expect(await hold(0)).toBe(800);
+  // The rest of the column, from in front of the camera, big and soft, on the same time, as the menu's square comes.
+  const coming = await page.evaluate(() => {
+    const a = document.querySelector('[data-project-stage]')!.getAnimations()[0]!;
+    const k = (a.effect as KeyframeEffect).getKeyframes();
+    return { duration: Number(a.effect!.getTiming().duration), from: [k[0]!.transform, k[0]!.filter], to: [k.at(-1)!.transform, k.at(-1)!.filter] };
+  });
+  expect(coming).toEqual({ duration: 800, from: ['scale(1.4)', 'blur(12px)'], to: ['scale(1)', 'blur(0px)'] });
   near(await rect('.project-flight'), tile);
   expect(await page.locator('[data-flying]').count()).toBe(2);
   await hold(1);
@@ -241,17 +278,20 @@ test('the canvas backs away, as for the menu, as the image comes forward to its 
   await expect(page.locator('.project-flight')).toHaveCount(0);
   expect(await page.locator('[data-flying]').count()).toBe(0);
 
-  // Home: the image from the column back to its tile, on the canvas's way home (slower, landing gently).
+  // Leaving, as the menu's square does: the column (and its glass) flies on past the camera, bigger and softer, and nothing flies back.
   await page.keyboard.press('Escape');
-  expect(await hold(0)).toBe(1000);
-  near(await rect('.project-flight'), await rect('[data-nearest]'));
-  await hold(1);
-  near(await rect('.project-flight'), tile);
-  expect(await page.locator('.focus-frame').evaluate((el) => 'concealed' in (el as HTMLElement).dataset)).toBe(true);
-  await release();
-  await expect.poll(backing).toBeNull();
+  const leaving = await page.evaluate(() => {
+    const a = document.querySelector('[data-project-stage]')!.getAnimations()[0]!;
+    const k = (a.effect as KeyframeEffect).getKeyframes();
+    return { duration: Number(a.effect!.getTiming().duration), to: [k.at(-1)!.transform, k.at(-1)!.filter] };
+  });
+  expect(leaving).toEqual({ duration: 550, to: ['scale(1.4)', 'blur(12px)'] });
   await expect(page.locator('.project-flight')).toHaveCount(0);
   expect(await page.locator('[data-flying]').count()).toBe(0);
+  expect(await page.locator('.focus-frame').evaluate((el) => 'concealed' in (el as HTMLElement).dataset || document.documentElement.dataset.leaving !== undefined)).toBe(true);
+  await expect.poll(backing).toBeNull();
+  // Let go of once there: nothing stays scaled or blurred.
+  expect(await page.locator('[data-project-stage]').evaluate((el) => [getComputedStyle(el).transform, getComputedStyle(el).filter, el.getAnimations().length])).toEqual(['none', 'none', 0]);
   near(await rect('[data-trigger]'), tile);
   near(await rect('[data-neighbour]'), neighbour);
   await expect.poll(() => page.locator('.focus-frame').evaluate((el) => 'concealed' in (el as HTMLElement).dataset)).toBe(false);
@@ -348,8 +388,8 @@ test('the images run down one column at the centre, a little wider than the focu
   for (let n = 1; n < items.length; n++) expect(items[n]!.top).toBeGreaterThan(items[n - 1]!.top + items[n - 1]!.height);
   // Nothing else on the page: just the images.
   expect(await view(page).evaluate((el) => (el as HTMLElement).innerText.trim())).toBe('');
-  // The header and info bar stay over it.
-  const hit = await page.evaluate(() => document.elementFromPoint(innerWidth - 40, 34)?.closest('[data-route-link]') !== null);
+  // The header and info bar stay over it: at the top right, the view's Back.
+  const hit = await page.evaluate(() => document.elementFromPoint(innerWidth - 40, 34)?.closest('[data-project-back]') !== null);
   expect(hit).toBe(true);
 });
 
@@ -383,8 +423,7 @@ test('picking one of its images comes back to the focused view on that image', a
   await covered(page);
   await (await nearest(page, pick)).click();
   expect(await openProject(page)).toBeNull();
-  // It flies to its tile there, as the canvas comes home.
-  await expect(page.locator('.project-flight')).toHaveCount(1);
+  // The column goes on past the camera as the canvas comes home onto it.
   await expect(page.locator('.project-flight')).toHaveCount(0);
   await gone(page);
   await settled(page);
@@ -412,7 +451,7 @@ test('zoomed out, P opens the active image’s project too', async ({ page }) =>
   expect(await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.zoomState())).toBe('out');
 });
 
-test('the crossfade, the image’s flight and the canvas backing away run at the display’s full rate', async ({ page }) => {
+test('the crossfade, the image’s flight, the column’s move and the canvas backing away run at the display’s full rate', async ({ page }) => {
   // As in zoom.spec: the canvas's videos starting up after load would be measured, not the fade.
   await page.addInitScript(() => {
     addEventListener('load', () => (window as unknown as { __canvas: { renderer: { setVideos: (on: boolean) => void } } }).__canvas.renderer.setVideos(false));
@@ -423,7 +462,8 @@ test('the crossfade, the image’s flight and the canvas backing away run at the
   const record = (key: string) =>
     page.evaluate(async (key) => {
       const el = document.querySelector<HTMLElement>('section[data-project-view]')!;
-      const out = { longest: 0, at: 0, loaf: [] as number[], opacity: [] as number[], flight: [] as number[][] };
+      const stage = document.querySelector<HTMLElement>('[data-project-stage]')!;
+      const out = { longest: 0, at: 0, loaf: [] as number[], opacity: [] as number[], flight: [] as number[][], stage: [] as number[] };
       new PerformanceObserver((l) => l.getEntries().forEach((e) => out.loaf.push(e.duration))).observe({ type: 'long-animation-frame' });
       let last = performance.now();
       const t0 = last;
@@ -443,15 +483,17 @@ test('the crossfade, the image’s flight and the canvas backing away run at the
             const r = copy.getBoundingClientRect();
             out.flight.push([r.left, r.top, r.width]);
           }
-          // Until the fade and the flight are done. (Then, closing, the canvas's videos start again: see main.ts.)
-          if ((opacity !== (key === 'p' ? 1 : 0) || copy || out.flight.length === 0) && now - t0 < 1500) requestAnimationFrame(tick);
+          const moving = stage.getAnimations().length > 0;
+          if (moving) out.stage.push(stage.getBoundingClientRect().width / innerWidth);
+          // Until the fade, the flight and the stage's move are done. (Then, closing, the canvas's videos start again: see main.ts.)
+          if ((opacity !== (key === 'p' ? 1 : 0) || copy || moving || out.stage.length === 0) && now - t0 < 1500) requestAnimationFrame(tick);
           else resolve();
         };
         requestAnimationFrame(tick);
       });
       return out;
     }, key);
-  const smooth = (r: { longest: number; at: number; loaf: number[]; opacity: number[]; flight: number[][] }, up: boolean) => {
+  const smooth = (r: { longest: number; at: number; loaf: number[]; opacity: number[]; flight: number[][]; stage: number[] }, up: boolean) => {
     expect(r.loaf.filter((d) => d > 50)).toEqual([]);
     expect(r.longest, `the frame ending ${Math.round(r.at)} ms in, ${up ? 'opening' : 'closing'}`).toBeLessThan(30);
     for (let n = 1; n < r.opacity.length; n++) {
@@ -459,11 +501,21 @@ test('the crossfade, the image’s flight and the canvas backing away run at the
       else expect(r.opacity[n]!).toBeLessThanOrEqual(r.opacity[n - 1]!);
     }
     expect(r.opacity.at(-1)).toBe(up ? 1 : 0);
-    // The copy moves and scales one way all the way, never doubling back.
-    expect(r.flight.length).toBeGreaterThan(20);
-    for (const k of [0, 1, 2]) {
-      const d = r.flight.slice(1).map((f, n) => f[k]! - r.flight[n]![k]!).filter((d) => Math.abs(d) > 0.01);
-      expect(d.every((x) => x > 0) || d.every((x) => x < 0)).toBe(true);
+    // Opening, the copy moves and scales one way all the way, never doubling back; closing, there is none.
+    if (up) {
+      expect(r.flight.length).toBeGreaterThan(20);
+      for (const k of [0, 1, 2]) {
+        const d = r.flight.slice(1).map((f, n) => f[k]! - r.flight[n]![k]!).filter((d) => Math.abs(d) > 0.01);
+        expect(d.every((x) => x > 0) || d.every((x) => x < 0)).toBe(true);
+      }
+    } else {
+      expect(r.flight).toEqual([]);
+    }
+    // The column comes in, shrinking to its size, or goes, growing, one way all the way.
+    expect(r.stage.length).toBeGreaterThan(up ? 20 : 12);
+    for (let n = 1; n < r.stage.length; n++) {
+      if (up) expect(r.stage[n]!).toBeLessThanOrEqual(r.stage[n - 1]! + 1e-6);
+      else expect(r.stage[n]!).toBeGreaterThanOrEqual(r.stage[n - 1]! - 1e-6);
     }
   };
   smooth(await record('p'), true);
@@ -503,24 +555,25 @@ test('it has the glass edges too: the bands cut out of the column and drawn agai
   await settled(page);
   await page.keyboard.press('p');
   await covered(page);
-  // Its own glass, in the view (so it fades with it), cutting the same bands out of the column as the canvas's does out of the tiles.
+  // Its own glass, in the view (so it fades with it), masking the same bands out of the column as the canvas's does out of the tiles.
   const glass = await page.evaluate(() => {
     const view = document.querySelector('section[data-project-view]')!;
     const canvas = view.querySelector('canvas[data-glass]');
-    const clip = (el: HTMLElement) => el.style.clipPath.match(/[\d.]+(?=px)/g)!.map(Number);
+    const mask = (el: HTMLElement) => ({ image: el.style.maskImage, size: el.style.maskSize, position: el.style.maskPosition });
     return {
       inView: canvas !== null && canvas.nextElementSibling === view.querySelector('[data-project-scroll]'),
-      column: clip(view.querySelector('[data-project-scroll]')!),
-      tiles: clip(document.querySelector('[data-canvas-layer]')!),
+      column: mask(view.querySelector('[data-project-scroll]')!),
+      tiles: mask(document.querySelector('[data-canvas-layer]')!),
     };
   });
   expect(glass.inView).toBe(true);
-  // polygon(x0 y0, x1 y0, x1 y1, x0 y1): the same top and bottom edges.
-  expect(glass.column[1]).toBeCloseTo(glass.tiles[1]!, 1);
-  expect(glass.column[5]).toBeCloseTo(glass.tiles[5]!, 1);
+  // The same gradient over the window: clear through each band, then fading in through the strip past it (glass.ts, clip).
+  expect(glass.column.image).toMatch(/^linear-gradient\(/);
+  expect(glass.column).toEqual(glass.tiles);
+  const bandEdge = (Number(/transparent ([\d.]+)%/.exec(glass.column.image)![1]) / 100) * 900;
   // Through the top band, the image under it, not the bare background: the column itself is cut away there.
   const band = async () => {
-    const shot = PNG.sync.read(await page.screenshot({ clip: { x: 0, y: 0, width: 1440, height: glass.column[1]! - 2 }, animations: 'disabled' }));
+    const shot = PNG.sync.read(await page.screenshot({ clip: { x: 0, y: 0, width: 1440, height: bandEdge - 2 }, animations: 'disabled' }));
     const column = { from: Math.round(1440 * 0.21 + 8), to: Math.round(1440 * 0.79 - 8) };
     let off = 0;
     const bg = [shot.data[0], shot.data[1], shot.data[2]];
@@ -544,6 +597,53 @@ test('it has the glass edges too: the bands cut out of the column and drawn agai
   await page.waitForTimeout(400);
   const after = await band();
   expect(Buffer.compare(Buffer.from(before.data), Buffer.from(after.data))).not.toBe(0);
+});
+
+test('at the bands\' inner edges, where nothing bends yet, the glass\'s copy of the column lines up with the page to the pixel', async ({ browser }) => {
+  // At 2×, where a box laid out between whole px is drawn a device px from where it's laid out (projectview.ts, glassFrame).
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  await page.addInitScript(() => addEventListener('DOMContentLoaded', () => (window as unknown as { __canvas: { renderer: { setVideos: (on: boolean) => void } } }).__canvas.renderer.setVideos(false)));
+  await page.goto('/?test&glass');
+  await settled(page);
+  await page.keyboard.press(' ');
+  await settled(page);
+  await page.keyboard.press('p');
+  await covered(page);
+  // An image across the top band's edge.
+  await scroller(page).evaluate((el) => {
+    const item = [...el.querySelectorAll<HTMLElement>('[data-image]')].find((i) => i.getBoundingClientRect().top > 300)!;
+    el.scrollTop += item.getBoundingClientRect().top - 72 + item.getBoundingClientRect().height / 2;
+  });
+  await page.waitForTimeout(600);
+  // Rows 60–72 of the window, in device px.
+  const rows = async () => PNG.sync.read(await page.screenshot({ clip: { x: 0, y: 60, width: 1440, height: 12 }, animations: 'disabled' }));
+  const glass = await rows();
+  // The page itself there: the glass hidden, nothing masked out.
+  await page.evaluate(() => {
+    for (const c of document.querySelectorAll<HTMLElement>('canvas[data-glass]')) c.style.visibility = 'hidden';
+    for (const el of document.querySelectorAll<HTMLElement>('[data-canvas-layer], [data-project-scroll]')) el.style.setProperty('mask-image', 'none', 'important');
+  });
+  await page.waitForTimeout(300);
+  const own = await rows();
+  const W = glass.width;
+  // Just inside the band (the last 6 css px of it), against the page, unshifted and a device px either way: unshifted is best, by far.
+  const error = (dx: number) => {
+    let sum = 0;
+    let n = 0;
+    for (let y = 12; y < 24; y++)
+      for (let x = 800; x < 2080; x++) {
+        const a = (y * W + x) * 4;
+        const b = (y * W + x + dx) * 4;
+        for (let c = 0; c < 3; c++) sum += Math.abs(glass.data[a + c]! - own.data[b + c]!);
+        n++;
+      }
+    return sum / n;
+  };
+  const [left, none, right] = [error(-1), error(0), error(1)];
+  expect(none).toBeLessThan(6);
+  expect(none).toBeLessThan(Math.min(left, right));
+  await context.close();
 });
 
 test('on a phone the images take the whole width', async ({ page }) => {

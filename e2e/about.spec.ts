@@ -55,8 +55,8 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   await page.evaluate(() => document.fonts.ready);
   const article = page.locator('article.about');
   // The statement (under the wordmark, the page's h1), the line under it, then four chapters.
-  await expect(article.locator(':scope > h2')).toHaveText('Good design gives you something to feel, something to recognize, and very little to figure out.');
-  await expect(article.locator(':scope > h2 + p')).toHaveText('A design studio');
+  await expect(article.locator(':scope > h2')).toHaveText('Founders building at the frontier of AI turn to us to help reach new heights.');
+  await expect(article.locator(':scope > h2 + p')).toHaveText('A design and software studio');
   // Each numeral is dead centre, in the statement's serif and size, with "Chapter" on its left and its title on its right.
   await expect(article.locator(':scope > h3 .numeral')).toHaveText(['I', 'II', 'III', 'IV']);
   await expect(article.locator(':scope > h3')).toHaveText(['Chapter I On Intent', 'Chapter II On Philosophy', 'Chapter III On Process', 'Chapter IV On Ethics']);
@@ -100,30 +100,30 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   // The services, between the statement and the chapters: a group per column, in order.
   const services = article.getByRole('region', { name: 'Services' });
   expect(await services.evaluate((s) => [s.previousElementSibling!.textContent, s.nextElementSibling!.textContent])).toEqual([
-    'A design studio',
+    'A design and software studio',
     'Chapter I On Intent',
   ]);
-  await expect(services.getByRole('heading', { level: 3 })).toHaveText(['Digital Design', 'Branding', 'Print Design']);
+  await expect(services.getByRole('heading', { level: 3 })).toHaveText(['Brand & Experience Design', 'Software Development']);
+  await expect(services.locator('.services-line')).toHaveText(['Design delivered without compromise.', 'Human architected. Agent accelerated.']);
   await expect(services.getByRole('listitem')).toHaveText([
-    'UX/UI Design',
-    'Motion Design',
-    '3D Design',
-    'Social Media',
-    'Identity Design',
-    'Art Direction',
-    'Brand Guidelines',
-    'Storytelling',
-    'Packaging',
-    'Editorial',
-    'Wayfinding',
-    'Signage',
+    'Brand Design',
+    'Web & Experiential',
+    'Prototyping as Design',
+    'Agent Native Interfaces',
+    'Agentic Design Systems',
+    'User Testing',
+    'Web Apps',
+    'iOS Development',
+    'Native Mac Apps',
+    'Vibe Coded Slop Remediation',
+    'Cloud Infrastructure & DevOps',
   ]);
   // Last, after the chapters, the awards: a title over the list, in the serif.
   const awards = article.getByRole('region', { name: 'Awards' });
   expect(await awards.evaluate((s) => s === s.parentElement!.lastElementChild)).toBe(true);
   await expect(awards.getByRole('listitem')).toHaveText(['Awwwards x4', 'DDA x2', 'CSSDA x2', 'The FWA x2']);
   expect(await awards.getByRole('list').evaluate((l) => getComputedStyle(l).fontFamily)).toMatch(/^"Timeless Serif/);
-  // Side by side: the three groups start on one line.
+  // Side by side: the groups start on one line.
   const tops = await services.getByRole('heading', { level: 3 }).evaluateAll((hs) => hs.map((h) => Math.round(h.getBoundingClientRect().top)));
   expect(new Set(tops).size).toBe(1);
   const box = (await article.boundingBox())!;
@@ -331,7 +331,7 @@ test('on a narrow screen the services groups wrap instead of squeezing, a lone l
   );
   // Not all on one line, and none narrower than its minimum.
   expect(new Set(boxes.map((b) => b.top)).size).toBeGreaterThan(1);
-  for (const b of boxes) expect(b.width).toBeGreaterThanOrEqual(9.5 * 16 - 1);
+  for (const b of boxes) expect(b.width).toBeGreaterThanOrEqual(12 * 16 - 1);
   // A group alone on the last line sits centred in the window.
   const last = boxes.at(-1)!;
   expect(boxes.filter((b) => b.top === last.top)).toHaveLength(1);

@@ -126,7 +126,9 @@ test('opening, the camera backs away: every image drawn in towards the centre, b
   await expect(hint.locator('[data-hint-label]')).toHaveText('Close');
   const esc = hint.getByText('ESC', { exact: true }).locator('..');
   await expect(bar).toHaveCSS('opacity', '1');
-  for (const item of await bar.getByRole('listitem').all()) await expect(item).toHaveCSS('opacity', (await item.getAttribute('data-hint')) === 'menu' ? '1' : '0');
+  // (A hint that is a button sits in its item: InfoBar.astro.)
+  const hintOf = (item: typeof bar) => item.evaluate((el) => (el.matches('[data-hint]') ? el : el.querySelector('[data-hint]'))?.getAttribute('data-hint') ?? null);
+  for (const item of await bar.getByRole('listitem').all()) await expect(item).toHaveCSS('opacity', (await hintOf(item)) === 'menu' ? '1' : '0');
   await expect(esc).toHaveCSS('opacity', '1');
   // To the right of the M, the M having moved left to make room (KeyHint.astro).
   const [e, m] = await Promise.all([esc.boundingBox(), hint.getByText('M', { exact: true }).locator('..').boundingBox()]);
@@ -158,10 +160,35 @@ test('open, the menu has the keyboard and the wheel: nothing moves under it, and
   expect(await camera(page)).toEqual(before);
   await expect(menu(page)).toHaveAttribute('open');
 
-  // A placeholder link goes nowhere.
-  await box(page).getByRole('link', { name: 'About' }).click();
+  // A placeholder link goes nowhere. (About goes to the about view: wordmark.spec.ts.)
+  await box(page).getByRole('link', { name: 'Journal' }).click();
   expect(new URL(page.url()).pathname).toBe('/');
   expect(new URL(page.url()).hash).toBe('');
+});
+
+test('opened mid-scroll, the scroll carrying on as it closes and comes home: home, the canvas stays where it was', async ({ page }) => {
+  await page.goto('/?test');
+  await settled(page);
+  await page.mouse.move(720, 450);
+  // The wheel keeps going, as a trackpad's momentum does, until the canvas is home.
+  let home = false;
+  const scroll = (async () => {
+    while (!home) {
+      await page.mouse.wheel(0, 30);
+      await page.waitForTimeout(16);
+    }
+  })();
+  await page.waitForTimeout(300);
+  await page.keyboard.press('m');
+  await backedAway(page);
+  const before = await camera(page);
+  await page.keyboard.press('Escape');
+  await backHome(page);
+  home = true;
+  await scroll;
+  await page.waitForTimeout(1000);
+  // (A wheel or two that lands once it's home moves it, as it should; what piled up while away would be several times that.)
+  expect(Math.abs((await camera(page)).y - before.y)).toBeLessThan(61);
 });
 
 test('M, Esc and a click off the square each close it, and the canvas is back in charge', async ({ page }) => {
@@ -259,6 +286,8 @@ for (const [name, width, height] of [
 test('opening and closing it has no long animation frames', async ({ page }) => {
   await page.goto('/?test');
   await settled(page);
+  // Once the glass has been readied, a moment after the page opens (Menu.astro).
+  await page.waitForTimeout(2500);
   await page.evaluate(() => {
     const w = window as unknown as { __loaf: number[] };
     w.__loaf = [];

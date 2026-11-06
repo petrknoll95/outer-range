@@ -12,6 +12,7 @@ import { compiledContent, frontmatter as about } from '../content/about.md';
 import Header from './Header.astro';
 import InfoBar from './InfoBar.astro';
 import Menu from './Menu.astro';
+import ProjectInfo from './ProjectInfo.astro';
 import ProjectView from './ProjectView.astro';
 
 /**
@@ -91,6 +92,7 @@ const [aboutBefore, aboutAfter = ''] = (await compiledContent())
 <Header route={route} />
 <InfoBar route={route} />
 <Menu />
+<ProjectInfo />
 <main
   data-canvas
   inert={route !== 'home'}
@@ -126,9 +128,10 @@ const [aboutBefore, aboutAfter = ''] = (await compiledContent())
         <section class="services" aria-label="Services">
           <div class="services-groups">
             {
-              (about.services as { group: string; items: string[] }[]).map(({ group, items }) => (
+              (about.services as { group: string; line?: string; items: string[] }[]).map(({ group, line, items }) => (
                 <div>
                   <h3>{group}</h3>
+                  {line && <p class="services-line">{line}</p>}
                   <ul>
                     {items.map((item) => (
                       <li>{item}</li>

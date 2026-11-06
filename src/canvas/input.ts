@@ -33,6 +33,8 @@ export interface InputOptions {
   escape?: (t: number) => void;
   /** While this is false the canvas ignores input (e.g. while leaving it for another page). */
   enabled?: () => boolean;
+  /** While this is true the canvas is held still: the wheel, pinches and drags move nothing (nor the page); keys still count. */
+  held?: () => boolean;
   /** Current on-screen pitch and viewport, px, for keyboard steps. */
   metrics: () => { pitch: number; vw: number; vh: number };
   /**
@@ -77,7 +79,7 @@ const identity = (x: number, y: number, out: { x: number; y: number }) => {
   out.y = y;
 };
 
-export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, escape, enabled = () => true, metrics, toCanvas = identity }: InputOptions): () => void {
+export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, escape, enabled = () => true, held = () => false, metrics, toCanvas = identity }: InputOptions): () => void {
   const point = { x: 0, y: 0 };
   /** Screen → canvas point. Returns a shared object: read it before the next call. */
   const canvas = (x: number, y: number) => {
@@ -131,6 +133,7 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, escape
     if (!enabled()) return;
     // Otherwise never the page's own scroll or zoom.
     e.preventDefault();
+    if (held()) return;
     let dx = e.deltaX;
     let dy = e.deltaY;
     if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
@@ -165,7 +168,7 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, escape
   };
   const onGestureChange = (e: Event) => {
     e.preventDefault();
-    if (!enabled()) return;
+    if (!enabled() || held()) return;
     const g = e as GestureEvent;
     if (g.scale > 0) {
       // Safari reports the gesture's total scale; feed in the change since the last event.
@@ -180,7 +183,7 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, escape
   };
 
   const onPointerDown = (e: PointerEvent) => {
-    if (!enabled() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (!enabled() || held() || (e.pointerType === 'mouse' && e.button !== 0)) return;
     // One mouse/pen pointer, or up to two fingers.
     if (pointers.size >= 2 || (pointers.size === 1 && e.pointerType !== 'touch')) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });

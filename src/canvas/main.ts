@@ -19,7 +19,6 @@ import { computeGeometry, sizingReach, zoomInFor, zoomInLevel } from './layout';
 import { DEFAULT_LENS, Lens } from './lens';
 import type { Snapper } from './physics';
 import { CameraPhysics, GLIDE, ZOOM_TO } from './physics';
-import { ProjectHint } from './projecthint';
 import { ProjectLabel } from './projectlabel';
 import type { Leg } from './projectview';
 import { ProjectView } from './projectview';
@@ -53,8 +52,6 @@ const renderer = new Renderer(layer, world, data.images, lens, debug);
 const frame = new FocusFrame(root);
 // The active image's project, its name above the frame and its categories below, zoomed out and in.
 const projectLabel = new ProjectLabel(frame.el);
-// Zoomed in, the key for the project view below the frame.
-const projectHint = new ProjectHint(frame.el);
 /** The active image's tile element. */
 let activeTile: HTMLElement | null = null;
 renderer.onActiveChange = (tile) => {
@@ -79,13 +76,12 @@ let zoomIn = 1;
 
 /**
  * The project view (projectview.ts): "P" swaps the canvas for the active image's project, all of
- * its images in one column, crossfading over it as the camera moves in on the image until it is
- * drawn where the column has it. The canvas holds still under it, exactly as it was left and
- * taking no input; "P" or Esc fades back to it, the camera pulling back from the column's image
- * to its tile, and picking one of the images comes back to the focused view on that one, the
- * camera pulling back to its tile there. The frame steps aside while the camera moves, and comes
- * back round the image as it lands. The canvas's videos start again once the
- * fade is done (starting several at once mid-fade costs frames).
+ * its images in one column. As for the menu, the canvas backs away (backAway) while the image
+ * comes forward to where the column has it and the rest of the column comes in from in front of
+ * the camera. The canvas holds there under it, exactly as it was left and taking no input; "P" or
+ * Esc sends the column on past the camera as the canvas comes home, and picking one of the images
+ * comes home onto that one. The frame steps aside meanwhile, and is back once the canvas is home.
+ * The canvas's videos start again once it is (starting several at once mid-move costs frames).
  */
 const projectView = new ProjectView(
   document.querySelector<HTMLElement>('[data-project-view]')!,
@@ -103,7 +99,9 @@ function openProject(): void {
   root.inert = true;
   frame.conceal();
   clearTimeout(frameTimer);
-  showProject(projects.projects[n]!.title);
+  showProject(projects.projects[n]!);
+  // Its hint in the info bar (InfoBar.astro) says Back, ESC joining the P.
+  setHint('project', true);
   // The canvas backs away, as for the menu, as the view starts to fade in; the image flies on its leg.
   projectView.open(projects.projects[n]!, active.image, activeTile, () => {
     backAway(true, 'project');
@@ -114,44 +112,66 @@ function openProject(): void {
 
 /**
  * Back to the canvas as it was left, or (`image`, one of the project's) to the focused view on
- * it: the canvas comes home as the image flies back to its tile. `instant`: no flight, the canvas
- * home at once (going to the about view, which flies from there).
+ * it: the canvas comes home as the column flies on past the camera. `instant`: nothing moves, the
+ * canvas home at once (going to the about view, which flies from there).
  */
 function closeProject(image: number | null = null, instant = false): void {
   if (!projectView.isOpen) return;
   root.inert = false;
   showProject(null);
-  let to: DOMRect | null = null;
+  setHint('project', false);
   if (image !== null && image !== renderer.activeImage()?.image && !instant) {
-    // Under the view: home at once, onto that image, then backed away again to come home from there with it.
+    // Under the view: home at once, onto that image, then backed away again to come home from there.
     homeAtOnce();
     focusOn(image);
-    to = activeTile?.getBoundingClientRect() ?? null;
     backAway(true, 'project');
     Object.assign(backing!, { back: MENU_BACK, from: MENU_BACK, p: 1 });
     stepBacking();
   }
   if (instant) homeAtOnce();
   backAway(false, 'project');
-  projectView.close(renderer.activeImage()?.image ?? null, activeTile, to, backing && !instant ? backingLeg() : null, () => frame.reveal());
+  projectView.close(backing && !instant ? backingLeg() : null);
+  // (Out of sight until the canvas is home: the frame fades as it backs away, data-leaving.)
+  frame.reveal();
   wake();
 }
 
 /**
- * The header in the project view (Header.astro): the wordmark, a cross and `title`, kept centred,
- * the wordmark sliding left by half the width of what follows it; or (null) the wordmark alone.
+ * The header in the project view (Header.astro): the wordmark, a cross and the project's title,
+ * kept centred, the wordmark sliding left by half the width of what follows it; or (null) the
+ * wordmark alone. html[data-showing-project] is the project's id, for its info (ProjectInfo.astro).
  */
 const wordmark = document.querySelector<HTMLElement>('[data-wordmark]')!;
 const wordmarkProject = wordmark.querySelector<HTMLElement>('[data-header-project]')!;
-function showProject(title: string | null): void {
-  if (title === null) {
+function showProject(project: ClientProject | null): void {
+  if (project === null) {
     delete document.documentElement.dataset.showingProject;
     return;
   }
-  wordmarkProject.querySelector('[data-header-project-name]')!.textContent = title;
+  wordmarkProject.querySelector('[data-header-project-name]')!.textContent = project.title;
   wordmark.style.setProperty('--project-shift', `${wordmarkProject.offsetWidth / 2}px`);
-  document.documentElement.dataset.showingProject = '';
+  document.documentElement.dataset.showingProject = project.id;
 }
+
+/**
+ * The focused view's project: zoomed in on the canvas, html[data-focused-project] is the active
+ * image's project's id, for the info bar, whose hints for moving and the theme give way to the
+ * project's (P and I: InfoBar.astro), and for the project's info, which "I" opens from here too
+ * (ProjectInfo.astro). Kept up to date from the loop, which runs whenever any of it can change.
+ */
+let focusedProject: string | null = null;
+function markFocus(): void {
+  const active = zoomState === 'in' && route === 'home' && !intro && !flight ? renderer.activeImage() : null;
+  const n = active ? projects.projectOf(active.image) : -1;
+  const id = n >= 0 ? projects.projects[n]!.id : null;
+  if (id === focusedProject) return;
+  focusedProject = id;
+  if (id) document.documentElement.dataset.focusedProject = id;
+  else delete document.documentElement.dataset.focusedProject;
+}
+
+// The info bar's P (InfoBar.astro) does what the key does: the project view, or back out of it.
+for (const trigger of document.querySelectorAll('[data-project-trigger]')) trigger.addEventListener('click', () => (projectView.isOpen ? closeProject() : openProject()));
 
 /**
  * At rest on the canvas, the active image's project is readied in the page's next idle moment,
@@ -217,6 +237,8 @@ window.addEventListener('keydown', (e) => {
     closeProject();
   }
 });
+// The header's Back in the project view (Header.astro) does what P and Esc do.
+document.querySelector('[data-project-back]')!.addEventListener('click', () => closeProject());
 
 /** The project label names the active image's project and its categories, zoomed out and in. */
 function updateProjectLabel(): void {
@@ -313,6 +335,7 @@ function tick(): void {
 }
 
 function advance(): void {
+  markFocus();
   if (backing) {
     stepBacking();
     return;
@@ -326,7 +349,6 @@ function advance(): void {
     return;
   }
   physics.advance(now());
-  projectHint.show(zoomState === 'in');
   // (A zoom-to keeps its zoom and target equal at every step; it's at rest only once it lands.)
   draw(physics.stepVx, physics.stepVy, physics.z === physics.tz && !physics.zoomingTo);
   for (const fn of listeners) fn();
@@ -424,6 +446,9 @@ attachInput({
   toggleZoom,
   escape: zoomOut,
   enabled: () => !intro && !flight && !projectView.isOpen,
+  // Backed away for the menu, nothing runs the camera: a scroll's momentum would only pile up,
+  // to carry the view off from where it was the moment it is home.
+  held: () => backing !== null,
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
 });
@@ -916,10 +941,27 @@ function placeAbout(v: FlightView, still: boolean): void {
 // about view's text with them. Closing, it all comes back to exactly where it was.
 window.addEventListener('menu', (e) => backAway((e as CustomEvent<boolean>).detail, 'menu'));
 
-/** What holds the canvas backed away: the menu, the project view (openProject), or both. It comes home once neither does. */
-const backers = new Set<'menu' | 'project'>();
+// In the project view the canvas is backed away already: there it is the view that backs away,
+// one step further into the distance (projectview.ts, backAway), under the menu or the project's
+// info (ProjectInfo.astro), and comes home once neither is open.
+const overProject = new Set<'menu' | 'info'>();
+function backProject(open: boolean, who: 'menu' | 'info'): void {
+  if (open) overProject.add(who);
+  else overProject.delete(who);
+  projectView.backAway(overProject.size > 0);
+}
+window.addEventListener('menu', (e) => backProject((e as CustomEvent<boolean>).detail, 'menu'));
+// The project's info (ProjectInfo.astro): the project view backs away behind it, or, opened from the focused view, the canvas does, as for the menu.
+window.addEventListener('info', (e) => {
+  const open = (e as CustomEvent<boolean>).detail;
+  backProject(open, 'info');
+  if (!open || !projectView.isOpen) backAway(open, 'info');
+});
 
-function backAway(open: boolean, who: 'menu' | 'project'): void {
+/** What holds the canvas backed away: the menu, the project view (openProject), the project's info opened from the focused view, or more than one. It comes home once none does. */
+const backers = new Set<'menu' | 'project' | 'info'>();
+
+function backAway(open: boolean, who: 'menu' | 'project' | 'info'): void {
   if (open) backers.add(who);
   else backers.delete(who);
   open = backers.size > 0;
@@ -1012,6 +1054,21 @@ link.addEventListener('click', (e) => {
   // (Any query, like ?debug or ?flat, carries over.)
   toggleView('about');
 });
+
+// The menu's links to views (Menu.astro): there, unless it is showing already.
+window.addEventListener('view', (e) => {
+  const view = (e as CustomEvent<string>).detail;
+  if ((view === 'about' || view === 'start') && view !== route) toggleView(view);
+});
+
+// The info bar's Start a project (InfoBar.astro): what "S" does, to the view or back from it.
+for (const viewLink of document.querySelectorAll<HTMLAnchorElement>('a[data-view-link]')) {
+  viewLink.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    toggleView(viewLink.dataset.viewLink as View);
+  });
+}
 
 /** What a view's link or key does: go to it, or, on it, back to the canvas. */
 function toggleView(view: View): void {

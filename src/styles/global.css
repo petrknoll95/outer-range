@@ -302,7 +302,7 @@
   }
   /* Sharing each line equally, so a group left alone on the last line spans it, centred. */
   .about .services-groups > * {
-    flex: 1 1 9.5rem;
+    flex: 1 1 12rem;
   }
   /* The list after the chapters (awards): a small title over it, set in the serif. */
   .about > .list {
@@ -322,6 +322,15 @@
   }
   .about h3 + ul {
     margin-top: 0.5rem;
+  }
+  /* A group's line, between its name and its list: small and faded, a little off the list. */
+  .about .services-line {
+    font-size: 13px;
+    line-height: 18px;
+    color: color-mix(in oklab, var(--color-ink) 60%, transparent);
+  }
+  .about .services-line + ul {
+    margin-top: 0.75rem;
   }
 }
 

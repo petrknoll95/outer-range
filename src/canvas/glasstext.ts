@@ -22,6 +22,8 @@ interface Word {
 export class GlassText {
   private words: Word[] = [];
   private dirty = true;
+  /** The view's mask as last set (see clip). */
+  private mask = '';
   private readonly metrics = new Map<string, { ascent: number; descent: number }>();
   /** Called when what it draws changes without the layer moving: it reflowed, or a font came in. */
   onChange: (() => void) | null = null;
@@ -39,9 +41,13 @@ export class GlassText {
     document.fonts.addEventListener('loadingdone', changed);
   }
 
-  /** Cut the bands, `band` px each, out of the view; or (0) nothing. */
-  clip(band: number): void {
-    this.view.style.clipPath = band > 0 ? `inset(${band}px 0 ${band}px 0)` : '';
+  /** Mask the bands, `band` px each, out of the view, fading out over the glass's copy through `feather` px before each, as the tiles do (glass.ts, clip); or (0) nothing. */
+  clip(band: number, feather: number): void {
+    const mask = band > 0 ? `linear-gradient(to bottom, transparent ${band}px, black ${band + feather}px, black calc(100% - ${band + feather}px), transparent calc(100% - ${band}px))` : '';
+    if (mask === this.mask) return;
+    this.mask = mask;
+    this.view.style.setProperty('-webkit-mask-image', mask);
+    this.view.style.maskImage = mask;
   }
 
   private measure(ctx: CanvasRenderingContext2D): void {

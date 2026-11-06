@@ -15,9 +15,13 @@
  * dialog actually closes, the page still coming home behind it. html[data-menu-open] is set while it is
  * open or opening, for the header and info bar.
  *
- * The links are placeholders.
+ * About goes to the about view, as the header's link does (main.ts, toggleView), the menu closing
+ * as the canvas flies there. The other links are placeholders.
  */
 const links = ['Work', 'Projects', 'About', 'Journal', 'Start a project'];
+// The views the links go to, by label. Under the site's base: the root, or /outer-range/ on GitHub Pages.
+const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const views: Record<string, { view: string; href: string }> = { About: { view: 'about', href: `${home}about` } };
 // The flight's ease (FLIGHT_EASE, config.ts).
 const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
 ---
@@ -62,8 +66,9 @@ const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
         links.map((link, n) => (
           <li class:list={[n === links.length - 1 && 'mt-auto']}>
             <a
-              href="#"
+              href={views[link]?.href ?? '#'}
               data-menu-link
+              data-menu-view={views[link]?.view}
               class="rounded-sm transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
             >
               {link}
@@ -121,6 +126,8 @@ const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
     e.preventDefault();
     open();
   });
+  // Where there are no keys, a button opens it (the header's Menu on a touch screen: Header.astro).
+  for (const trigger of document.querySelectorAll('[data-menu-trigger]')) trigger.addEventListener('click', () => open());
 
   // Open, the menu has the keyboard to itself. Caught first, on the way down, no key reaches the
   // canvas's own (main.ts, input.ts: all on window), and none scrolls the about view under it.
@@ -154,8 +161,18 @@ const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
   // The browser's back button, under it: the canvas is back at once (main.ts), so it goes too.
   window.addEventListener('popstate', () => close());
 
-  // Placeholders: they go nowhere yet.
-  for (const link of dialog.querySelectorAll('[data-menu-link]')) link.addEventListener('click', (e) => e.preventDefault());
+  // A link to a view closes the menu and asks the canvas for the view (main.ts); the placeholders go nowhere yet.
+  for (const link of dialog.querySelectorAll<HTMLAnchorElement>('[data-menu-link]')) {
+    link.addEventListener('click', (e) => {
+      const view = link.dataset.menuView;
+      // A new tab or window, for a real link, is the browser's.
+      if (view && (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return;
+      e.preventDefault();
+      if (!view) return;
+      close();
+      window.dispatchEvent(new CustomEvent('view', { detail: view }));
+    });
+  }
 
   // The canvas zooms and pans on these from window (input.ts), and the about view scrolls: not under the menu.
   const hold = (e: Event) => {
@@ -163,4 +180,17 @@ const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
     e.stopPropagation();
   };
   for (const type of ['wheel', 'touchmove', 'gesturestart', 'gesturechange', 'gestureend']) dialog.addEventListener(type, hold, { passive: false });
+
+  // The glass is drawn once, a pixel of it and unseen, when the page has a moment after opening,
+  // so the GPU has it ready and the menu's first open doesn't wait on it (as the flight's rays are
+  // readied: main.ts).
+  const warm = () => {
+    const glass = document.createElement('div');
+    glass.className = box.className;
+    glass.setAttribute('aria-hidden', 'true');
+    Object.assign(glass.style, { position: 'fixed', left: '0', top: '0', width: '1px', opacity: '0.01', pointerEvents: 'none', transition: 'none' });
+    document.body.append(glass);
+    requestAnimationFrame(() => requestAnimationFrame(() => glass.remove()));
+  };
+  window.setTimeout(() => ('requestIdleCallback' in window ? requestIdleCallback(warm, { timeout: 2000 }) : warm()), 1500);
 </script>

@@ -1,3 +1,6 @@
+import { FLIGHT_DURATION, FLIGHT_EASE, FLIGHT_REDUCED_DURATION, MENU_BACK, MENU_BACK_ABOUT, MENU_RETURN_DURATION, MENU_RETURN_EASE } from './config';
+import type { FlightView } from './flight';
+import { menuBackView } from './flight';
 import type { GlassTile } from './glass';
 import { GlassLayer } from './glass';
 import type { ClientProject } from './projects';
@@ -10,9 +13,10 @@ import type { ClientImage } from './renderer';
  * and below. It is a page of its own over the canvas (ProjectView.astro), not part of
  * it. Opening, as the menu does, the canvas backs away (main.ts, backAway: each image drawn in
  * towards the centre by its depth, dimming and blurring), all but the active image, which comes
- * forward instead, to exactly where the column has it, as the view fades in around it, a single
- * opacity. Closing, the image goes back to its tile as the canvas comes home and the view fades
- * out (fly).
+ * forward instead, to exactly where the column has it (fly), as the view fades in, a single
+ * opacity, and the rest of the column comes in from in front of the camera, big and soft,
+ * settling sharp, as the menu's square does (moveStage). Closing, as the menu does too, the
+ * column flies on past the camera, bigger and softer, as the view fades and the canvas comes home.
  *
  * Its images come from the same srcsets as the tiles, asked for at the column's width (sizes),
  * each as it nears the window. It opens with the image it was opened on at the centre of the window, and fades in
@@ -44,14 +48,20 @@ export class ProjectView {
   private fading = false;
   /** Faded right out after closing. */
   onHidden: () => void = () => {};
+  /** The stage: the column and its glass, which come in from in front of the camera and go past it, and its move under way. */
+  private readonly stage: HTMLElement;
+  private stageMove: Animation | null = null;
+  /** All of it, which backs away under the menu or the project's info (backAway), and its move under way. */
+  private readonly depth: HTMLElement;
+  private depthMove: Animation | null = null;
+  /** Closed, until the canvas is home. */
+  private homing = 0;
   /** The image in flight: its copy and the copy's animation, and the two ends, hidden meanwhile. */
   private flight: { copy: HTMLElement; animation: Animation; ends: HTMLElement[] } | null = null;
   /** Where the tile it opened on is drawn with the canvas at home: where closing takes it back to. */
   private home: DOMRect | null = null;
   /** How wide the column draws its images (setColumn), for their srcsets: all of the window on a phone. */
   private sizes = '(min-width: 760px) 58vw, 100vw';
-  /** The image last clicked, which closing flies back from. */
-  private picked: HTMLElement | null = null;
   private readonly onScreen = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
@@ -72,12 +82,13 @@ export class ProjectView {
   ) {
     this.list = el.querySelector('[data-project-images]')!;
     this.scroller = el.querySelector('[data-project-scroll]')!;
+    this.stage = el.querySelector('[data-project-stage]')!;
+    this.depth = el.querySelector('[data-project-depth]')!;
     // Its canvas goes just before the scroller, inside the view: over its background, fading with it.
     this.glass = GlassLayer.create(this.scroller, this.scroller, null, glassAnyway, () => this.glassFrame(), () => false);
     this.list.addEventListener('click', (e) => {
       const item = (e.target as Element).closest<HTMLElement>('[data-image]');
       if (!item || !this.isOpen) return;
-      this.picked = item;
       this.onPick(Number(item.dataset.image));
     });
     this.scroller.addEventListener(
@@ -107,9 +118,9 @@ export class ProjectView {
     return this.project !== null;
   }
 
-  /** Open, or still fading out or an image still flying: over the canvas, in part at least. */
+  /** Open, or still fading out, an image still flying or the canvas not home yet: over the canvas, or moving with it. */
   get isShown(): boolean {
-    return this.isOpen || this.fading || this.flight !== null;
+    return this.isOpen || this.fading || this.flight !== null || this.homing !== 0;
   }
 
   /** The column's width on a wide window, px (main.ts, PROJECT_COLUMN): its images are asked for at it. */
@@ -146,37 +157,101 @@ export class ProjectView {
       // Where the tile is drawn now, at home, before the canvas sets off.
       if (!this.flight && tile) this.home = tile.getBoundingClientRect();
       const leg = start();
+      // Where the column has it once it is still, before the stage sets off.
       if (tile && item) this.fly(tile, item, image, this.flight ? null : this.home, item.getBoundingClientRect(), leg);
+      this.moveStage(HERE, leg.duration, leg.easing, this.stageMove ? null : FAR);
     });
   }
 
   /**
-   * Fade back to the canvas, flying `image` (if it is one of the project's) from the column to
-   * `tile`, its tile on the canvas, drawn at home at `to` (or, with none, where the tile it opened
-   * on was), on the time and ease of the canvas coming home (`leg`, or none: nothing flies);
-   * `landed` once it is there (at once, if nothing flies).
+   * Fade back to the canvas as it comes home over `leg` (or none: at once, nothing moves), the
+   * column flying on past the camera, as the menu's square does.
    */
-  close(image: number | null, tile: HTMLElement | null, to: DOMRect | null, leg: Leg | null, landed: () => void = () => {}): void {
-    if (!this.project) return landed();
+  close(leg: Leg | null): void {
+    if (!this.project) return;
     this.project = null;
     this.opening++;
     delete document.documentElement.dataset.project;
+    // Closed under the menu (going to the about view from it), it is home again for next time.
+    this.depthMove?.cancel();
+    this.depthMove = null;
     // (Asked to close before it began to fade in, there is nothing to fade out.)
     const shown = 'open' in this.el.dataset;
     delete this.el.dataset.open;
     this.el.inert = true;
     for (const video of this.videos) this.sync(video);
     this.fading = shown;
-    // The one picked, or else the one of that image nearest the centre of the window.
-    const item = image === null ? null : this.picked?.dataset.image === String(image) ? this.picked : this.nearest(image);
-    this.picked = null;
-    const end = to ?? this.home;
-    if (shown && item && tile && end && leg) this.fly(item, tile, image!, null, end, leg, landed);
-    else {
-      this.land();
-      landed();
+    // An image still on its way in shows in its place: the column goes as one.
+    this.land();
+    clearTimeout(this.homing);
+    this.homing = 0;
+    if (shown && leg) {
+      this.moveStage(FAR, LEAVE_DURATION, LEAVE_EASE);
+      this.homing = window.setTimeout(() => {
+        this.homing = 0;
+        this.settle();
+      }, leg.duration * 1000);
     }
     this.settle();
+  }
+
+  /**
+   * Back all of it away from the camera (`away`) under the menu or the project's info, as the
+   * canvas backs away under the menu (main.ts, backAway), or bring it home. It is a page, as the
+   * about view's text is, so it backs away as that does, as one plane at MENU_BACK_ABOUT
+   * (menuBackView): drawn in towards the centre, dimming and blurring. Away on the flight's time
+   * and ease, home on the menu's slower return, from wherever it has got to; home, it is let go
+   * of, so nothing stays scaled or blurred. With reduced motion it only dims.
+   */
+  backAway(away: boolean): void {
+    if (!this.isOpen && away) return;
+    const still = reducedMotion.matches;
+    const view = menuBackView(MENU_BACK_ABOUT, away ? MENU_BACK : 0, { scale: 1, opacity: 1, blur: 0 } as FlightView);
+    // The blur is drawn before the scale: ask for the share that comes out at view.blur on screen.
+    const to: Keyframe = still
+      ? { opacity: view.opacity }
+      : { transform: `scale(${view.scale})`, opacity: view.opacity, filter: `blur(${(view.blur / view.scale).toFixed(2)}px)` };
+    const css = getComputedStyle(this.depth);
+    const from: Keyframe = still
+      ? { opacity: Number(css.opacity) }
+      : { transform: css.transform === 'none' ? 'scale(1)' : css.transform, opacity: Number(css.opacity), filter: css.filter === 'none' ? 'blur(0px)' : css.filter };
+    const duration = still ? FLIGHT_REDUCED_DURATION : away ? FLIGHT_DURATION : MENU_RETURN_DURATION;
+    const easing = `cubic-bezier(${(away ? FLIGHT_EASE : MENU_RETURN_EASE).join(', ')})`;
+    this.depthMove?.cancel();
+    const move = this.depth.animate([from, to], { duration: duration * 1000, easing, fill: 'forwards' });
+    this.depthMove = move;
+    move.onfinish = () => {
+      if (this.depthMove !== move || away) return;
+      move.cancel();
+      this.depthMove = null;
+      this.glass?.request();
+    };
+  }
+
+  /**
+   * Move the stage to `to` (HERE or FAR), from `from` or from wherever it has got to, over
+   * `duration` s on `easing`; there, it is let go of (HERE is the stage at rest, and FAR is only
+   * ever reached faded out), so nothing stays blurred or scaled that need not be.
+   */
+  private moveStage(to: Keyframe, duration: number, easing: string, from: Keyframe | null = null): void {
+    if (reducedMotion.matches || duration <= 0) {
+      this.stageMove?.cancel();
+      this.stageMove = null;
+      return;
+    }
+    if (!from) {
+      const css = getComputedStyle(this.stage);
+      from = { transform: css.transform === 'none' ? 'scale(1)' : css.transform, filter: css.filter === 'none' ? 'blur(0px)' : css.filter };
+    }
+    this.stageMove?.cancel();
+    const move = this.stage.animate([from, to], { duration: duration * 1000, easing, fill: 'forwards' });
+    this.stageMove = move;
+    move.onfinish = () => {
+      if (this.stageMove !== move) return;
+      move.cancel();
+      this.stageMove = null;
+      this.glass?.request();
+    };
   }
 
   /**
@@ -242,10 +317,22 @@ export class ProjectView {
     const vh = this.scroller.clientHeight;
     const tiles: GlassTile[] = [];
     let radius = -1;
+    // In the stage's own px: its glass canvas moves with it, so a tile is drawn where it sits on it.
+    const stage = this.stage.getBoundingClientRect();
+    const k = stage.width / vw || 1;
+    // The browser paints the column's boxes with their edges at whole CSS px in the scrolled
+    // content, whatever fractions their layout has (a box laid out from 373.5 px is drawn from
+    // 374). Taken as laid out, the glass's copy met the page's a device px off at the bands' inner
+    // edges, a seam along every image crossing one; so its edges are rounded the same way.
+    const { scrollLeft, scrollTop } = this.scroller;
+    const edge = (screen: number, origin: number, scroll: number) => Math.round((screen - origin) / k + scroll) - scroll;
     for (const item of this.list.querySelectorAll<HTMLElement>('[data-image]')) {
       if ('flying' in item.dataset) continue;
-      const r = item.getBoundingClientRect();
-      if (r.bottom < -vh / 2 || r.top > vh * 1.5) continue;
+      const box = item.getBoundingClientRect();
+      const [left, right] = [edge(box.left, stage.left, scrollLeft), edge(box.right, stage.left, scrollLeft)];
+      const [top, bottom] = [edge(box.top, stage.top, scrollTop), edge(box.bottom, stage.top, scrollTop)];
+      const r = { left, top, width: right - left, height: bottom - top };
+      if (r.top + r.height < -vh / 2 || r.top > vh * 1.5) continue;
       if (radius < 0) radius = parseFloat(getComputedStyle(item).borderRadius) || 0;
       const image = this.images[Number(item.dataset.image)]!;
       const img = item.querySelector('img')!;
@@ -417,6 +504,13 @@ export interface Leg {
   duration: number;
   easing: string;
 }
+
+/** The stage at rest, and far off in front of the camera, big and soft (the menu's square: Menu.astro). */
+const HERE: Keyframe = { transform: 'scale(1)', filter: 'blur(0px)' };
+const FAR: Keyframe = { transform: 'scale(1.4)', filter: 'blur(12px)' };
+/** Leaving, it lingers a moment, then speeds off past the camera, as the menu's square does, s. */
+const LEAVE_DURATION = 0.55;
+const LEAVE_EASE = 'cubic-bezier(0.5, 0, 0.75, 0.6)';
 
 /** An element's corner radius as drawn at `rect` (a tile is scaled by its transform), px. */
 const radiusOf = (el: HTMLElement, rect: DOMRect) => (parseFloat(getComputedStyle(el).borderRadius) || 0) * (rect.width / (el.offsetWidth || rect.width));
