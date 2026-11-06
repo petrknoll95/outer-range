@@ -1,6 +1,9 @@
 ---
 import { Font } from 'astro:assets';
 import '../styles/global.css';
+// The link preview: the intro's tunnel as a loop, and its first frame (scripts/videos/build-og-video.mjs).
+import ogVideo from '../assets/og/video.mp4?url';
+import ogPoster from '../assets/og/poster.jpg?url';
 
 interface Props {
   title: string;
@@ -10,6 +13,8 @@ interface Props {
 const { title, description } = Astro.props;
 // The canvas's path: the root, or /outer-range/ on GitHub Pages.
 const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+// Link previews need whole URLs: on the site's own origin (SITE_URL, astro.config.mjs), or this page's where it has none.
+const absolute = (path: string) => new URL(path, Astro.site ?? Astro.url).href;
 ---
 
 <!doctype html>
@@ -30,6 +35,23 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="data:," />
     <title>{title}</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Outer Range" />
+    <meta property="og:title" content={title} />
+    {description && <meta property="og:description" content={description} />}
+    <!-- Its own path, as served: built as about.html (astro.config.mjs), it's at /about. -->
+    <meta property="og:url" content={absolute(Astro.url.pathname.replace(/(index)?\.html$/, ''))} />
+    <meta property="og:image" content={absolute(ogPoster)} />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Outer Range logo over streaks of light rushing past, as if flying down a tunnel." />
+    <meta property="og:video" content={absolute(ogVideo)} />
+    <meta property="og:video:secure_url" content={absolute(ogVideo)} />
+    <meta property="og:video:type" content="video/mp4" />
+    <meta property="og:video:width" content="1200" />
+    <meta property="og:video:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <!-- The wordmark's weight is preloaded so it paints in the right font straight away; the serif is there to use. -->
     <Font cssVariable="--font-timeless-sans" preload={[{ weight: 500, style: 'normal' }]} />
     <Font cssVariable="--font-timeless-serif" />

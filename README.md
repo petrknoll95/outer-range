@@ -25,6 +25,7 @@ The dev server runs at http://localhost:4321. To start it in the background, use
 | `npm run test:e2e` | Playwright against the production build: input, zoom, the project view, the flight to and from the about page, video playback, theme, frame timing and content. |
 | `npm run work:build -- <folder>` | Add a folder of work images to the canvas. |
 | `npm run videos:build -- <folder>` | Encode a folder of videos for the canvas (needs ffmpeg). |
+| `npm run og:build` | Film the link preview: the intro's tunnel as a seamless 4 s loop in the dark theme, with the logo, and its poster, into `src/assets/og/` (needs ffmpeg). |
 | `npm run pixels:build` | Refresh the colour grids the intro and loading tiles draw. |
 
 ## The site
