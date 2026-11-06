@@ -5,7 +5,6 @@ import { FOCUS_MAX_DURATION, FOCUS_MIN_DURATION, PAGE_REACH } from '../src/canva
 import { centerDelta, cubicBezier, focusDuration, nearestImageCentre, smoothstep, startSlope } from '../src/canvas/focus';
 import { cellRect, computeGeometry } from '../src/canvas/layout';
 import { CameraPhysics, DRAG_END, DRAG_MOVE, DRAG_START, GLIDE, NUDGE, WHEEL, ZOOM, ZOOM_TO } from '../src/canvas/physics';
-import type { Aspect } from '../src/canvas/world';
 import { createWorld } from '../src/canvas/world';
 
 function started(): CameraPhysics {
@@ -149,7 +148,7 @@ describe('glide timing', () => {
 });
 
 describe('centring a clicked image', () => {
-  const world = createWorld(manifest.map((m) => ({ aspect: m.aspect as Aspect })));
+  const world = createWorld(manifest.map((m) => ({ ratio: m.width / m.height })));
   const [vw, vh] = [1440, 900];
   const g = computeGeometry(vw, vh, world);
 
@@ -473,7 +472,7 @@ describe('paging (zoomed in)', () => {
 });
 
 describe('nearest image', () => {
-  const world = createWorld(manifest.map((m) => ({ aspect: m.aspect as Aspect })));
+  const world = createWorld(manifest.map((m) => ({ ratio: m.width / m.height })));
   const g = computeGeometry(1440, 900, world);
 
   it('finds the closest image centre to any point', () => {

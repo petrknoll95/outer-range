@@ -1,22 +1,29 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media as manifest } from '../src/assets/media';
-import { OVERLAP_BUDGET, PITCH } from '../src/canvas/config';
+import { LONG, OVERLAP_BUDGET, PITCH } from '../src/canvas/config';
 import type { CellRect, Geometry } from '../src/canvas/layout';
 import { cellRect, computeGeometry, forEachCellIn } from '../src/canvas/layout';
-import type { Aspect } from '../src/canvas/world';
-import { createWorld, emptyCell } from '../src/canvas/world';
+import type { World } from '../src/canvas/world';
+import { createWorld, emptyCell, orientation, tileSize } from '../src/canvas/world';
 
-const images = manifest.map((m) => ({ aspect: m.aspect as Aspect }));
+const images = manifest.map((m) => ({ ratio: m.width / m.height }));
 const world = createWorld(images);
+/** A world of every shape, from a 1:3 strip to a 3:1 panorama, for the rules that must hold whatever the work is. */
+const RANGE = [1 / 3, 9 / 21, 9 / 16, 2 / 3, 3 / 4, 4 / 5, 1, 5 / 4, 4 / 3, 3 / 2, 16 / 9, 21 / 9, 3];
+const anyShape = createWorld(Array.from({ length: 78 }, (_, n) => ({ ratio: RANGE[n % RANGE.length]! })));
+const worlds: [string, World][] = [
+  ['the work', world],
+  ['every shape', anyShape],
+];
 /** World geometry in units of S, so tests are independent of any screen. */
 const unitGeometry: Geometry = { vw: 0, vh: 0, s: 1, pitch: PITCH, radius: 0, noRepeatGuaranteed: true };
 
 // Cell indices, mostly near the origin, some far out: ±2^24 cells is ±4·10^9 px at S = 185.
 const index = fc.oneof(fc.integer({ min: -400, max: 400 }), fc.integer({ min: -(2 ** 24), max: 2 ** 24 }));
 
-function rect(i: number, j: number): CellRect {
-  return cellRect(world.cell(i, j), unitGeometry, { left: 0, top: 0, width: 0, height: 0 });
+function rect(i: number, j: number, w: World = world): CellRect {
+  return cellRect(w.cell(i, j), unitGeometry, { left: 0, top: 0, width: 0, height: 0 });
 }
 
 function overlapArea(a: CellRect, b: CellRect): number {
@@ -40,6 +47,36 @@ describe('determinism', () => {
   });
 });
 
+describe('tile sizes', () => {
+  it('keep the shapes the canvas was drawn for', () => {
+    expect(tileSize(4 / 3)).toEqual({ w: LONG, h: 1 });
+    expect(tileSize(3 / 4)).toEqual({ w: 1, h: LONG });
+    expect(tileSize(1)).toEqual({ w: 1, h: 1 });
+  });
+
+  it("keep every image's own shape, inside a LONG × LONG box, short edge at most S", () => {
+    fc.assert(
+      fc.property(fc.double({ min: Math.log(0.2), max: Math.log(5), noNaN: true }), (log) => {
+        const ratio = Math.exp(log);
+        const { w, h } = tileSize(ratio);
+        expect(w / h).toBeCloseTo(ratio, 9);
+        expect(Math.max(w, h)).toBeLessThanOrEqual(LONG);
+        expect(Math.min(w, h)).toBeLessThanOrEqual(1);
+        // As large as the box allows: one side reaches its limit.
+        expect(Math.max(w, h) >= LONG - 1e-12 || Math.min(w, h) >= 1 - 1e-12).toBe(true);
+      }),
+      { numRuns: 10_000 },
+    );
+  });
+
+  it('fit wide and tall images to the long edge', () => {
+    expect(tileSize(16 / 9).w).toBeCloseTo(LONG);
+    expect(tileSize(16 / 9).h).toBeCloseTo(0.75);
+    expect(tileSize(9 / 16).w).toBeCloseTo(0.75);
+    expect(tileSize(9 / 16).h).toBeCloseTo(LONG);
+  });
+});
+
 describe('image slices', () => {
   it('are disjoint, cover every image, and give every class at least two images', () => {
     const all = world.slices.flat();
@@ -49,8 +86,8 @@ describe('image slices', () => {
   });
 
   it('spread each shape evenly, so no class is all one shape more than the counts force', () => {
-    for (const aspect of ['landscape', 'portrait', 'square'] as const) {
-      const perSlice = world.slices.map((slice) => slice.filter((n) => images[n]!.aspect === aspect).length);
+    for (const shape of ['landscape', 'portrait', 'square'] as const) {
+      const perSlice = world.slices.map((slice) => slice.filter((n) => orientation(images[n]!.ratio) === shape).length);
       expect(Math.max(...perSlice) - Math.min(...perSlice)).toBeLessThanOrEqual(1);
     }
   });
@@ -118,48 +155,50 @@ describe('no repeats', () => {
   }
 });
 
-describe('overlap', () => {
-  // Every pair that can touch: right-hand columns (stagger can shift rows by up to 1) and the cell below.
-  const neighbours: [number, number][] = [
-    [1, -2], [1, -1], [1, 0], [1, 1], [1, 2],
-    [0, 1], [0, 2],
-  ];
+for (const [name, w] of worlds) {
+  describe(`overlap, in ${name}`, () => {
+    // Every pair that can touch: right-hand columns (stagger can shift rows by up to 1) and the cell below.
+    const neighbours: [number, number][] = [
+      [1, -2], [1, -1], [1, 0], [1, 1], [1, 2],
+      [0, 1], [0, 2],
+    ];
 
-  it(`no two images overlap by more than ${OVERLAP_BUDGET * 100}% of the smaller one`, () => {
-    let pairs = 0;
-    let overlapping = 0;
-    let worst = 0;
-    fc.assert(
-      fc.property(index, index, (i, j) => {
-        const a = rect(i, j);
-        for (const [di, dj] of neighbours) {
-          const b = rect(i + di, j + dj);
-          const fraction = overlapArea(a, b) / Math.min(a.width * a.height, b.width * b.height);
-          expect(fraction).toBeLessThanOrEqual(OVERLAP_BUDGET + 1e-9);
-          worst = Math.max(worst, fraction);
-          if (Math.abs(dj) <= 1 || di === 0) {
-            pairs++;
-            if (fraction > 0) overlapping++;
+    it(`no two images overlap by more than ${OVERLAP_BUDGET * 100}% of the smaller one`, () => {
+      let pairs = 0;
+      let overlapping = 0;
+      let worst = 0;
+      fc.assert(
+        fc.property(index, index, (i, j) => {
+          const a = rect(i, j, w);
+          for (const [di, dj] of neighbours) {
+            const b = rect(i + di, j + dj, w);
+            const fraction = overlapArea(a, b) / Math.min(a.width * a.height, b.width * b.height);
+            expect(fraction).toBeLessThanOrEqual(OVERLAP_BUDGET + 1e-9);
+            worst = Math.max(worst, fraction);
+            if (Math.abs(dj) <= 1 || di === 0) {
+              pairs++;
+              if (fraction > 0) overlapping++;
+            }
           }
-        }
-      }),
-      { numRuns: 100_000 },
-    );
-    const frequency = overlapping / pairs;
-    console.info(`overlap: ${(frequency * 100).toFixed(2)}% of neighbouring pairs, worst ${(worst * 100).toFixed(1)}%`);
-    expect(frequency).toBeGreaterThan(0);
-    expect(frequency).toBeLessThan(1 / 6);
-  });
+        }),
+        { numRuns: 100_000 },
+      );
+      const frequency = overlapping / pairs;
+      console.info(`overlap in ${name}: ${(frequency * 100).toFixed(2)}% of neighbouring pairs, worst ${(worst * 100).toFixed(1)}%`);
+      expect(frequency).toBeGreaterThan(0);
+      expect(frequency).toBeLessThan(1 / 6);
+    });
 
-  it('images in one column never overlap', () => {
-    fc.assert(
-      fc.property(index, index, (i, j) => {
-        expect(overlapArea(rect(i, j), rect(i, j + 1))).toBe(0);
-      }),
-      { numRuns: 100_000 },
-    );
+    it('images in one column never overlap', () => {
+      fc.assert(
+        fc.property(index, index, (i, j) => {
+          expect(overlapArea(rect(i, j, w), rect(i, j + 1, w))).toBe(0);
+        }),
+        { numRuns: 100_000 },
+      );
+    });
   });
-});
+}
 
 describe('coverage', () => {
   it('every pitch × pitch window touches an image (no empty hole wider than one cell)', () => {

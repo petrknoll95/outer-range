@@ -9,19 +9,11 @@ services:
     items: [Packaging, Editorial, Wayfinding, Signage]
 # Listed after the text, under an Awards title.
 awards: [Awwwards x4, DDA x2, CSSDA x2, The FWA x2]
-# Listed under the awards, the same way, each a link. TODO: the profile URLs.
-social:
-  - name: LinkedIn
-    url: '#'
-  - name: Instagram
-    url: '#'
-  - name: X
-    url: '#'
 ---
 
 ## Good design gives you something to feel, something to recognize, and very little to figure out.
 
-Currently at Off Menu
+A design studio
 
 <!-- services -->
 

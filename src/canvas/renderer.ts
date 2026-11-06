@@ -20,7 +20,6 @@ import { hash, unit } from './hash';
 import type { CellRange, CellRect, Geometry } from './layout';
 import { cellRange } from './layout';
 import type { Lens, LensPoint } from './lens';
-import type { Guest } from './project';
 import type { Trail } from './trail';
 import type { IntroTile } from './intro';
 import { finerGrid, pixelImage } from './pixels';
@@ -31,8 +30,9 @@ import { emptyCell, Z_LEVELS } from './world';
 /** One image as delivered by the page: build-time variants plus a placeholder colour. */
 export interface ClientImage extends WorldImage {
   color: string;
-  /** Its colour grid (pixels.ts). */
+  /** Its colour grid (pixels.ts), and the grid's columns and rows. */
   pixels: string;
+  grid: readonly [number, number];
   /** srcset strings with width descriptors. */
   avif: string;
   webp: string;
@@ -40,7 +40,7 @@ export interface ClientImage extends WorldImage {
   src: string;
   /** A video to play over the image (its poster frame), or none: URLs of its copies (VideoCopies in media.ts). */
   video?: { webm: string; mp4: string; smallWebm: string; smallMp4: string };
-  /** From the image's content entry: shown under the focused view, and the alt text set on every tile. */
+  /** From the image's content entry: its category feeds its project's pills, and the alt text is set on every tile. */
   title: string;
   category: string;
   alt: string;
@@ -148,24 +148,6 @@ const KEY_OFFSET = 2 ** 25;
 const KEY_SCALE = 2 ** 26;
 const cellKey = (i: number, j: number) => (i + KEY_OFFSET) * KEY_SCALE + (j + KEY_OFFSET);
 const SALT_WEIGHT = 7;
-/** Guests (the project view) are tiles of their own, keyed GUEST_KEY + n: above every cell key, still float64-safe. */
-const GUEST_KEY = 2 ** 52;
-/**
- * In the project view, a cell outside the project that would be drawn fainter than this gets no
- * tile: drawing back to see a big project brings a hundred-odd cells into view, nearly all of
- * them already faded right out, and every tile added is a layer to composite that costs frames.
- */
-const PROJECT_FAINT = 0.03;
-/**
- * The project view fades the rest of the canvas by distance from the project: at progress p a
- * tile d world px from its centre is drawn (1 − p·(1 + d / reach))² of its usual opacity, reach
- * being PROJECT_REACH pitches. Far tiles go first and come back last, so the canvas recedes
- * onto the project and opens back out from it, and tiles come and go a few at a time.
- */
-const PROJECT_REACH = 2.5;
-/** In the project view, landed, how much of their usual lag the images trail with. */
-const PROJECT_TRAIL = 0.35;
-
 /** A tile's CSS transform: its top-left corner at (x, y) screen px, scaled about it. */
 const transform = (x: number, y: number, scale: number) => (scale === 1 ? `translate3d(${x}px, ${y}px, 0)` : `translate3d(${x}px, ${y}px, 0) scale(${scale})`);
 
@@ -253,31 +235,6 @@ export class Renderer {
   private readonly fine = new Map<number, NonNullable<IntroTile['fine']>>();
   private readonly fineQueue = new Set<Slot>();
   private videos = true;
-  /**
-   * The project view (project.ts): its guests, by their tiles' keys, or null; the cells of their
-   * copies, whose tiles they took (see setProject) and which get none meanwhile; the focused
-   * image's cell key; and the project's centre, world px.
-   */
-  private guests: Map<number, Guest> | null = null;
-  private readonly lent = new Set<number>();
-  private home = -1;
-  private projectX = 0;
-  private projectY = 0;
-  /** The zoom the project view rests at: a guest that takes no copy's tile is laid out for it from the start. */
-  private projectZoom = 1;
-  /**
-   * How far into the project view it is, 0 (the focused view) to 1 (the project alone):
-   * everything outside the project this much faded away. `projectPlace` is how far the guests
-   * are from their copies to their cells (with reduced motion it jumps while the rest fades).
-   */
-  projectProgress = 0;
-  projectPlace = 0;
-  /**
-   * Landed in the project view, and browsed like the canvas: fades ease as they do there, the
-   * centremost of the project's images is the active one, guests are laid out for the zoom, and
-   * the images trail less (PROJECT_TRAIL).
-   */
-  projectFree = false;
   private readonly slotOf = new Map<Element, Slot>();
   private readonly visibility = new IntersectionObserver((entries) => {
     for (const entry of entries) {
@@ -303,93 +260,6 @@ export class Renderer {
     this.dirty = true;
     // S changed, so every grid position moves; restart trails there instead of springing across.
     this.resetTrails = true;
-  }
-
-  /**
-   * Show `guests` (project.ts) round the focused cell `home`, or (null) the canvas as it is. Each
-   * guest is a tile of its own, over the cells it crosses. One whose copy has a tile takes that
-   * very tile, as it is drawn, image loaded and all, so nothing is seen to change hands: the copy
-   * just sets off. Its cell gets no other tile until the project view ends, when the tiles that
-   * came back go back to their cells as they are (and the rest go). Until it lands
-   * (projectFree) the focused tile stays the active one, so the frame and its label never leave it.
-   */
-  setProject(guests: readonly Guest[] | null, home = { i: 0, j: 0 }, centreX = 0, centreY = 0, zoom = 1): void {
-    this.dirty = true;
-    if (!guests) return this.endProject();
-    this.guests = new Map(guests.map((g, n) => [GUEST_KEY + n, g]));
-    this.home = cellKey(home.i, home.j);
-    this.projectX = centreX;
-    this.projectY = centreY;
-    this.projectZoom = zoom;
-    for (const [key, guest] of this.guests) {
-      const copyKey = guest.copy ? cellKey(guest.copy.i, guest.copy.j) : -1;
-      if (guest.copy) this.lent.add(copyKey);
-      const slot = this.byKey.get(copyKey);
-      if (!slot || slot === this.activeSlot) {
-        this.assign(this.acquire(key), key, guest.i, guest.j, true);
-        continue;
-      }
-      this.byKey.delete(copyKey);
-      this.byKey.set(key, slot);
-      slot.key = key;
-      slot.i = guest.i;
-      slot.j = guest.j;
-      slot.left = guest.to.left;
-      slot.top = guest.to.top;
-      slot.z = Z_LEVELS - 1;
-      this.stack(slot);
-    }
-  }
-
-  private endProject(): void {
-    const guests = this.guests;
-    this.guests = null;
-    this.lent.clear();
-    if (!guests) return;
-    const r = this.lastRange;
-    for (const [key, guest] of guests) {
-      const slot = this.byKey.get(key);
-      if (!slot) continue;
-      this.byKey.delete(key);
-      const c = guest.copy;
-      const copyKey = c ? cellKey(c.i, c.j) : -1;
-      if (c && c.i >= r.i0 && c.i <= r.i1 && c.j >= r.j0 && c.j <= r.j1 && !this.byKey.has(copyKey)) {
-        this.byKey.set(copyKey, slot);
-        this.assign(slot, copyKey, c.i, c.j, false);
-      } else {
-        this.release(slot);
-      }
-    }
-  }
-
-  /** In the project view, how visible a tile outside the project centred at (x, y) world px is drawn. */
-  private outside(x: number, y: number): number {
-    const faded = 1 - (1 - FADE_OPACITY) * this.focus;
-    const reach = PROJECT_REACH * this.geometry!.pitch;
-    const d = Math.hypot(x - this.projectX, y - this.projectY);
-    const k = Math.max(0, 1 - this.projectProgress * (1 + d / reach));
-    return faded * k * k;
-  }
-
-  /** In the project view, whether a cell shows one of the project's images: a guest's, or the focused one. */
-  private member(key: number): boolean {
-    return this.guests !== null && (key >= GUEST_KEY || key === this.home);
-  }
-
-  /** Leaving the project view: the active tile is the one at grid rectangle `rect`, or (null) the focused tile it was opened on. */
-  projectFocus(rect: CellRect | null): void {
-    const slot = rect ? this.active.find((s) => s.left === rect.left && s.top === rect.top) : this.byKey.get(this.home);
-    if (slot) this.setActive(slot);
-  }
-
-  /** In the project view, a cell outside the project too faint to be worth a tile (or one whose tile a guest took). */
-  private faint(key: number, i: number, j: number): boolean {
-    if (!this.guests) return false;
-    if (this.lent.has(key)) return true;
-    if (this.member(key) || key === this.activeSlot?.key) return false;
-    const g = this.geometry!;
-    const cell = this.world.cell(i, j, this.cell);
-    return this.outside(i * g.pitch + cell.dx * g.s, j * g.pitch + cell.dy * g.s) < PROJECT_FAINT;
   }
 
   /** Let videos play (on screen), or hold every one on its frame. */
@@ -434,9 +304,7 @@ export class Renderer {
     const fade = this.trails ? 1 - Math.exp(-h / FADE_TAU) : 1;
     for (const slot of this.active) {
       const target = this.opacityTarget(slot);
-      // The project view sets its fades itself, in step with its moves (see update), until it lands.
-      if (this.guests && !this.projectFree) slot.opacity = target;
-      else slot.opacity = Math.abs(target - slot.opacity) < 0.002 ? target : slot.opacity + (target - slot.opacity) * fade;
+      slot.opacity = Math.abs(target - slot.opacity) < 0.002 ? target : slot.opacity + (target - slot.opacity) * fade;
     }
     if (!this.trails) return;
     const { x, y, z } = cam;
@@ -507,27 +375,20 @@ export class Renderer {
       this.range,
     );
     const last = this.lastRange;
-    // In the project view which cells are faint changes as it goes, so it is redone every frame.
-    if (this.dirty || this.guests || range.i0 !== last.i0 || range.i1 !== last.i1 || range.j0 !== last.j0 || range.j1 !== last.j1) {
+    if (this.dirty || range.i0 !== last.i0 || range.i1 !== last.i1 || range.j0 !== last.j0 || range.j1 !== last.j1) {
       this.reassign(range);
     }
 
     const maxOffset = TRAIL_MAX_OFFSET * g.s * camZ;
     const lensed = this.lensed;
     let nearest: Slot | null = null;
-    const place = 1 - this.projectPlace;
     for (const slot of this.active) {
       limitOffset(slot.trail.ox, slot.trail.oy, maxOffset, this.offset);
       const w = slot.width * camZ;
       const h = slot.height * camZ;
-      // A guest is drawn the rest of the way back towards where it comes from.
-      const guest = this.guests?.get(slot.key);
-      const left = guest ? slot.left + (guest.from.left - slot.left) * place : slot.left;
-      const top = guest ? slot.top + (guest.from.top - slot.top) * place : slot.top;
-      if (this.guests && !this.projectFree) slot.opacity = this.opacityTarget(slot);
       // Centre on screen (grid + trail), relative to the viewport centre, then the lens.
-      const qx = (left - camX) * camZ + this.offset.x + w / 2 - hx;
-      const qy = (top - camY) * camZ + this.offset.y + h / 2 - hy;
+      const qx = (slot.left - camX) * camZ + this.offset.x + w / 2 - hx;
+      const qy = (slot.top - camY) * camZ + this.offset.y + h / 2 - hy;
       this.lens.apply(qx, qy, hx, hy, lensed, w / 2, h / 2);
       // Tiles scale about their top-left corner, so place that corner for the lensed size.
       const x = hx + lensed.x - (w * lensed.scale) / 2;
@@ -536,11 +397,9 @@ export class Renderer {
       slot.drawnWidth = w * lensed.scale;
       slot.drawnHeight = h * lensed.scale;
       slot.distance = Math.hypot(lensed.x, lensed.y);
-      // (In the project view, only its own images can be active.)
-      if ((!nearest || slot.distance < nearest.distance) && (!this.guests || this.member(slot.key))) nearest = slot;
+      if (!nearest || slot.distance < nearest.distance) nearest = slot;
       if (slot.opacity !== slot.cssOpacity) {
-        // Faded right out, it is left out of compositing altogether: the project view fades out
-        // many tiles at once, and drawing invisible layers is what costs frames there.
+        // Faded right out, it is left out of compositing altogether: drawing invisible layers costs frames.
         if ((slot.opacity < 0.004) !== (slot.cssOpacity < 0.004)) slot.el.style.visibility = slot.opacity < 0.004 ? 'hidden' : '';
         slot.cssOpacity = slot.opacity;
         slot.el.style.opacity = slot.opacity === 1 ? '' : slot.opacity.toFixed(3);
@@ -551,10 +410,8 @@ export class Renderer {
       slot.cssScale = scale;
       slot.el.style.transform = transform(x, y, scale);
     }
-    // The centremost image is active; keep the current one unless another is clearly closer (and,
-    // in the project view on its way in or out, keep it whatever: the move is about it).
+    // The centremost image is active; keep the current one unless another is clearly closer.
     const current = this.activeSlot;
-    if (this.guests && !this.projectFree && current && this.byKey.has(current.key)) return;
     if (!current || current.key < 0 || !this.byKey.has(current.key) || (nearest && nearest.distance < current.distance - ACTIVE_SWITCH_MARGIN)) {
       this.setActive(nearest);
     }
@@ -605,15 +462,18 @@ export class Renderer {
     return { x: f.restX + (f.x - f.restX) * k, y: f.restY + (f.y - f.restY) * k, scale: f.restScale + (f.scale - f.restScale) * k };
   }
 
-  /** Draw the flight with the camera `travel` in (see flightTravel), and `left` of each image. `still`: fade only, nothing moves (reduced motion). */
-  drawFlight(travel: number, still = false, left = 1): void {
+  /**
+   * Draw the flight with the camera `travel` in (see flightTravel), and `left` of each image. `still`: fade only, nothing moves (reduced motion).
+   * `view` places each image: flying in (flightView), or backing away for the menu (menuBackView, with `travel` how far back).
+   */
+  drawFlight(travel: number, still = false, left = 1, view: (depth: number, travel: number, out: FlightView) => FlightView = flightView): void {
     const g = this.geometry;
     if (!this.flight || !g) return;
     // The vanishing point is the viewport centre: each tile's corner moves away from it as much as the tile grows.
     const cx = g.vw / 2;
     const cy = g.vh / 2;
     for (const f of this.flight) {
-      const v = flightView(f.depth, travel, this.view);
+      const v = view(f.depth, travel, this.view);
       const s = still ? 1 : v.scale;
       const from = this.flightPlace(f);
       const now = f.now;
@@ -695,12 +555,7 @@ export class Renderer {
 
   private opacityTarget(slot: Slot): number {
     if (slot === this.activeSlot) return 1;
-    const faded = 1 - (1 - FADE_OPACITY) * this.focus;
-    if (!this.guests) return faded;
-    // The project view: its images come in, everything else goes, the furthest first.
-    // (A guest sets off as faded as its copy was, so it is that very tile carrying on.)
-    if (this.member(slot.key)) return faded;
-    return this.outside(slot.left + slot.width / 2, slot.top + slot.height / 2);
+    return 1 - (1 - FADE_OPACITY) * this.focus;
   }
 
   get poolSize(): number {
@@ -787,7 +642,7 @@ export class Renderer {
       width,
       height,
       radius: (g.radius * width) / slot.width,
-      aspect: this.images[slot.image]!.aspect,
+      grid: this.images[slot.image]!.grid,
       pixels: this.images[slot.image]!.pixels,
       opacity: slot.cssOpacity,
       // Finer only where it lands on screen: further out it is only ever seen small and far off.
@@ -822,7 +677,7 @@ export class Renderer {
           blur,
           source: playing ? video : slot.loaded ? slot.img : null,
           pixels: image.pixels,
-          aspect: image.aspect,
+          grid: image.grid,
           live: !slot.loaded || (video !== null && slot.videoSrc !== null && !video.paused),
         };
       });
@@ -915,8 +770,7 @@ export class Renderer {
     const taper = this.zooming
       ? zoomTaperWeight(Math.hypot(cx - this.anchorX, cy - this.anchorY), Math.hypot(hx, hy))
       : taperWeight(cx - hx, cy - hy, this.dirX, this.dirY, hx, hy);
-    // The project view's images trail less: it is a few images browsed close, not a sheet of them.
-    return taperedLag(taper, slot.weight) * (this.guests && this.projectFree ? PROJECT_TRAIL : 1);
+    return taperedLag(taper, slot.weight);
   }
 
   private reassign(range: CellRange): void {
@@ -933,10 +787,7 @@ export class Renderer {
     // and the pool never holds both sets at once.
     for (let n = this.active.length - 1; n >= 0; n--) {
       const slot = this.active[n]!;
-      // (Guests stay for as long as the project view does.)
-      if (slot.key >= GUEST_KEY) continue;
-      const inRange = slot.i >= range.i0 && slot.i <= range.i1 && slot.j >= range.j0 && slot.j <= range.j1;
-      if (inRange && !this.faint(slot.key, slot.i, slot.j)) continue;
+      if (slot.i >= range.i0 && slot.i <= range.i1 && slot.j >= range.j0 && slot.j <= range.j1) continue;
       this.byKey.delete(slot.key);
       this.release(slot);
     }
@@ -945,19 +796,11 @@ export class Renderer {
         const key = cellKey(i, j);
         const slot = this.byKey.get(key);
         if (!slot) {
-          if (this.faint(key, i, j)) continue;
           this.assign(this.acquire(key), key, i, j, true);
         } else if (relayout) {
           this.assign(slot, key, i, j, false);
           if (resetTrails) this.restTrail(slot);
         }
-      }
-    }
-    // Landed, guests are laid out for the zoom like any tile (on the way in, they keep the layout they set off with).
-    if (relayout && this.guests && this.projectFree) {
-      for (const [key, guest] of this.guests) {
-        const slot = this.byKey.get(key);
-        if (slot) this.assign(slot, key, guest.i, guest.j, false);
       }
     }
   }
@@ -1140,25 +983,19 @@ export class Renderer {
   private assign(slot: Slot, key: number, i: number, j: number, fresh: boolean): void {
     const g = this.geometry!;
     const cell = this.world.cell(i, j, this.cell);
-    // A guest (the project view) shows its image instead, in that image's shape.
-    const guest = this.guests?.get(key);
-    const image = guest ? guest.image : cell.image;
-    const width = guest ? guest.to.width : cell.w * g.s;
-    const height = guest ? guest.to.height : cell.h * g.s;
-    slot.left = guest ? guest.to.left : i * g.pitch + cell.dx * g.s - width / 2;
-    slot.top = guest ? guest.to.top : j * g.pitch + cell.dy * g.s - height / 2;
+    const image = cell.image;
+    const width = cell.w * g.s;
+    const height = cell.h * g.s;
+    slot.left = i * g.pitch + cell.dx * g.s - width / 2;
+    slot.top = j * g.pitch + cell.dy * g.s - height / 2;
     slot.i = i;
     slot.j = j;
     slot.key = key;
     slot.width = width;
     slot.height = height;
-    // Arriving mid zoom-to, a tile is laid out for the zoom as it is now: sharp from the start. A
-    // guest is laid out for the zoom the project view rests at, where it is seen still: laid out
-    // for the focused view instead, a big project's guests would all fetch and decode their
-    // largest images at once as it opens.
-    this.layOut(slot, guest && !this.projectFree ? this.projectZoom : fresh && this.holding ? this.camZ : this.layoutZoom);
-    // A guest goes over the cells it crosses (under the frame).
-    slot.z = guest ? Z_LEVELS - 1 : cell.z;
+    // Arriving mid zoom-to, a tile is laid out for the zoom as it is now: sharp from the start.
+    this.layOut(slot, fresh && this.holding ? this.camZ : this.layoutZoom);
+    slot.z = cell.z;
     this.stack(slot);
     if (fresh) {
       // Arrive already faded (or not), like the tiles around it.

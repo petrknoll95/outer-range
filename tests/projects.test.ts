@@ -4,7 +4,7 @@ import { media as manifest } from '../src/assets/media';
 import projectsJson from '../src/content/projects.json';
 import { resolveImages } from '../src/canvas/images';
 import type { ProjectEntry } from '../src/canvas/projects';
-import { createProjectIndex, MIN_PROJECT_IMAGES, resolveProjects } from '../src/canvas/projects';
+import { createProjectIndex, MIN_PROJECT_IMAGES, projectCategories, resolveProjects } from '../src/canvas/projects';
 import { readImageEntries } from './entries';
 
 // Image ids in manifest order, as the page resolves them.
@@ -86,5 +86,14 @@ describe('createProjectIndex', () => {
     expect(index.byId('no-such-project')).toBeUndefined();
     expect(index.projectOf(ids.length + 5)).toBe(-1);
     expect(index.siblings(-1)).toEqual([]);
+  });
+});
+
+describe('projectCategories', () => {
+  const images = [{ category: 'Website' }, { category: 'Brand' }, { category: 'Website' }, { category: 'Development' }, { category: 'Logo' }];
+
+  it('lists the categories of the project’s own images, each once, in CATEGORIES order', () => {
+    expect(projectCategories({ id: 'a', title: 'A', images: [0, 1, 2, 3] }, images)).toEqual(['Brand', 'Website', 'Development']);
+    expect(projectCategories({ id: 'b', title: 'B', images: [2, 0] }, images)).toEqual(['Website']);
   });
 });

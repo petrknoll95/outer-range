@@ -2,8 +2,9 @@
 // Usage: node scripts/videos/build-videos.mjs <source folder>
 //
 // For each video (.mp4, .mov or .webm) in the folder:
-// 1. Picks its aspect class (4:3, 3:4, 1:1): the one nearest its ratio, unless ASPECT says otherwise.
-// 2. Crops it to that ratio about the centre, scales it to at most MAX_SHORT_EDGE, drops the
+// 1. Keeps its own shape, as the canvas draws every image at its own ratio (src/canvas/world.ts,
+//    tileSize), unless CROP gives it another or it is longer than MAX_RATIO to a side.
+// 2. Crops it to that about the centre, if it has to, scales it to at most MAX_SHORT_EDGE, drops the
 //    audio and encodes it twice: VP9 WebM, smaller for the same quality, which browsers play
 //    where they can, and H.264 MP4 (faststart, so it plays before it has all loaded) for the
 //    rest. A second pair, SMALL_SHORT_EDGE, is for tiles drawn small: decoding the full one
@@ -11,21 +12,24 @@
 // 3. Takes a poster frame from the encoded video (at POSTER, as a fraction of its length): the
 //    tile shows it until the video plays, and it is what the page builds image variants from.
 // 4. Records the files, size, dominant colour, colour grid and length in src/assets/videos/manifest.json.
+// Videos already in the manifest and not in the folder stay as they are, so a folder of new videos
+// adds to them; one named like an existing video replaces it, in its place, so no other moves.
 //
 // Needs ffmpeg and ffprobe on the PATH.
 import sharp from 'sharp';
-import { pixelGrid } from '../pixels/pixel-grid.mjs';
+import { gridSize, pixelGrid } from '../pixels/pixel-grid.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 const OUT = fileURLToPath(new URL('../../src/assets/videos/', import.meta.url));
 const MAX_SHORT_EDGE = 1080;
 const SMALL_SHORT_EDGE = 360;
-const RATIOS = { landscape: 4 / 3, portrait: 3 / 4, square: 1 };
-/** Videos whose subject the nearest crop would cut. */
-const ASPECT = { 'subzero-cans': 'portrait', 'oxyd-drink': 'portrait' };
+/** The longest a video may be, long side over short; a longer one is cropped to it. */
+const MAX_RATIO = 3;
+/** Videos cropped to another ratio, width over height: these keep the portrait tile shape they were framed for. */
+const CROP = { 'subzero-cans': 3 / 4, 'oxyd-drink': 3 / 4, 'topset-carousel': 3 / 4 };
 /** Where the poster frame comes from, as a fraction of the length; the default is a third of the way. */
 const POSTER = { 'subzero-cans': 0, 'experimental-navigation-1': 0, 'offmenu-website': 0.85, 'oxyd-drink': 0 };
 
@@ -38,28 +42,27 @@ if (!source) {
 const run = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8' });
 /** VP9 in constant-quality mode (CRF, no bitrate cap), row-threaded so it encodes in reasonable time. */
 const vp9 = (crf) => ['-an', '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', String(crf), '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', '-pix_fmt', 'yuv420p'];
+// As JSON: some files list a stream's size twice, which shifts a plain line-by-line reading.
 const probe = (file) => {
-  const [width, height, duration] = run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'default=nw=1:nk=1', file])
-    .trim()
-    .split('\n')
-    .map(Number);
-  return { width, height, duration };
+  const { streams, format } = JSON.parse(run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', file]));
+  return { width: streams[0].width, height: streams[0].height, duration: Number(format.duration) };
 };
 const even = (n) => Math.round(n / 2) * 2;
+/** The even number of pixels at or below n (to the nearest pixel), so a crop never asks for more than the frame has. */
+const evenDown = (n) => Math.floor(Math.round(n) / 2) * 2;
 
-rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-const manifest = [];
+const MANIFEST = join(OUT, 'manifest.json');
+const manifest = existsSync(MANIFEST) ? JSON.parse(readFileSync(MANIFEST, 'utf8')) : [];
 
 for (const name of readdirSync(source).filter((f) => /\.(mp4|mov|webm)$/i.test(f)).sort()) {
   const id = name.replace(/\.[^.]+$/, '');
   const input = join(source, name);
   const { width, height } = probe(input);
   const ratio = width / height;
-  const aspect = ASPECT[id] ?? Object.entries(RATIOS).sort(([, a], [, b]) => Math.abs(Math.log(ratio / a)) - Math.abs(Math.log(ratio / b)))[0][0];
-  const target = RATIOS[aspect];
-  // The largest centred rectangle of the target ratio, then scaled down to the short-edge cap.
-  const crop = ratio > target ? { w: even(height * target), h: height } : { w: width, h: even(width / target) };
+  const target = CROP[id] ?? Math.min(MAX_RATIO, Math.max(1 / MAX_RATIO, ratio));
+  // The largest centred rectangle of the target ratio (the whole frame, unless it is cropped), then scaled down to the short-edge cap.
+  const crop = ratio > target ? { w: evenDown(height * target), h: evenDown(height) } : { w: evenDown(width), h: evenDown(width / target) };
   const scale = Math.min(1, MAX_SHORT_EDGE / Math.min(crop.w, crop.h));
   const out = { w: even(crop.w * scale), h: even(crop.h * scale) };
 
@@ -91,8 +94,13 @@ for (const name of readdirSync(source).filter((f) => /\.(mp4|mov|webm)$/i.test(f
   const { dominant } = await sharp(join(OUT, poster)).stats();
   const color = '#' + [dominant.r, dominant.g, dominant.b].map((n) => n.toString(16).padStart(2, '0')).join('');
 
-  manifest.push({ file: video, webm, small, smallWebm, poster, aspect, width: out.w, height: out.h, color, pixels: await pixelGrid(join(OUT, poster), aspect), duration: Math.round(duration * 100) / 100, source: name });
-  console.log(`${video}: ${aspect} ${out.w}×${out.h}, ${duration.toFixed(1)} s`);
+  const grid = gridSize(out.w, out.h);
+  const entry = { file: video, webm, small, smallWebm, poster, grid, width: out.w, height: out.h, color, duration: Math.round(duration * 100) / 100, source: name, pixels: await pixelGrid(join(OUT, poster), grid) };
+  const previous = manifest.findIndex((m) => m.file === video);
+  if (previous < 0) manifest.push(entry);
+  else manifest[previous] = entry;
+  // After each video, so a run stopped part way leaves the manifest true to the files.
+  writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
+  const cropped = crop.w * crop.h < (width - 1) * (height - 1) ? `, cropped from ${width}×${height}` : '';
+  console.log(`${video}: ${out.w}×${out.h} (${(out.w / out.h).toFixed(3)})${cropped}, ${duration.toFixed(1)} s`);
 }
-
-writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');

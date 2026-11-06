@@ -37,6 +37,16 @@ test('the about view has the same header, with Back in place of About', async ({
   expect([about.link.type, about.link.top, about.link.bottom, about.link.right]).toEqual([home.link.type, home.link.top, home.link.bottom, home.link.right]);
   await expect(page.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/');
   await expect(page.getByRole('link', { name: 'About' })).toHaveCount(0);
+  // Its key stays A, and ESC joins it, as either goes back: pills like the info bar's keys, as tall.
+  const hint = page.locator('header [data-hint="about"]');
+  await expect(hint).toHaveAttribute('data-active', '');
+  await expect(hint.locator('[data-hint-key]')).toHaveText('A');
+  const esc = hint.locator('[data-hint-esc]');
+  await expect(esc).toHaveText('ESC');
+  await expect(esc).toHaveCSS('opacity', '1');
+  const pill = (el: Element) => Math.round(el.getBoundingClientRect().height * 10);
+  const infoKey = page.getByRole('complementary', { name: 'Controls' }).getByText('L', { exact: true }).locator('..');
+  expect(await esc.evaluate(pill)).toEqual(await infoKey.evaluate(pill));
   await expect(page).toHaveTitle('About · Outer Range');
 });
 
@@ -46,7 +56,7 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   const article = page.locator('article.about');
   // The statement (under the wordmark, the page's h1), the line under it, then four chapters.
   await expect(article.locator(':scope > h2')).toHaveText('Good design gives you something to feel, something to recognize, and very little to figure out.');
-  await expect(article.locator(':scope > h2 + p')).toHaveText('Currently at Off Menu');
+  await expect(article.locator(':scope > h2 + p')).toHaveText('A design studio');
   // Each numeral is dead centre, in the statement's serif and size, with "Chapter" on its left and its title on its right.
   await expect(article.locator(':scope > h3 .numeral')).toHaveText(['I', 'II', 'III', 'IV']);
   await expect(article.locator(':scope > h3')).toHaveText(['Chapter I On Intent', 'Chapter II On Philosophy', 'Chapter III On Process', 'Chapter IV On Ethics']);
@@ -90,7 +100,7 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
   // The services, between the statement and the chapters: a group per column, in order.
   const services = article.getByRole('region', { name: 'Services' });
   expect(await services.evaluate((s) => [s.previousElementSibling!.textContent, s.nextElementSibling!.textContent])).toEqual([
-    'Currently at Off Menu',
+    'A design studio',
     'Chapter I On Intent',
   ]);
   await expect(services.getByRole('heading', { level: 3 })).toHaveText(['Digital Design', 'Branding', 'Print Design']);
@@ -108,15 +118,11 @@ test('its text sits in a narrow column, centred, over the flown-past canvas', as
     'Wayfinding',
     'Signage',
   ]);
-  // After the chapters, the awards: a title over the list, in the serif.
+  // Last, after the chapters, the awards: a title over the list, in the serif.
   const awards = article.getByRole('region', { name: 'Awards' });
+  expect(await awards.evaluate((s) => s === s.parentElement!.lastElementChild)).toBe(true);
   await expect(awards.getByRole('listitem')).toHaveText(['Awwwards x4', 'DDA x2', 'CSSDA x2', 'The FWA x2']);
   expect(await awards.getByRole('list').evaluate((l) => getComputedStyle(l).fontFamily)).toMatch(/^"Timeless Serif/);
-  // Last, the social links, listed the same way.
-  const social = article.getByRole('region', { name: 'Social' });
-  expect(await social.evaluate((s) => s === s.parentElement!.lastElementChild && s.previousElementSibling!.matches('[aria-labelledby="awards"]'))).toBe(true);
-  await expect(social.getByRole('link')).toHaveText(['LinkedIn', 'Instagram', 'X']);
-  expect(await social.getByRole('list').evaluate((l) => getComputedStyle(l).fontFamily)).toMatch(/^"Timeless Serif/);
   // Side by side: the three groups start on one line.
   const tops = await services.getByRole('heading', { level: 3 }).evaluateAll((hs) => hs.map((h) => Math.round(h.getBoundingClientRect().top)));
   expect(new Set(tops).size).toBe(1);

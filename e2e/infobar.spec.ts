@@ -9,16 +9,20 @@ interface Api {
 const settled = (page: Page) =>
   page.waitForFunction(() => (window as unknown as { __canvas?: Api }).__canvas?.isSettled(), null, { timeout: 30_000 });
 
-test('the info bar sits at the bottom right, set like the header, and lets the canvas take the pointer', async ({ page }) => {
+test('the info bar spans the bottom: moving and the theme at the left, the menu at the right, set like the header, and lets the canvas take the pointer', async ({ page }) => {
   await page.goto('/?test');
   await settled(page);
   const bar = page.getByRole('complementary', { name: 'Controls' });
   await expect(bar).toBeVisible();
-  await expect(bar.getByRole('listitem')).toHaveText(['Drag/Pinch/Scroll', 'ESCNavigate', 'PProject', 'LTheme', 'AAbout']);
+  await expect(bar.getByRole('listitem')).toHaveText(['Drag/Pinch/Scroll', 'LTheme', 'SESCStart a project', 'MESCMenu']);
   const box = (await bar.boundingBox())!;
-  // 24 px in from the right like the header's link, on a 36 px band 16 px up from the bottom like the header's.
+  // 24 px in from either side like the header's link, on a 36 px band 16 px up from the bottom like the header's.
   const list = (await bar.getByRole('list').boundingBox())!;
+  expect(list.x).toBeCloseTo(24, 0);
   expect(1440 - (list.x + list.width)).toBeCloseTo(24, 0);
+  const [drag, menu] = await Promise.all([bar.getByRole('listitem').first().boundingBox(), bar.getByRole('listitem').last().boundingBox()]);
+  expect(drag!.x).toBeCloseTo(24, 0);
+  expect(1440 - (menu!.x + menu!.width)).toBeCloseTo(24, 0);
   expect(900 - (box.y + box.height)).toBeCloseTo(16, 0);
   expect(box.height).toBeCloseTo(36, 0);
   const style = await bar.evaluate((el) => ({ blend: getComputedStyle(el).mixBlendMode, colour: getComputedStyle(el).color, pointer: getComputedStyle(el).pointerEvents }));
@@ -31,8 +35,6 @@ test('the info bar sits at the bottom right, set like the header, and lets the c
     [true, 13],
     [true, 24],
     [true, 8],
-    [true, 20],
-    [true, 20],
   ]);
 });
 

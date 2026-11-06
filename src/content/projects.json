@@ -4,7 +4,6 @@
     "title": "Off Menu",
     "year": 2026,
     "images": [
-      "offmenu-showreel",
       "offmenu-website",
       "offmenu-navigation",
       "subzero-cans",
@@ -33,16 +32,9 @@
     "title": "Tenacity Capital",
     "year": 2025,
     "images": [
-      "tenacity-card",
       "tenacity-mark",
       "tenacity-phone",
-      "tenacity-website",
-      "tenacity-building",
-      "tenacity-phone-thesis",
-      "tenacity-accents",
-      "tenacity-type",
-      "tenacity-wordmark",
-      "tenacity-palette"
+      "tenacity-wordmark"
     ]
   },
   {
@@ -54,18 +46,11 @@
       "ditto-mark",
       "ditto-guidelines",
       "ditto-bluetooth",
-      "ditto-wordmark",
-      "ditto-website-crew",
       "ditto-point-of-sale",
-      "ditto-phones",
       "ditto-icons",
       "ditto-palette",
-      "ditto-dot-grid",
-      "ditto-typography",
-      "ditto-pricing",
-      "ditto-install",
-      "ditto-mesh",
-      "ditto-in-hand"
+      "ditto-in-hand",
+      "ditto-reel"
     ]
   },
   {
@@ -74,7 +59,6 @@
     "year": 2025,
     "images": [
       "topset-carousel",
-      "ts-logo-spin",
       "crocs-rnd",
       "remi-logo",
       "3d-icons",
@@ -121,7 +105,8 @@
       "resonant-integrations",
       "resonant-compliance",
       "resonant-invoice-processor",
-      "resonant-statement"
+      "resonant-statement",
+      "resonant-reel"
     ]
   },
   {
@@ -130,7 +115,6 @@
     "year": 2025,
     "images": [
       "controltower-components",
-      "controltower-empty-state",
       "controltower-filters",
       "controltower-agency",
       "controltower-workload",
@@ -149,11 +133,9 @@
     "title": "Hanover Park",
     "images": [
       "hanover-park-merch",
-      "hanover-park-website",
-      "hanover-park-app",
-      "hanover-park-guidelines",
       "hanover-park-logo",
-      "hanover-park-palette"
+      "hanover-park-palette",
+      "hanover-park-reel"
     ]
   },
   {
@@ -165,16 +147,8 @@
       "super-wordmark",
       "super-app",
       "super-icons",
-      "super-wordmark-dark",
-      "super-guidelines",
-      "super-clear-space",
-      "super-logo-system",
-      "super-colours",
-      "super-lesson",
-      "super-in-hand",
-      "super-onboarding-mobile",
-      "super-onboarding",
-      "super-landing"
+      "super-landing",
+      "superintelligent-reel"
     ]
   },
   {
@@ -182,17 +156,13 @@
     "title": "Utility",
     "year": 2024,
     "images": [
-      "utility-wordmark",
-      "utility-mark",
       "utility-sign",
       "utility-bottle",
-      "utility-laptop",
       "utility-case-studies",
       "utility-site-pages",
-      "utility-monitor",
       "utility-icons",
       "utility-testimonial",
-      "utility-footer"
+      "utility-reel"
     ]
   },
   {
@@ -202,7 +172,6 @@
       "closetnow-sign",
       "closetnow-laptop",
       "closetnow-tablet",
-      "closetnow-interior",
       "closetnow-pattern",
       "closetnow-pages",
       "closetnow-playbook",
@@ -219,21 +188,20 @@
       "flex-posters",
       "flex-billboard",
       "flex-illustration",
-      "flex-colourful",
-      "flex-wordmark",
       "flex-mark",
-      "flex-mural",
-      "flex-business-cards",
       "flex-icons",
       "flex-app-screens",
       "flex-guidelines-spread",
-      "flex-identity-system",
-      "flex-safe-space",
-      "flex-colour-palette",
-      "flex-colour-story",
-      "flex-wordmark-white",
-      "flex-illustration-white",
-      "flex-illustration-team"
+      "flex-reel"
+    ]
+  },
+  {
+    "id": "perceptron",
+    "title": "Perceptron",
+    "images": [
+      "perceptron-reel",
+      "perceptron-mark",
+      "perceptron-identity"
     ]
   }
 ]

@@ -1,9 +1,8 @@
-import { INTRO_ABERRATION, INTRO_ABERRATION_SPEED, INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE, PIXEL_GRID } from './config';
+import { INTRO_ABERRATION, INTRO_ABERRATION_SPEED, INTRO_FOG_CLEAR, INTRO_FOG_DEPTH, INTRO_FOG_FAR, INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_EASE, INTRO_HANDOVER, INTRO_LINE_AREA, INTRO_LINE_WIDTH, INTRO_LINES, INTRO_PACE, INTRO_SHUTTER, INTRO_SPREAD, INTRO_THIN, INTRO_TILE_PACE } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { Rgb } from './pixels';
 import { hexRgb, pixelColor } from './pixels';
-import type { Aspect } from './world';
 
 /**
  * The intro, as a pinhole camera: the canvas is the focal plane, and something at depth D is
@@ -28,9 +27,9 @@ export interface IntroTile {
   width: number;
   height: number;
   radius: number;
-  aspect: Aspect;
-  /** Its colour grid. */
+  /** Its colour grid, and the grid's columns and rows. */
   pixels: string;
+  grid: readonly [number, number];
   /** A finer grid, sampled from its image as drawn: columns, rows and RGBA bytes, in place of `pixels`. */
   fine?: { cols: number; rows: number; rgba: Uint8ClampedArray };
   /** How opaque it is drawn (faded round a focused image or a project): its rays are as faint. 1 if not given. */
@@ -301,8 +300,8 @@ const rayDepth: RayDepth = { thin: 0, depth: 0, travel: 0, pace: 0 };
  */
 export function putRays(put: Put, tile: IntroTile, detail: Detail, ray: (n: number, out: RayDepth) => void): void {
   const { fine } = tile;
-  const [coarseCols] = PIXEL_GRID[tile.aspect];
-  const [cols, rows] = fine ? [fine.cols, fine.rows] : PIXEL_GRID[tile.aspect];
+  const [coarseCols] = tile.grid;
+  const [cols, rows] = fine ? [fine.cols, fine.rows] : tile.grid;
   const finer = cols / coarseCols;
   const hx = tile.width / 2;
   const hy = tile.height / 2;

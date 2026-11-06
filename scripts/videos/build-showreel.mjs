@@ -1,13 +1,14 @@
 // Add the Off Menu showreel (the one on offmenu.design/services) without rebuilding or deleting existing media.
 // Source: the om2026 repo, public/videos/showreel.mp4 (1920×1080, 30 fps, 40.6 s). Its footage runs to its
-// edges, so it is set whole on white in a 4:3 tile, as work images are (scripts/work, INSET), not cropped.
+// edges, so it is set whole on white in a 4:3 tile, not cropped: the shape every tile had when it was built.
+// The canvas now takes any ratio, so it could go in at 16:9 as it is.
 // Usage: node scripts/videos/build-showreel.mjs [path to showreel.mp4]
 import {execFileSync} from 'node:child_process';
 import {homedir} from 'node:os';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import sharp from 'sharp';
-import {pixelGrid} from '../pixels/pixel-grid.mjs';
+import {gridSize,pixelGrid} from '../pixels/pixel-grid.mjs';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const source=process.argv[2]??`${homedir()}/Documents/GitHub/om2026/public/videos/showreel.mp4`;
@@ -30,9 +31,9 @@ const {dominant}=await sharp(`${out}${poster}`).stats();
 const duration=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',source],{encoding:'utf8'}).trim());
 const entry={
  file:`${id}.mp4`,webm:`${id}.webm`,small:`${id}-small.mp4`,smallWebm:`${id}-small.webm`,poster,
- aspect:'landscape',width:1440,height:1080,
+ grid:gridSize(1440,1080),width:1440,height:1080,
  color:'#'+[dominant.r,dominant.g,dominant.b].map(n=>n.toString(16).padStart(2,'0')).join(''),
- pixels:await pixelGrid(`${out}${poster}`,'landscape'),duration,
+ pixels:await pixelGrid(`${out}${poster}`,gridSize(1440,1080)),duration,
  source:'om2026/public/videos/showreel.mp4',
 };
 const manifestPath=`${out}manifest.json`;

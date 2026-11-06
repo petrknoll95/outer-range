@@ -1,8 +1,7 @@
-import { GLASS_BAND, GLASS_CURVE, GLASS_DISPERSION, GLASS_DPR, GLASS_STRENGTH, PIXEL_GRID } from './config';
+import { GLASS_BAND, GLASS_CURVE, GLASS_DISPERSION, GLASS_DPR, GLASS_STRENGTH } from './config';
 import type { GlassText } from './glasstext';
 import { program, software } from './introlayer';
 import { pixelColor } from './pixels';
-import type { Aspect } from './world';
 
 /**
  * The glass edges: the top and bottom GLASS_BAND of the window, seen as through the edge of a
@@ -31,9 +30,9 @@ export interface GlassTile {
   blur: number;
   /** What it shows: its image or video, or (null) its colour grid until either is in. */
   source: HTMLImageElement | HTMLVideoElement | null;
-  /** Its colour grid (pixels.ts). */
+  /** Its colour grid (pixels.ts), and the grid's columns and rows. */
   pixels: string;
-  aspect: Aspect;
+  grid: readonly [number, number];
   /** Whether what it shows can change while it stands still: a video playing, an image still to come in. */
   live: boolean;
 }
@@ -256,7 +255,7 @@ export class GlassLayer {
     if (!source) {
       let t = this.textures.get(tile.pixels);
       if (!t) {
-        const [width, height] = PIXEL_GRID[tile.aspect];
+        const [width, height] = tile.grid;
         const data = new Uint8Array(width * height * 4);
         for (let n = 0; n < width * height; n++) {
           const c = Number.parseInt(pixelColor(tile.pixels, n), 16);

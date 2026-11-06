@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 interface Api {
   isSettled: () => boolean;
-  world: { cell: (i: number, j: number) => { image: number; dx: number; dy: number } };
+  world: { cell: (i: number, j: number) => { image: number; w: number; h: number; dx: number; dy: number } };
   geometry: () => { pitch: number; s: number; vw: number; vh: number };
   physics: { jumpTo: (x: number, y: number, z: number) => void };
   onFrame: (fn: () => void) => () => void;
@@ -29,9 +29,12 @@ interface Clip {
   small: string;
 }
 
-/** Centre the view on the nearest cell showing a video; returns that video's URLs. */
-async function centreOnVideo(page: Page): Promise<Clip> {
-  const clip = await page.evaluate(() => {
+/**
+ * Centre the view on the nearest cell showing a video; returns that video's URLs. `fullSize`: only
+ * a tile at least S on its short edge, which zoomed in is drawn past the small copy (a 16:9 one isn't).
+ */
+async function centreOnVideo(page: Page, fullSize = false): Promise<Clip> {
+  const clip = await page.evaluate((fullSize) => {
     const api = (window as unknown as { __canvas: Api }).__canvas;
     type Copies = { webm: string; mp4: string; smallWebm: string; smallMp4: string };
     const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as { images: { video?: Copies }[] };
@@ -44,7 +47,7 @@ async function centreOnVideo(page: Page): Promise<Clip> {
           if (Math.max(Math.abs(i), Math.abs(j)) !== r) continue;
           const cell = api.world.cell(i, j);
           const { video } = data.images[cell.image]!;
-          if (!video) continue;
+          if (!video || (fullSize && Math.min(cell.w, cell.h) < 1)) continue;
           const cx = i * g.pitch + cell.dx * g.s;
           const cy = j * g.pitch + cell.dy * g.s;
           api.physics.jumpTo(cx - g.vw / 2, cy - g.vh / 2, 1);
@@ -53,7 +56,7 @@ async function centreOnVideo(page: Page): Promise<Clip> {
       }
     }
     throw new Error('No video within 12 cells.');
-  });
+  }, fullSize);
   await redraw(page);
   await settled(page);
   return { full: new URL(clip.full, page.url()).href, small: new URL(clip.small, page.url()).href };
@@ -108,7 +111,7 @@ test('a video tile on screen plays, muted and looping, over its poster frame', a
 test('zoomed out a tile plays the small copy; zoomed in on, it swaps to the full one and carries on', async ({ page }) => {
   await page.goto('/?test');
   await settled(page);
-  const clip = await centreOnVideo(page);
+  const clip = await centreOnVideo(page, true);
   await expect.poll(async () => (await centreVideo(page, clip))?.shown, { timeout: 10_000 }).toBe(true);
   expect((await centreVideo(page, clip))!.copy).toBe('small');
   await page.waitForTimeout(800);

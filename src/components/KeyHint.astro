@@ -1,0 +1,58 @@
+---
+/**
+ * A key hint for a view (hint.ts): its key, then what it does, as a link or a list item. While its
+ * view is open (the about view, the menu, Start a project…) it takes `data-active`: the label
+ * slides through its mask to `activeLabel` (Back, Close: src/canvas/hints.ts, setHint), and then an
+ * ESC is added to the right of the key, the key moving left to make room, as either key now leaves
+ * the view. The label never moves for it: the ESC comes in over where the key was. Only opacity and
+ * transforms change.
+ */
+import type { HTMLAttributes } from 'astro/types';
+import { ESC_GAP, ESC_WIDTH, glyph, label, pill } from './hint';
+
+interface Props extends HTMLAttributes<'a'> {
+  /** Which view's (setHint finds it by this). */
+  name: string;
+  /** Its key: a letter. */
+  letter: string;
+  label: string;
+  activeLabel: string;
+  active?: boolean;
+  as?: 'a' | 'li';
+  /** Only where there are keys to press (a fine pointer); without them it is the label alone. */
+  keysOnlyWithKeyboard?: boolean;
+  /** Extra attributes for the label. */
+  labelAttributes?: Record<string, string>;
+}
+
+const { name, letter, label: text, activeLabel, active = false, as: Tag = 'li', keysOnlyWithKeyboard = false, labelAttributes = {}, class: className, ...rest } = Astro.props;
+// After the label has changed, the ESC comes in and the key makes room; leaving, both go at once.
+const move = 'transition-[translate,opacity,scale] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-data-active/hint:delay-150 motion-reduce:transition-none';
+---
+
+<Tag
+  data-hint={name}
+  data-label={text}
+  data-active-label={activeLabel}
+  data-active={active ? '' : undefined}
+  class:list={['group/hint flex items-center gap-[9.6px]', className]}
+  {...rest}
+>
+  <span class:list={['relative', keysOnlyWithKeyboard ? 'hidden [@media(hover:hover)_and_(pointer:fine)]:flex' : 'flex']}>
+    <span aria-hidden="true" data-hint-key class:list={[pill, 'w-6', move, 'group-data-active/hint:-translate-x-(--hint-shift)']} style={`--hint-shift: ${ESC_WIDTH + ESC_GAP}px`}>
+      <span class={glyph}>{letter}</span>
+    </span>
+    <span
+      aria-hidden="true"
+      data-hint-esc
+      class:list={[pill, 'absolute right-0', move, 'scale-75 opacity-0 group-data-active/hint:scale-100 group-data-active/hint:opacity-100']}
+      style={`width: ${ESC_WIDTH}px`}
+    >
+      <span class={glyph}>ESC</span>
+    </span>
+  </span>
+  <!-- A mask with a little room above and below the letters, for the label to slide through. -->
+  <span class="-my-[0.15em] overflow-hidden py-[0.15em]">
+    <span data-hint-label class:list={[label, 'block']} {...labelAttributes}>{active ? activeLabel : text}</span>
+  </span>
+</Tag>

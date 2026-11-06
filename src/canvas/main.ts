@@ -1,14 +1,14 @@
 import { gsap } from 'gsap';
 import { ScrollSmoother } from 'gsap/ScrollSmoother';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { FocusCaption } from './caption';
-import { LONG, FLIGHT_DURATION, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_CRUISE, INTRO_HANDOVER, INTRO_WAIT, SEED, STEP, ZOOM_DURATION, ZOOM_NARROW } from './config';
+import { LONG, FLIGHT_DURATION, FLIGHT_EASE, FOCUS_FRAME_RETURN, FLIGHT_REDUCED_DURATION, FLIGHT_RETURN_DURATION, INTRO_CRUISE, INTRO_HANDOVER, INTRO_WAIT, MENU_BACK, MENU_BACK_ABOUT, MENU_RETURN_DURATION, MENU_RETURN_EASE, PROJECT_COLUMN, PROJECT_COLUMN_MAX, SEED, STEP, ZOOM_DURATION, ZOOM_NARROW } from './config';
 import type { FlightView } from './flight';
-import { flightFar, flightFrame, flightHandover, flightInstances, flightTravel } from './flight';
+import { flightFar, flightFrame, flightHandover, flightInstances, flightTravel, menuBackEase, menuBackView } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
 import { GlassLayer } from './glass';
 import { GlassText } from './glasstext';
+import { setHint } from './hints';
 import { attachInput } from './input';
 import type { IntroFrame } from './intro';
 import { INTRO_FARTHEST, INTRO_LENGTH, INTRO_STRIDE, introBuild, introFrame, introInstances, introPalette } from './intro';
@@ -19,11 +19,12 @@ import { computeGeometry, sizingReach, zoomInFor, zoomInLevel } from './layout';
 import { DEFAULT_LENS, Lens } from './lens';
 import type { Snapper } from './physics';
 import { CameraPhysics, GLIDE, ZOOM_TO } from './physics';
+import { ProjectHint } from './projecthint';
 import { ProjectLabel } from './projectlabel';
-import type { Guest } from './project';
-import { clusterBounds, projectGuests } from './project';
+import type { Leg } from './projectview';
+import { ProjectView } from './projectview';
 import type { ClientProject } from './projects';
-import { createProjectIndex } from './projects';
+import { createProjectIndex, projectCategories } from './projects';
 import type { CameraStep, CanvasData } from './renderer';
 import type { Rgb } from './pixels';
 import { pixelColors } from './pixels';
@@ -34,11 +35,15 @@ const root = document.querySelector<HTMLElement>('[data-canvas]')!;
 const layer = root.querySelector<HTMLElement>('[data-canvas-layer]')!;
 const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as CanvasData & { projects: ClientProject[] };
 const projects = createProjectIndex(data.projects, data.images.length);
+/** Each project's categories, by index into projects.projects. */
+const categoriesOf = projects.projects.map((p) => projectCategories(p, data.images));
 
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
 
 const world = createWorld(data.images);
+/** Every image's width over height, for the zoom limit. */
+const ratios = data.images.map((image) => image.ratio);
 // `?flat` turns the watchOS-style lens off, for comparison.
 const lens = new Lens(params.has('flat') ? null : DEFAULT_LENS);
 const physics = new CameraPhysics();
@@ -46,16 +51,17 @@ physics.snapper = (x, y, z) => snapper(x, y, z);
 const renderer = new Renderer(layer, world, data.images, lens, debug);
 // The frame around the active image, on top of the tiles; it follows the active image as it changes.
 const frame = new FocusFrame(root);
-// Zoomed in, the active image's category below it.
-const caption = new FocusCaption(document.body);
-// The active image's project, above the frame, zoomed out and in.
+// The active image's project, its name above the frame and its categories below, zoomed out and in.
 const projectLabel = new ProjectLabel(frame.el);
+// Zoomed in, the key for the project view below the frame.
+const projectHint = new ProjectHint(frame.el);
+/** The active image's tile element. */
+let activeTile: HTMLElement | null = null;
 renderer.onActiveChange = (tile) => {
+  activeTile = tile;
   frame.focus(tile);
-  updateCaption();
   updateProjectLabel();
 };
-frame.onSettle = () => updateCaption();
 renderer.onRelease = (tile) => frame.release(tile);
 
 // How much world the no-repeat sizing counts as visible; see LENS_REPEAT_SHARE.
@@ -72,287 +78,161 @@ let zoomState: 'out' | 'in' = 'out';
 let zoomIn = 1;
 
 /**
- * The caption shows only while the view rests on an image: zoomed in, landed, nothing
- * moving and the frame done handing over. The moment anything moves (a drag, a scroll, a
- * key, a zoom, a flight) it leaves, where it stands (see FocusCaption), so it is never seen
- * riding along with the frame; it comes back once all is still again.
+ * The project view (projectview.ts): "P" swaps the canvas for the active image's project, all of
+ * its images in one column, crossfading over it as the camera moves in on the image until it is
+ * drawn where the column has it. The canvas holds still under it, exactly as it was left and
+ * taking no input; "P" or Esc fades back to it, the camera pulling back from the column's image
+ * to its tile, and picking one of the images comes back to the focused view on that one, the
+ * camera pulling back to its tile there. The frame steps aside while the camera moves, and comes
+ * back round the image as it lands. The canvas's videos start again once the
+ * fade is done (starting several at once mid-fade costs frames).
  */
-function updateCaption(): void {
-  const still = zoomState === 'in' && !flight && !project && physics.isStill() && renderer.isAtRest() && !frame.moving;
-  const active = still ? renderer.activeImage() : null;
-  caption.show(active ? data.images[active.image]! : null);
-}
-
-/**
- * The project view (project.ts): "P" in the focused view narrows the canvas to the focused
- * image's project. The camera draws back from the focused image, the cells round it take the
- * rest of the project, each image gliding in from where its nearest copy is on the canvas, and
- * everything else fades away: a small canvas of the project alone.
- *
- * Landed, it is browsed like the canvas, dragged and scrolled, though the project is kept in
- * view (keepProjectInView) and its images trail less than they do there. Leaving sends the images back
- * where they came from as the camera returns, from wherever it has got to: "P" or Esc, to the
- * image the view was opened on; focusing one of the images (a click, Space, zooming in), to
- * that one, following it back to where it really is on the canvas and landing in the focused
- * view on it.
- *
- * One progress drives the way in and out, camera included, so the images move in step with the
- * zoom: a critically damped spring chasing a goal that itself eases towards 1 (in) or 0 (out).
- * The goal sets off gently, so the motion does too, building up rather than kicking off at full
- * acceleration as a bare spring would; changing direction mid-way keeps the spring's momentum
- * and turns smoothly, never jumping. The canvas ignores input until it lands.
- */
-/** The spring's and its goal's rates, 1/s: together they settle in about 0.9 s. */
-const PROJECT_RATE = 10;
-const PROJECT_GOAL_RATE = 10;
-/** Of the window the project may fill, and how much is kept clear above and below for the header and info bar, px. */
-const PROJECT_FILL = 0.84;
-const PROJECT_CLEAR = 72;
-/** Landed, how close to the window's sides the project may be left, px. */
-const PROJECT_MARGIN = 24;
-/**
- * The furthest the camera draws back for it. A big project needs further than the canvas's own
- * zoomed-out view (zoom 1): its cluster is wider than the screen there.
- */
-const PROJECT_MIN_ZOOM = 0.4;
-/** With reduced motion nothing moves: it only fades, this long, s. */
-const PROJECT_FADE = 0.25;
-
-interface ProjectState {
-  guests: Guest[];
-  /** Round its images, world px: the camera's centre is kept inside it. */
-  bounds: CellRect;
-  /** The camera's centre (world px) and zoom on the focused image it was opened on; where the way out ends (there, or leaving onto another image, on that one); and on the whole project. */
-  home: { x: number; y: number; z: number };
-  from: { x: number; y: number; z: number };
-  overview: { x: number; y: number; z: number };
-  /** Where the way in lands: the overview, or, coming back after turning round, where it was left. */
-  to: { x: number; y: number; z: number };
-  /** Landed: the camera is the canvas's own again, and takes input. */
-  free: boolean;
-  /** The spring: where it is (0 the focused view, 1 the project), how fast it is going, and the goal it chases. */
-  u: number;
-  v: number;
-  goal: number;
-  target: 0 | 1;
-  last: number;
-}
-let project: ProjectState | null = null;
-const projectMoving = () => project !== null && (project.u !== project.target || project.v !== 0);
-/** Moving perceptibly: short of the last few thousandths the spring takes to come fully to rest. */
-const projectInMotion = () => project !== null && (Math.abs(project.target - project.u) > 0.003 || Math.abs(project.v) > 0.03);
+const projectView = new ProjectView(
+  document.querySelector<HTMLElement>('[data-project-view]')!,
+  data.images,
+  (image) => closeProject(image),
+  params.has('glass'),
+);
+projectView.onHidden = () => playVideos();
 
 function openProject(): void {
-  if (project) {
-    // Mid-way out: turn back in.
-    if (project.target === 0) setProjectTarget(1);
+  if (projectView.isOpen || intro || flight || route !== 'home') return;
+  const active = renderer.activeImage();
+  const n = active ? projects.projectOf(active.image) : -1;
+  if (!active || n < 0) return;
+  root.inert = true;
+  frame.conceal();
+  clearTimeout(frameTimer);
+  showProject(projects.projects[n]!.title);
+  // The canvas backs away, as for the menu, as the view starts to fade in; the image flies on its leg.
+  projectView.open(projects.projects[n]!, active.image, activeTile, () => {
+    backAway(true, 'project');
+    return backingLeg();
+  });
+  playVideos();
+}
+
+/**
+ * Back to the canvas as it was left, or (`image`, one of the project's) to the focused view on
+ * it: the canvas comes home as the image flies back to its tile. `instant`: no flight, the canvas
+ * home at once (going to the about view, which flies from there).
+ */
+function closeProject(image: number | null = null, instant = false): void {
+  if (!projectView.isOpen) return;
+  root.inert = false;
+  showProject(null);
+  let to: DOMRect | null = null;
+  if (image !== null && image !== renderer.activeImage()?.image && !instant) {
+    // Under the view: home at once, onto that image, then backed away again to come home from there with it.
+    homeAtOnce();
+    focusOn(image);
+    to = activeTile?.getBoundingClientRect() ?? null;
+    backAway(true, 'project');
+    Object.assign(backing!, { back: MENU_BACK, from: MENU_BACK, p: 1 });
+    stepBacking();
+  }
+  if (instant) homeAtOnce();
+  backAway(false, 'project');
+  projectView.close(renderer.activeImage()?.image ?? null, activeTile, to, backing && !instant ? backingLeg() : null, () => frame.reveal());
+  wake();
+}
+
+/**
+ * The header in the project view (Header.astro): the wordmark, a cross and `title`, kept centred,
+ * the wordmark sliding left by half the width of what follows it; or (null) the wordmark alone.
+ */
+const wordmark = document.querySelector<HTMLElement>('[data-wordmark]')!;
+const wordmarkProject = wordmark.querySelector<HTMLElement>('[data-header-project]')!;
+function showProject(title: string | null): void {
+  if (title === null) {
+    delete document.documentElement.dataset.showingProject;
     return;
   }
-  if (zoomState !== 'in' || flight) return;
-  const active = renderer.activeImage();
-  const rect = renderer.activeRect();
-  const n = active ? projects.projectOf(active.image) : -1;
-  if (!active || !rect || n < 0) return;
-  const members = projects.projects[n]!.images;
-  const at = members.indexOf(active.image);
-  const others = [...members.slice(at + 1), ...members.slice(0, at)];
-  // With no copy near, a guest comes from a screen-width off in its direction.
-  const guests = projectGuests(world, geometry, active.i, active.j, others, (k) => data.images[k]!.aspect, geometry.vw / zoomIn);
-  const bounds = clusterBounds(rect, guests);
-  const z = physics.z;
-  const fit = Math.min((geometry.vw * PROJECT_FILL) / bounds.width, ((geometry.vh - 2 * PROJECT_CLEAR) * PROJECT_FILL) / bounds.height);
-  const overview = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, z: Math.min(z, Math.max(PROJECT_MIN_ZOOM, fit)) };
-  project = {
-    guests,
-    bounds,
-    home: { x: physics.x + geometry.vw / 2 / z, y: physics.y + geometry.vh / 2 / z, z },
-    from: { x: physics.x + geometry.vw / 2 / z, y: physics.y + geometry.vh / 2 / z, z },
-    overview,
-    to: overview,
-    free: false,
-    u: 0,
-    v: 0,
-    goal: 0,
-    target: 1,
-    last: now(),
-  };
-  // The camera is placed from the progress alone: no paging snap, no trails.
-  physics.setPaging(0);
-  renderer.setTrails(false);
-  renderer.setProject(guests, active, rect.left + rect.width / 2, rect.top + rect.height / 2, overview.z);
-  document.documentElement.dataset.project = 'open';
-  playVideos();
-  updateCaption();
-  wake();
-}
-
-/** Leave the project view: back to the image it was opened on, or (landed) onto the one of its images at `onto`. */
-function closeProject(onto: CellRect | null = null): void {
-  if (project?.target !== 1) return;
-  if (project.free) unland(onto);
-  setProjectTarget(0);
-}
-
-/** Landed: the camera and input are the canvas's again, at the overview's zoom (zooming in leaves: see zoomInOn). */
-function land(): void {
-  const p = project!;
-  p.free = true;
-  // (Turned back on its way out onto another image: leaving is back to the first again.)
-  p.from = p.home;
-  zoomState = 'out';
-  physics.setZoomLimits(Math.min(p.overview.z, physics.z), Math.max(p.overview.z, physics.z), geometry.vw / 2, geometry.vh / 2);
-  physics.setPaging(0);
-  renderer.projectFree = true;
-  renderer.setTrails(!reducedMotion.matches);
-  updateCaption();
+  wordmarkProject.querySelector('[data-header-project-name]')!.textContent = title;
+  wordmark.style.setProperty('--project-shift', `${wordmarkProject.offsetWidth / 2}px`);
+  document.documentElement.dataset.showingProject = '';
 }
 
 /**
- * Leaving after browsing: the spring takes the camera back from wherever it is now, to the image
- * it was opened on or onto the one at `onto`. Onto a guest, the camera ends on its copy, where the
- * guest goes back to: it follows the image home.
+ * At rest on the canvas, the active image's project is readied in the page's next idle moment,
+ * so "P" opens straight onto its images, decoded. (Tests can hold it off: once its images are
+ * cached, tiles of the same images made from then on show those larger copies.)
  */
-function unland(onto: CellRect | null): void {
-  const p = project!;
+let readying = true;
+function readyProject(): void {
+  if (!readying) return;
+  const idle = window.requestIdleCallback ?? ((fn: () => void) => window.setTimeout(fn, 200));
+  idle(() => {
+    // (Not while backed away for the menu: it is held there, not at rest.)
+    if (awake || intro || flight || backing || route !== 'home') return;
+    const active = renderer.activeImage();
+    const n = active ? projects.projectOf(active.image) : -1;
+    if (n >= 0) projectView.prepare(projects.projects[n]!, active!.image);
+  });
+}
+
+/** Straight to the focused view on the copy of `image` nearest the view's centre, unseen under the project view. */
+function focusOn(image: number): void {
+  const cx = physics.x + geometry.vw / 2 / physics.z;
+  const cy = physics.y + geometry.vh / 2 / physics.z;
+  const copy = nearestCopy(image, cx, cy);
+  if (!copy) return;
   physics.halt();
-  const z = physics.z;
-  p.free = false;
-  p.to = { x: physics.x + geometry.vw / 2 / z, y: physics.y + geometry.vh / 2 / z, z };
-  const guest = onto && p.guests.find((g) => g.to.left === onto.left && g.to.top === onto.top);
-  if (guest?.copy) {
-    p.from = { x: guest.from.left + guest.from.width / 2, y: guest.from.top + guest.from.height / 2, z: zoomIn };
-    // Sharp all the way in, as when zooming in on the canvas.
-    renderer.prepare(onto!, zoomIn);
-  }
-  p.u = p.goal = 1;
-  p.v = 0;
-  physics.setPaging(0);
-  renderer.projectFree = false;
-  renderer.setTrails(false);
-  // The frame goes with it to the image it lands on.
-  renderer.projectFocus(guest?.copy ? onto : null);
-  clearTimeout(frameTimer);
-  frame.reveal();
-  updateCaption();
-}
-
-/**
- * The project is kept in view: let go with any of it off screen (or under the header or info
- * bar), it glides back until all of it is in view again, and only as far as that.
- */
-function keepProjectInView(t: number): void {
-  const { bounds } = project!;
-  const z = physics.z;
-  // The range of camera centres that show it all, per axis (its middle, if it can't all show).
-  const keep = (start: number, size: number, half: number, at: number) => {
-    const lo = start + size - half;
-    const hi = start + half;
-    return lo > hi ? start + size / 2 - at : Math.min(hi, Math.max(lo, at)) - at;
-  };
-  const cx = physics.x + geometry.vw / 2 / z;
-  const cy = physics.y + geometry.vh / 2 / z;
-  const dx = keep(bounds.left, bounds.width, (geometry.vw / 2 - PROJECT_MARGIN) / z, cx) * z;
-  const dy = keep(bounds.top, bounds.height, (geometry.vh / 2 - PROJECT_CLEAR) / z, cy) * z;
-  if (Math.hypot(dx, dy) > 0.5) physics.push(GLIDE, t, dx, dy, focusDuration(Math.hypot(dx, dy)));
-}
-
-function setProjectTarget(target: 0 | 1): void {
-  project!.target = target;
-  project!.last = now();
-  document.documentElement.dataset.project = target === 1 ? 'open' : 'closing';
-  playVideos();
-  wake();
-}
-
-/** One frame of the project view: the spring on, and the camera and images placed from it. */
-function stepProject(t: number): void {
-  const p = project!;
-  const dt = Math.min(0.05, Math.max(0, t - p.last));
-  p.last = t;
-  let place: number;
-  if (reducedMotion.matches) {
-    p.u = p.goal = Math.min(1, Math.max(0, p.u + (Math.sign(p.target - p.u) * dt) / PROJECT_FADE));
-    p.v = 0;
-    place = p.target;
-  } else {
-    for (let left = dt; left > 0; left -= 1 / 240) {
-      const h = Math.min(left, 1 / 240);
-      p.goal += (p.target - p.goal) * PROJECT_GOAL_RATE * h;
-      p.v += (PROJECT_RATE ** 2 * (p.goal - p.u) - 2 * PROJECT_RATE * p.v) * h;
-      p.u += p.v * h;
-    }
-    if (Math.abs(p.target - p.u) < 5e-4 && Math.abs(p.v) < 5e-3 && Math.abs(p.target - p.goal) < 5e-4) {
-      p.u = p.goal = p.target;
-      p.v = 0;
-    }
-    p.u = Math.min(1, Math.max(0, p.u));
-    place = p.u;
-  }
-  // The camera: its centre straight across, its zoom evenly in log space, both by the same progress.
-  const z = Math.exp(Math.log(p.from.z) + (Math.log(p.to.z) - Math.log(p.from.z)) * place);
-  const cx = p.from.x + (p.to.x - p.from.x) * place;
-  const cy = p.from.y + (p.to.y - p.from.y) * place;
-  physics.jumpTo(cx - geometry.vw / 2 / z, cy - geometry.vh / 2 / z, z);
-  renderer.projectProgress = p.u;
-  renderer.projectPlace = place;
-  // Landed (or setting off): the videos play, or hold.
-  playVideos();
-  if (p.target === 0 && p.u === 0) endProject();
-  else if (p.target === 1 && p.u === 1 && p.v === 0) land();
-}
-
-/** Back in the focused view, exactly as it was (at once, if it was still going). */
-function endProject(): void {
-  const p = project;
-  if (!p) return;
-  project = null;
   zoomState = 'in';
-  physics.halt();
-  physics.jumpTo(p.from.x - geometry.vw / 2 / p.from.z, p.from.y - geometry.vh / 2 / p.from.z, p.from.z);
-  physics.setZoomLimits(1, zoomIn, geometry.vw / 2, geometry.vh / 2);
   physics.setPaging(geometry.pitch);
-  renderer.setProject(null);
-  renderer.projectProgress = 0;
-  renderer.projectPlace = 0;
-  renderer.projectFree = false;
-  renderer.setTrails(!reducedMotion.matches);
-  clearTimeout(frameTimer);
-  frame.reveal();
-  delete document.documentElement.dataset.project;
-  playVideos();
-  updateCaption();
-  wake();
+  const z = focusZoom(copy);
+  physics.jumpTo(copy.x - geometry.vw / 2 / z, copy.y - geometry.vh / 2 / z, z);
+  draw(0, 0, true);
+}
+
+/** How far round a point to look for a copy of an image, in cells. */
+const COPY_SEARCH = 24;
+
+/** The centre (world px) and size of the copy of `image` nearest (x, y), or null if none is within COPY_SEARCH cells. */
+function nearestCopy(image: number, x: number, y: number): { x: number; y: number; width: number; height: number } | null {
+  const ci = Math.round(x / geometry.pitch);
+  const cj = Math.round(y / geometry.pitch);
+  let best: { x: number; y: number; width: number; height: number; d: number } | null = null;
+  for (let i = ci - COPY_SEARCH; i <= ci + COPY_SEARCH; i++) {
+    for (let j = cj - COPY_SEARCH; j <= cj + COPY_SEARCH; j++) {
+      const cell = world.cell(i, j);
+      if (cell.image !== image) continue;
+      const cx = i * geometry.pitch + cell.dx * geometry.s;
+      const cy = j * geometry.pitch + cell.dy * geometry.s;
+      const d = Math.hypot(cx - x, cy - y);
+      if (!best || d < best.d) best = { x: cx, y: cy, width: cell.w * geometry.s, height: cell.h * geometry.s, d };
+    }
+  }
+  return best;
 }
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
   if (e.key.toLowerCase() === 'p') {
     e.preventDefault();
-    if (project?.target === 1) closeProject();
+    if (projectView.isOpen) closeProject();
     else openProject();
-  } else if (e.key === 'Escape' && project?.target === 1 && !project.free) {
-    // On its way in. (Landed, Esc is the canvas's: see backOut.)
+  } else if (e.key === 'Escape' && projectView.isOpen) {
     e.preventDefault();
     closeProject();
   }
 });
 
-/** The project label names the active image's project, zoomed out and in. */
+/** The project label names the active image's project and its categories, zoomed out and in. */
 function updateProjectLabel(): void {
   const active = renderer.activeImage();
   const n = active ? projects.projectOf(active.image) : -1;
-  projectLabel.show(n < 0 ? null : projects.projects[n]!.title);
+  projectLabel.show(n < 0 ? null : { title: projects.projects[n]!.title, categories: categoriesOf[n]! });
 }
 
 /** Zooming onto another image, when the frame that stepped aside comes back. */
 let frameTimer = 0;
 
-/** 0 zoomed out (to the project's overview, in the project view) to 1 zoomed in, from the actual zoom, so the fade follows the animation. */
+/** 0 zoomed out to 1 zoomed in, from the actual zoom, so the fade follows the animation. */
 const focusAt = (z: number) => {
-  const out = project ? project.overview.z : 1;
   // All the way by the lowest zoom any image is focused at.
   const focused = zoomInFor(geometry, LONG * geometry.s, LONG * geometry.s, zoomIn);
-  return focused > out ? Math.min(1, Math.max(0, (z - out) / (focused - out))) : 0;
+  return focused > 1 ? Math.min(1, Math.max(0, (z - 1) / (focused - 1))) : 0;
 };
 
 /** The camera position that centres the image nearest the view centre; paging uses it to find neighbours. */
@@ -381,8 +261,10 @@ physics.onStep = () => {
 };
 
 function applyZoomLimits(): void {
-  zoomIn = zoomInLevel(geometry, window.devicePixelRatio, data.sharpEdge);
+  zoomIn = zoomInLevel(geometry, window.devicePixelRatio, data.sharpEdge, ratios);
   physics.setZoomLimits(1, zoomIn, geometry.vw / 2, geometry.vh / 2);
+  // The project view's column, a little wider than the focused view's longest image.
+  projectView.setColumn(Math.min(PROJECT_COLUMN_MAX * geometry.vw, PROJECT_COLUMN * LONG * geometry.s * zoomIn));
   physics.centreX = geometry.vw / 2;
   physics.centreY = geometry.vh / 2;
 }
@@ -393,20 +275,8 @@ physics.jumpTo(-geometry.vw / 2, -geometry.vh / 2, 1);
 // A shared image link opens the canvas at its nearest copy.
 const requestedImage = params.get('image');
 const requestedIndex = requestedImage === null ? -1 : data.images.findIndex((image) => image.title === requestedImage);
-if (requestedIndex >= 0) {
-  let nearestCell: { x: number; y: number; distance: number } | null = null;
-  for (let i = -24; i <= 24; i++) {
-    for (let j = -24; j <= 24; j++) {
-      const cell = world.cell(i, j);
-      if (cell.image !== requestedIndex) continue;
-      const x = i * geometry.pitch + cell.dx * geometry.s;
-      const y = j * geometry.pitch + cell.dy * geometry.s;
-      const distance = x * x + y * y;
-      if (!nearestCell || distance < nearestCell.distance) nearestCell = { x, y, distance };
-    }
-  }
-  if (nearestCell) physics.jumpTo(nearestCell.x - geometry.vw / 2, nearestCell.y - geometry.vh / 2, 1);
-}
+const requestedCopy = requestedIndex >= 0 ? nearestCopy(requestedIndex, 0, 0) : null;
+if (requestedCopy) physics.jumpTo(requestedCopy.x - geometry.vw / 2, requestedCopy.y - geometry.vh / 2, 1);
 
 const now = () => ((document.timeline?.currentTime as number | null) ?? performance.now()) / 1000;
 
@@ -416,12 +286,12 @@ const listeners = new Set<() => void>();
 function draw(vx: number, vy: number, zoomAtRest: boolean): void {
   lens.relax = geometry.vw < ZOOM_NARROW ? focusAt(physics.renderZ) : 0;
   // Mid zoom-to, tiles keep their layout until it lands.
-  renderer.update(physics.renderX, physics.renderY, physics.renderZ, vx, vy, zoomAtRest, physics.zoomingTo || projectMoving());
+  renderer.update(physics.renderX, physics.renderY, physics.renderZ, vx, vy, zoomAtRest, physics.zoomingTo);
   frame.setRadius(geometry.radius * physics.renderZ);
 }
 
 /** At rest: no motion, no image still trailing, fading or still to be snapped to. */
-const atRest = () => physics.isAtRest() && renderer.isAtRest() && !projectMoving();
+const atRest = () => physics.isAtRest() && renderer.isAtRest();
 
 /** The tile layer's scale about the centre: the intro's glide, or 1. */
 let layerScale = 1;
@@ -443,6 +313,10 @@ function tick(): void {
 }
 
 function advance(): void {
+  if (backing) {
+    stepBacking();
+    return;
+  }
   if (intro) {
     stepIntro();
     return;
@@ -451,11 +325,8 @@ function advance(): void {
     stepFlight();
     return;
   }
-  if (project && !project.free) stepProject(now());
   physics.advance(now());
-  if (project?.free && zoomState === 'out' && physics.isStill()) keepProjectInView(now());
-  // Before anything is drawn moved, so a caption leaving stays where it was.
-  updateCaption();
+  projectHint.show(zoomState === 'in');
   // (A zoom-to keeps its zoom and target equal at every step; it's at rest only once it lands.)
   draw(physics.stepVx, physics.stepVy, physics.z === physics.tz && !physics.zoomingTo);
   for (const fn of listeners) fn();
@@ -477,6 +348,7 @@ function sleep(): void {
   if (!awake) return;
   awake = false;
   gsap.ticker.remove(tick);
+  readyProject();
 }
 
 // The physics runs on event timestamps; GSAP's lag smoothing would bend its clock.
@@ -504,8 +376,6 @@ function tapAt(x: number, y: number, t: number): void {
 /** Zoom in on the image at grid rectangle `rect`: it grows and glides to the centre in one move. */
 function zoomInOn(rect: CellRect | null, t: number): void {
   if (zoomState === 'in' || !rect) return;
-  // In the project view, focusing an image leaves it, onto that image.
-  if (project) return closeProject(rect);
   zoomState = 'in';
   // Zoomed in, the view pages from image to image, one neighbour per gesture.
   physics.setPaging(geometry.pitch);
@@ -528,7 +398,6 @@ function zoomOut(t: number): void {
   zoomState = 'out';
   physics.setPaging(0);
   physics.push(ZOOM_TO, t, physics.tx + geometry.vw / 2 / physics.tz, physics.ty + geometry.vh / 2 / physics.tz, 1, ZOOM_DURATION);
-  updateCaption();
   clearTimeout(frameTimer);
   frame.reveal();
 }
@@ -545,11 +414,6 @@ function toggleZoom(t: number): void {
   else zoomOut(t);
 }
 
-/** Esc: out of the focused view, back to the canvas (or out of the project view). */
-function backOut(t: number): void {
-  if (zoomState === 'in') zoomOut(t);
-  else closeProject();
-}
 
 attachInput({
   root,
@@ -558,8 +422,8 @@ attachInput({
   tap: tapAt,
   zoom: setZoom,
   toggleZoom,
-  escape: backOut,
-  enabled: () => !intro && !flight && (!project || project.free),
+  escape: zoomOut,
+  enabled: () => !intro && !flight && !projectView.isOpen,
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
 });
@@ -574,10 +438,8 @@ function toCanvas(x: number, y: number, out: { x: number; y: number }): void {
 }
 
 function relayout(): void {
-  // The project view is laid out for the old size: back to the focused view, then resize.
-  if (project) endProject();
-  // Mid-flight the tiles are drawn from a snapshot; catch up once back.
-  if (flight) return;
+  // Mid-flight (or backed away for the menu) the tiles are drawn from a snapshot; catch up once back.
+  if (flight || backing) return;
   const next = computeGeometry(root.clientWidth, root.clientHeight, world, seen);
   const dprChanged = window.devicePixelRatio !== dpr;
   dpr = window.devicePixelRatio;
@@ -631,22 +493,25 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /**
- * Two views of one document: the canvas (`/`) and the about view (`/about`, blank for now).
- * Going to the about view the camera flies on into the canvas, each image growing towards
+ * Views of one document: the canvas (`/`) and, off it, the about view (`/about`) and Start a
+ * project (`/start`, empty for now). Going to one the camera flies on into the canvas, each image growing towards
  * it at its own depth and fading (flight.ts), until only the header is left; coming back the
  * flight runs in reverse, and browsing picks up exactly where it was. The view lives in the
  * URL (History API), so the browser's back and forward buttons run the same flight, and a
  * change of mind mid-flight turns it round from wherever it has got to.
  */
-type Route = 'home' | 'about';
-// Both under the site's base: the root, or /outer-range/ on GitHub Pages.
+type Route = 'home' | View;
+/** The views off the canvas, each flown to the same way, each a block in the one layer behind it (Site.astro), with its key (and hint: KeyHint.astro). */
+type View = 'about' | 'start';
+// All under the site's base: the root, or /outer-range/ on GitHub Pages.
 const HOME = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const ABOUT = `${HOME}about`;
-const ROUTES: Record<Route, { path: string; title: string; link: { href: string; label: string } }> = {
-  home: { path: HOME, title: 'Outer Range', link: { href: ABOUT, label: 'About' } },
-  about: { path: ABOUT, title: 'About · Outer Range', link: { href: HOME, label: 'Back' } },
+const ROUTES: Record<Route, { path: string; title: string }> = {
+  home: { path: HOME, title: 'Outer Range' },
+  about: { path: `${HOME}about`, title: 'About · Outer Range' },
+  start: { path: `${HOME}start`, title: 'Start a project · Outer Range' },
 };
-const routeAt = (path: string): Route => (path.replace(/\/+$/, '') === ABOUT ? 'about' : 'home');
+const VIEW_KEYS: Record<string, View> = { a: 'about', s: 'start' };
+const routeAt = (path: string): Route => (Object.keys(ROUTES) as Route[]).find((r) => r !== 'home' && path.replace(/\/+$/, '') === ROUTES[r].path) ?? 'home';
 let route: Route = routeAt(location.pathname);
 
 /**
@@ -660,7 +525,7 @@ let route: Route = routeAt(location.pathname);
 interface Intro {
   lines: IntroLayer;
   line: IntroTitle;
-  title: IntroTitle;
+  tagline: IntroTitle;
   /** Timed from its first frame, so the page's own start doesn't eat into it. */
   start: number | null;
   /** For tests: stay this many seconds in. */
@@ -702,10 +567,10 @@ function startIntro(): void {
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  intro = { lines, line: IntroTitle.line(root, Z_LEVELS + 3), title: IntroTitle.controls(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 }, palette, build: null, refined: false, stop };
+  intro = { lines, line: IntroTitle.line(root, Z_LEVELS + 3), tagline: IntroTitle.tagline(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 }, palette, build: null, refined: false, stop };
   lines.draw(introFrame(0, intro.frame));
   intro.line.draw(0);
-  intro.title.draw(0);
+  intro.tagline.draw(0);
   frame.conceal();
 }
 
@@ -726,7 +591,7 @@ function stepIntro(): void {
   if (at >= INTRO_LENGTH + i.wait) return endIntro();
   const f = introFrame(at, i.frame, i.wait);
   i.line.draw(at);
-  i.title.draw(at);
+  i.tagline.draw(at);
   if (f.z <= INTRO_HANDOVER && !i.gliding) {
     i.gliding = true;
     i.lines.leave();
@@ -775,7 +640,7 @@ function endIntro(): void {
   if (!intro) return;
   intro.lines.leave();
   intro.line.remove();
-  intro.title.remove();
+  intro.tagline.remove();
   intro.stop.abort();
   intro = null;
   delete document.documentElement.dataset.intro;
@@ -790,8 +655,8 @@ function endIntro(): void {
 
 /** Videos play on the canvas, unless motion is to be reduced: then each holds its poster frame. */
 function playVideos(): void {
-  // (They hold still too while the project view moves: starting several at once mid-move costs frames.)
-  renderer.setVideos(!reducedMotion.matches && route !== 'about' && !projectInMotion() && (!intro || intro.gliding));
+  // (Under the project view they hold still: no one sees them.)
+  renderer.setVideos(!reducedMotion.matches && route === 'home' && !projectView.isShown && (!intro || intro.gliding));
 }
 
 /** How far the flight has got, 0 (the canvas) to 1 (every image flown past), and which way it is going. */
@@ -803,17 +668,42 @@ interface Flight {
 let flight: Flight | null = null;
 /** For tests: hold the flight this far along. */
 let flightHeld: number | null = null;
+/**
+ * The menu's flight (Menu.astro): how far the camera has backed away, 0 (as it was) to MENU_BACK
+ * (behind the open menu), and which way it is going. Each leg runs from wherever the last one
+ * left off (`from`), `p` of the way along its own ease. See backAway.
+ */
+interface Backing {
+  back: number;
+  from: number;
+  to: 0 | 1;
+  p: number;
+  last: number;
+}
+let backing: Backing | null = null;
 
 function go(next: Route): void {
   if (next === route) return;
   endIntro();
+  // (The browser's back button, under the open menu: back at once, to fly from there.)
+  if (backing) {
+    Object.assign(backing, { back: 0, from: 0, to: 0, p: 1 });
+    stepBacking();
+  }
+  // (The header link and "A" work from the project view too: it fades as the flight sets off.)
+  closeProject(null, true);
+  const from = route;
   route = next;
   document.title = ROUTES[next].title;
   showLink(next);
-  showAbout(next === 'about');
+  showAbout(next !== 'home');
   playVideos();
-  if (next === 'about') leaveCanvas();
-  else if (flight) turn(0);
+  if (next === 'home') {
+    if (flight) turn(0);
+  } else if (from === 'home') {
+    leaveCanvas();
+  }
+  // (From one view to another the canvas stays flown past; the layer shows the other: showAbout.)
 }
 
 /** Send the flight on (1) or back (0) from wherever it has got to. */
@@ -826,14 +716,12 @@ function turn(to: 0 | 1): void {
 
 function leaveCanvas(): void {
   if (flight) return turn(1);
-  if (project) endProject();
   // Hold the camera where it is drawn; nothing else moves while the flight plays.
   physics.halt();
   saveView();
   document.documentElement.dataset.leaving = '';
   beginFlight();
   flight = { u: 0, to: 1, last: now() };
-  updateCaption();
   wake();
 }
 
@@ -985,8 +873,18 @@ const touchAbout = matchMedia('(hover: none) and (pointer: coarse)');
 function showAbout(on: boolean): void {
   about.inert = !on;
   root.inert = on;
-  if (on) about.dataset.state = 'in';
-  else delete about.dataset.state;
+  if (!on) {
+    // (It keeps showing the view it was on, as the canvas flies back in over it.)
+    delete about.dataset.state;
+    return;
+  }
+  const switching = about.dataset.state === 'in' && about.dataset.view !== route;
+  about.dataset.state = 'in';
+  about.dataset.view = route;
+  if (!switching) return;
+  // From one view straight to another: the new one fades in, from the top.
+  smoother.scrollTo(0, false);
+  if (!reducedMotion.matches) about.querySelector(`[data-view-content="${route}"]`)?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
 }
 
 /**
@@ -995,42 +893,116 @@ function showAbout(on: boolean): void {
  * `still` (reduced motion): it only fades.
  */
 function drawAbout(travel: number, still: boolean): void {
-  flightFar(travel, far);
+  placeAbout(flightFar(travel, far), still);
+}
+
+/** Draw the about view's text as `v` says. */
+function placeAbout(v: FlightView, still: boolean): void {
   // About the viewport's centre, however far down the text is scrolled (and wherever the smooth
   // scroll has carried it): the content moves the layer up by its offset, so the centre is that
   // far further down the layer.
   const top = aboutContent.getBoundingClientRect().top;
   aboutLayer.style.transformOrigin = `50% ${(innerHeight / 2 - top).toFixed(1)}px`;
-  aboutLayer.style.opacity = far.opacity.toFixed(3);
-  aboutLayer.style.transform = still || far.scale === 1 ? '' : `scale(${far.scale.toFixed(4)})`;
-  // The blur is drawn before the scale: ask for the share that comes out at far.blur on screen.
-  const blur = still || touchAbout.matches ? 0 : far.blur / far.scale;
+  aboutLayer.style.opacity = v.opacity.toFixed(3);
+  aboutLayer.style.transform = still || v.scale === 1 ? '' : `scale(${v.scale.toFixed(4)})`;
+  // The blur is drawn before the scale: ask for the share that comes out at v.blur on screen.
+  const blur = still || touchAbout.matches ? 0 : v.blur / v.scale;
   aboutLayer.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
 }
 
-// The header link: About on the canvas, Back on the about view.
+// The menu (Menu.astro) says when it opens and closes. Opening, the camera backs away from
+// whatever is showing, the About flight the other way round: the canvas's images drawn in
+// towards the centre, each by its depth, blurring and dimming (flight.ts, menuBackView), or the
+// about view's text with them. Closing, it all comes back to exactly where it was.
+window.addEventListener('menu', (e) => backAway((e as CustomEvent<boolean>).detail, 'menu'));
+
+/** What holds the canvas backed away: the menu, the project view (openProject), or both. It comes home once neither does. */
+const backers = new Set<'menu' | 'project'>();
+
+function backAway(open: boolean, who: 'menu' | 'project'): void {
+  if (open) backers.add(who);
+  else backers.delete(who);
+  open = backers.size > 0;
+  if (backing) {
+    const to = open ? 1 : 0;
+    if (to === backing.to) return;
+    // Turned round: a new leg, from wherever it has got to.
+    Object.assign(backing, { from: backing.back, to, p: 0, last: now() });
+    return wake();
+  }
+  if (!open) return;
+  endIntro();
+  // A flight under way lands at once, so there is one place to back away from.
+  if (flight && flight.u !== flight.to) {
+    flightHeld = flight.to;
+    stepFlight();
+    flightHeld = null;
+  }
+  physics.halt();
+  if (route === 'home') {
+    renderer.beginFlight();
+    // The frame fades, as it does for a flight.
+    document.documentElement.dataset.leaving = '';
+  }
+  backing = { back: 0, from: 0, to: 1, p: 0, last: now() };
+  wake();
+}
+
+function stepBacking(): void {
+  const b = backing!;
+  const t = now();
+  const still = reducedMotion.matches;
+  const target = b.to * MENU_BACK;
+  const duration = legDuration(b);
+  b.p = duration > 0 ? Math.min(1, b.p + (t - b.last) / duration) : 1;
+  b.last = t;
+  b.back = b.from + (target - b.from) * menuBackEase(b.to === 1, b.p);
+  if (route !== 'home') placeAbout(menuBackView(MENU_BACK_ABOUT, b.back, far), still);
+  else renderer.drawFlight(b.back, still, 1, menuBackView);
+  if (b.p < 1) return;
+  // Backed away: held there, behind the menu, until it closes.
+  if (b.to === 1) return sleep();
+  // Back where it was: browse on from exactly here.
+  backing = null;
+  if (route !== 'home') {
+    drawAbout(flightTravel(1), still);
+  } else {
+    renderer.endFlight();
+    if (!flight) delete document.documentElement.dataset.leaving;
+    relayout();
+    resettle(t);
+  }
+}
+
+/**
+ * How long a leg of the backing takes, s: away as the flight goes; home slower, landing gently
+ * (MENU_RETURN_DURATION). A leg that starts part of the way takes that share of the time.
+ */
+function legDuration(b: Backing): number {
+  const whole = reducedMotion.matches ? FLIGHT_REDUCED_DURATION : b.to === 1 ? FLIGHT_DURATION : MENU_RETURN_DURATION;
+  return (Math.abs(b.to * MENU_BACK - b.from) / MENU_BACK) * whole;
+}
+
+/** The leg under way, its time (s) and ease, for what moves with it: the project view's image. */
+function backingLeg(): Leg {
+  const b = backing!;
+  return { duration: legDuration(b), easing: `cubic-bezier(${(b.to === 1 ? FLIGHT_EASE : MENU_RETURN_EASE).join(', ')})` };
+}
+
+/** The canvas home at once, if it is backed away: unseen under the project view. */
+function homeAtOnce(): void {
+  if (!backing) return;
+  Object.assign(backing, { back: 0, from: 0, to: 0, p: 1 });
+  stepBacking();
+}
+
+// The views' hints (KeyHint.astro): the header's About link and the info bar's Start a project.
 const link = document.querySelector<HTMLAnchorElement>('a[data-route-link]')!;
 
-/** Point the link at the other view; its old label slides up out of the mask and the new one up in. */
+/** Show `r` open on its hint, and closed on the others: their labels slide, ESC joining or leaving the key. */
 function showLink(r: Route): void {
-  link.href = ROUTES[r].link.href;
-  const text = link.firstElementChild as HTMLElement;
-  for (const a of text.getAnimations()) a.cancel();
-  if (reducedMotion.matches) {
-    text.textContent = ROUTES[r].link.label;
-    return;
-  }
-  const out = text.animate([{ transform: 'translateY(-110%)', opacity: 0 }], { duration: 140, easing: 'cubic-bezier(0.55, 0, 1, 0.45)', fill: 'forwards' });
-  out.finished.then(
-    () => {
-      // Whatever the route is by now.
-      text.textContent = ROUTES[route].link.label;
-      out.cancel();
-      text.animate([{ transform: 'translateY(110%)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 320, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
-    },
-    // Cancelled by a newer change.
-    () => {},
-  );
+  link.href = r === 'about' ? ROUTES.home.path : ROUTES.about.path;
+  for (const view of Object.values(VIEW_KEYS)) setHint(view, view === r);
 }
 
 // Plain clicks and Enter go between the views; modified ones (new tab, new window) open the link as usual.
@@ -1038,20 +1010,18 @@ link.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
   // (Any query, like ?debug or ?flat, carries over.)
-  switchView();
+  toggleView('about');
 });
 
-/** What the header link does: About from the canvas, Back from the about view. */
-function switchView(): void {
-  if (route === 'home') {
-    history.pushState({ canvas: true }, '', ROUTES.about.path + location.search);
-    go('about');
-  } else {
-    backToCanvas();
-  }
+/** What a view's link or key does: go to it, or, on it, back to the canvas. */
+function toggleView(view: View): void {
+  if (route === view) return backToCanvas();
+  // Back from it goes back to the canvas through history, if that is where it came from.
+  history.pushState({ canvas: route === 'home' }, '', ROUTES[view].path + location.search);
+  go(view);
 }
 
-/** From the about view back to the canvas, as it was left (zoomed in or out). */
+/** From a view back to the canvas, as it was left (zoomed in or out). */
 function backToCanvas(): void {
   if ((history.state as { canvas?: boolean } | null)?.canvas) {
     // Arrived here from the canvas: Back is going back in history, so Forward comes here again.
@@ -1081,16 +1051,17 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// "A" does what the header link does: About, or Back from the about view (the info bar lists it).
+// Each view's key (VIEW_KEYS: "A", About; "S", Start a project) goes to it, or back from it, as its hint says.
 window.addEventListener('keydown', (e) => {
-  if (e.key.toLowerCase() !== 'a' || e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+  const view = VIEW_KEYS[e.key.toLowerCase()];
+  if (!view || e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
   e.preventDefault();
-  switchView();
+  toggleView(view);
 });
 
-// Esc on the about view goes back too, like the Back link. (On the canvas it backs out of the focused view: input.ts.)
+// Esc on a view goes back too, as its hint says. (On the canvas it backs out of the focused view: input.ts.)
 window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || e.repeat || e.defaultPrevented || route !== 'about') return;
+  if (e.key !== 'Escape' || e.repeat || e.defaultPrevented || route === 'home') return;
   e.preventDefault();
   backToCanvas();
 });
@@ -1100,14 +1071,14 @@ window.addEventListener('popstate', () => go(routeAt(location.pathname)));
 const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
 // Opened on the about view, or a reloaded tab coming back to the canvas: start flown past, in the view it was left in.
 const arriving = route === 'home' && navigation?.type === 'back_forward' && restoreView();
-if (route === 'about') restoreView();
-if (route === 'about' || arriving) document.documentElement.dataset.leaving = '';
+if (route !== 'home') restoreView();
+if (route !== 'home' || arriving) document.documentElement.dataset.leaving = '';
 // Dev only: reloaded after "X" deleted an image (devdelete.ts), back in the view it was in, with no intro.
 const resumed = import.meta.env.DEV && route === 'home' && !arriving && devResuming() && restoreView();
 
 // First frame now, so tiles are in place before the first paint.
 draw(0, 0, true);
-if (route === 'about' || arriving) {
+if (route !== 'home' || arriving) {
   beginFlight();
   flight = { u: 1, to: 1, last: now() };
   renderer.drawFlight(flightTravel(1), reducedMotion.matches);
@@ -1132,7 +1103,7 @@ if (import.meta.env.DEV) {
     m.attachDevDelete({
       images: data.images,
       activeImage: () => renderer.activeImage(),
-      onCanvas: () => route === 'home' && !flight,
+      onCanvas: () => route === 'home' && !flight && !projectView.isOpen,
       holdView: (hold) => {
         if (hold) saveView();
         try {
@@ -1164,6 +1135,8 @@ if (debug || params.has('test')) {
     /** The view, and the flight between the two, or null. */
     route: () => route,
     flight: () => (flight ? { u: flight.u, to: flight.to } : null),
+    /** The menu's flight: how far the camera has backed away, and which way it is going, or null. */
+    backing: () => (backing ? { u: backing.back / MENU_BACK, to: backing.to } : null),
     holdFlight: (u: number | null) => {
       flightHeld = u;
       wake();
@@ -1174,8 +1147,12 @@ if (debug || params.has('test')) {
       if (intro) intro.held = at;
     },
     activeImage: () => renderer.activeImage(),
-    /** The project view, or null: landed (and browsable) or not, and its overview's zoom. */
-    project: () => (project ? { free: project.free, target: project.target, overview: project.overview.z } : null),
+    /** The project view's project, while it is open, or null. */
+    project: () => projectView.project,
+    /** Ready the project view for "P" while the canvas is idle, or not. */
+    readyProjects: (on: boolean) => {
+      readying = on;
+    },
     /** At rest, every image back on its grid position, and every on-screen image decoded. */
     isSettled: () => !intro && atRest() && renderer.visibleLoaded(),
     domNodes: () => root.getElementsByTagName('*').length,

@@ -1,10 +1,10 @@
 // Build the AtomsAI loop without regenerating or removing other project media.
-// Source: native 3840px-wide / 60 FPS loop, reframed to the canvas's 4:3 landscape.
+// Source: native 3840px-wide / 60 FPS loop, reframed to 4:3 landscape, the shape every tile had when it was built.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { pixelGrid } from '../pixels/pixel-grid.mjs';
+import { gridSize, pixelGrid } from '../pixels/pixel-grid.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const source = `${root}art/atomsai/applications-landscape-4k60.mp4`;
@@ -22,9 +22,9 @@ run(['-frames:v', '1', '-vf', 'scale=1440:1080:flags=lanczos', '-q:v', '1', `${o
 const { dominant } = await sharp(`${out}${poster}`).stats();
 const entry = {
   file: `${id}.mp4`, webm: `${id}.webm`, small: `${id}-small.mp4`, smallWebm: `${id}-small.webm`, poster,
-  aspect: 'landscape', width: 1440, height: 1080,
+  grid: gridSize(1440, 1080), width: 1440, height: 1080,
   color: '#' + [dominant.r, dominant.g, dominant.b].map(n => n.toString(16).padStart(2, '0')).join(''),
-  pixels: await pixelGrid(`${out}${poster}`, 'landscape'), duration: 20,
+  pixels: await pixelGrid(`${out}${poster}`, gridSize(1440, 1080)), duration: 20,
   source: 'art/atomsai/applications-landscape-4k60.mp4',
 };
 const manifestPath = `${out}manifest.json`;

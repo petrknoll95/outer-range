@@ -1,38 +1,69 @@
 ---
 /**
- * The site header: the wordmark at the top centre and one link at the top right, set alike.
- * White with a difference blend, so they read on the light or dark canvas and over any image
- * passing under them. Only the link takes pointer events: dragging or scrolling across the
- * rest moves the canvas.
+ * The site header: the wordmark at the top centre and one link at the top right. White with a
+ * difference blend, so they read on the light or dark canvas and over any image passing under
+ * them. Only the link takes pointer events: dragging or scrolling across the rest moves the
+ * canvas.
  *
- * The link is About on the canvas and Back on the about view; main.ts swaps it as the route
- * changes, its label sliding through the mask it sits in. The header stays put through the
- * flight between the two.
+ * The link is the about view's key hint (KeyHint.astro): "A", About. Where there are no keys (a
+ * touch screen) it is the label alone. On the about view it says Back, and ESC joins the A, as
+ * either goes back (main.ts, setHint). The header stays put through the flight between the two.
  */
+import KeyHint from './KeyHint.astro';
+import { SCALE } from './hint';
+
 interface Props {
-  route: 'home' | 'about';
+  route: 'home' | 'about' | 'start';
 }
 
 const { route } = Astro.props;
 // Under the site's base: the root, or /outer-range/ on GitHub Pages.
 const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const type = 'text-xl leading-none font-medium tracking-[-0.02em] text-white min-[760px]:text-2xl';
 ---
 
-<header class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference transition-opacity duration-500 select-none [html[data-intro]_&]:opacity-0">
-  <h1 class={type}>Outer Range</h1>
+<header class="pointer-events-none fixed inset-x-0 top-4 z-20 flex h-9 items-center justify-center mix-blend-difference transition-opacity duration-500 select-none [html[data-intro]_&]:opacity-0 [html[data-menu-open]_&]:opacity-0">
+  <!--
+    In the project view (projectview.ts) the wordmark is followed by a cross and the project's name
+    (main.ts, showProject), all three kept centred: the wordmark slides left by half of what comes
+    in after it (--project-shift), the cross turns in, and the name rises through a mask, each
+    just after the last. Only transforms and opacity move. On a phone a long name is cut short.
+  -->
+  <div data-wordmark class="relative text-xl leading-none font-medium tracking-[-0.02em] text-white transition-[translate] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] min-[760px]:text-2xl [html[data-showing-project]_&]:-translate-x-(--project-shift) [html[data-showing-project]_&]:duration-700">
+    <h1 class="text-xl leading-none font-medium tracking-[-0.02em] text-white min-[760px]:text-2xl">Outer Range</h1>
+    <span data-header-project aria-hidden="true" class="absolute top-1/2 left-full flex -translate-y-1/2 items-center gap-[0.4em] pl-[0.4em] whitespace-nowrap">
+      <svg
+        viewBox="0 0 10 10"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.2"
+        class="size-[0.55em] shrink-0 scale-50 -rotate-90 opacity-0 transition-[scale,rotate,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] [html[data-showing-project]_&]:scale-100 [html[data-showing-project]_&]:rotate-0 [html[data-showing-project]_&]:opacity-100 [html[data-showing-project]_&]:duration-600 [html[data-showing-project]_&]:delay-150"
+      ><path d="M1 1l8 8M9 1l-8 8"></path></svg>
+      <!-- A mask with a little room above and below the letters, for the name to rise through. -->
+      <span class="-my-[0.15em] overflow-hidden py-[0.15em]">
+        <span data-header-project-name class="block max-w-[28vw] translate-y-[110%] truncate transition-[translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] min-[760px]:max-w-none [html[data-showing-project]_&]:translate-y-0 [html[data-showing-project]_&]:duration-700 [html[data-showing-project]_&]:delay-250"></span>
+      </span>
+    </span>
+  </div>
   <nav class="absolute inset-y-0 right-6 flex items-center">
-    <a
+    <KeyHint
+      as="a"
+      name="about"
+      letter="A"
+      label="About"
+      activeLabel="Back"
+      active={route === 'about'}
+      keysOnlyWithKeyboard
+      labelAttributes={{ 'data-route-label': '' }}
       href={route === 'about' ? home : `${home}about`}
       data-route-link
       class:list={[
-        type,
-        // A mask with a little room above and below the letters, for the label to slide through.
-        'pointer-events-auto -my-[0.15em] overflow-hidden rounded-sm py-[0.15em]',
-        'transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white',
+        // Padded out (and pulled back by as much) so it is easier to hit, the label alone on a phone especially.
+        'pointer-events-auto -m-3 rounded-full p-3 text-white',
+        'transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-white',
         // Mid-flight it doesn't stay dimmed under the pointer.
         '[html[data-leaving]_&]:opacity-100',
-      ]}><span class="block">{route === 'about' ? 'Back' : 'About'}</span></a
-    >
+      ]}
+      style={`zoom: ${SCALE}`}
+    />
   </nav>
 </header>

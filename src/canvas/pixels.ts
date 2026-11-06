@@ -1,11 +1,8 @@
-import { PIXEL_GRID } from './config';
-import type { Aspect } from './world';
-
 /**
  * An image's colour grid: the image pixelated to a few cells, each the average colour of that
  * part of it, as six hex digits a cell run together, left to right and top to bottom (built by
- * scripts/pixels). The intro flies a tile in as one ray per cell; a tile shows it until its
- * image has loaded.
+ * scripts/pixels), `grid` columns by rows of near square cells. The intro flies a tile in as
+ * one ray per cell; a tile shows it until its image has loaded.
  */
 
 export type Rgb = readonly [number, number, number];
@@ -23,9 +20,13 @@ export function pixelColors(pixels: string): Rgb[] {
   return Array.from({ length: pixels.length / 6 }, (_, n) => hexRgb(pixelColor(pixels, n)));
 }
 
+export interface PixelGrid {
+  pixels: string;
+  grid: readonly [number, number];
+}
+
 /** The grid as an image, one pixel per cell: a data URL, for a tile's background. */
-export function pixelImage({ aspect, pixels }: { aspect: Aspect; pixels: string }): string {
-  const [cols, rows] = PIXEL_GRID[aspect];
+export function pixelImage({ grid: [cols, rows], pixels }: PixelGrid): string {
   const canvas = document.createElement('canvas');
   canvas.width = cols;
   canvas.height = rows;
@@ -42,8 +43,7 @@ let sampler: CanvasRenderingContext2D | null = null;
  * A grid `finer` times finer each way than the image's own: from the image itself as drawn
  * (cropped to fill, as the tile does), or, until it has loaded, its colour grid cell by cell.
  */
-export function finerGrid(img: HTMLImageElement, { aspect, pixels }: { aspect: Aspect; pixels: string }, finer: number): { cols: number; rows: number; rgba: Uint8ClampedArray } {
-  const [c, r] = PIXEL_GRID[aspect];
+export function finerGrid(img: HTMLImageElement, { grid: [c, r], pixels }: PixelGrid, finer: number): { cols: number; rows: number; rgba: Uint8ClampedArray } {
   const cols = c * finer;
   const rows = r * finer;
   if (img.complete && img.naturalWidth > 0) {

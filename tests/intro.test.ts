@@ -1,18 +1,21 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media } from '../src/assets/media';
-import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_CONTROLS, INTRO_LINE, INTRO_LINE_TEXT, INTRO_WAIT, FLIGHT_GRID_FINER, INTRO_ABERRATION, PIXEL_GRID, SEED } from '../src/canvas/config';
+import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_LINE, INTRO_TAGLINE, INTRO_TAGLINE_TEXT, INTRO_WAIT, FLIGHT_GRID_FINER, INTRO_ABERRATION, SEED } from '../src/canvas/config';
 import type { IntroTile } from '../src/canvas/intro';
+import { LOGO_GLYPHS, LOGO_HEIGHT } from '../src/canvas/logo';
 import { Detail, INTRO_LENGTH, INTRO_STRIDE, introDistance, introFog, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
 import { hexRgb, pixelColor, pixelColors } from '../src/canvas/pixels';
+import { gridSize } from '../scripts/pixels/pixel-grid.mjs';
 
 /** Seconds in, u of the way from launch to landing. */
 const at = (u: number) => INTRO_CRUISE + u * INTRO_DURATION;
 const frame = (t: number) => introFrame(t, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 });
 /** A portrait tile, its cells numbered in the red channel so each can be told apart. */
-const CELLS = PIXEL_GRID.portrait[0] * PIXEL_GRID.portrait[1];
+const GRID = [18, 24] as const;
+const CELLS = GRID[0] * GRID[1];
 const pixels = Array.from({ length: CELLS }, (_, n) => `${(n % 256).toString(16).padStart(2, '0')}8040`).join('');
-const tile = (x: number, y: number): IntroTile => ({ i: 1, j: 2, x, y, width: 300, height: 400, radius: 12, aspect: 'portrait', pixels });
+const tile = (x: number, y: number): IntroTile => ({ i: 1, j: 2, x, y, width: 300, height: 400, radius: 12, grid: GRID, pixels });
 const palette = [hexRgb('ff8040')];
 
 /** What the layer gets for one instance. */
@@ -133,38 +136,56 @@ describe('the depth fog', () => {
   });
 });
 
-describe('the line and the controls', () => {
+describe('the logo and the tagline', () => {
   it('wait below the mask, rise to their place, and leave above it', () => {
-    expect(introLetter(0, 0, INTRO_CONTROLS)).toBe(1);
-    expect(introLetter(INTRO_CONTROLS.leave - 0.01, 0, INTRO_CONTROLS)).toBeCloseTo(0, 2);
-    expect(introLetter(introTitleEnd(5, INTRO_CONTROLS), 0, INTRO_CONTROLS)).toBe(-1);
+    expect(introLetter(0, 0, INTRO_TAGLINE)).toBe(1);
+    expect(introLetter(INTRO_TAGLINE.leave - 0.01, 0, INTRO_TAGLINE)).toBeCloseTo(0, 2);
+    expect(introLetter(introTitleEnd(INTRO_TAGLINE_TEXT.length, INTRO_TAGLINE), 0, INTRO_TAGLINE)).toBe(-1);
   });
 
   it('set off one after the other', () => {
-    const t = INTRO_CONTROLS.start + 0.1;
-    expect(introLetter(t, 0, INTRO_CONTROLS)).toBeLessThan(introLetter(t, 1, INTRO_CONTROLS));
-    expect(introLetter(introTitleEnd(5, INTRO_CONTROLS), 4, INTRO_CONTROLS)).toBe(-1);
+    const t = INTRO_TAGLINE.start + 0.1;
+    expect(introLetter(t, 0, INTRO_TAGLINE)).toBeLessThan(introLetter(t, 1, INTRO_TAGLINE));
+    expect(introLetter(introTitleEnd(INTRO_TAGLINE_TEXT.length, INTRO_TAGLINE), INTRO_TAGLINE_TEXT.length - 1, INTRO_TAGLINE)).toBe(-1);
   });
 
-  it('come one at a time: the line has gone before the controls rise', () => {
-    expect(introTitleEnd(INTRO_LINE_TEXT.length, INTRO_LINE)).toBeLessThanOrEqual(INTRO_CONTROLS.start);
+  it('come one at a time: the logo has gone before the tagline rises', () => {
+    expect(introTitleEnd(LOGO_GLYPHS.length, INTRO_LINE)).toBeLessThanOrEqual(INTRO_TAGLINE.start);
   });
 
   it('stay up long enough to read', () => {
     const settled = ({ start, rise }: typeof INTRO_LINE) => start + rise * 0.7;
     expect(INTRO_LINE.leave - settled(INTRO_LINE)).toBeGreaterThan(0.6);
-    expect(INTRO_CONTROLS.leave - settled(INTRO_CONTROLS)).toBeGreaterThan(0.8);
+    expect(INTRO_TAGLINE.leave - settled(INTRO_TAGLINE)).toBeGreaterThan(0.8);
   });
 
   it('are gone before the wormhole gets going', () => {
-    expect(introTitleEnd(5, INTRO_CONTROLS)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
+    expect(introTitleEnd(INTRO_TAGLINE_TEXT.length, INTRO_TAGLINE)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
+  });
+});
+
+describe('the logo', () => {
+  it('is cut into its glyphs, left to right, the slices making up its full width exactly', () => {
+    expect(LOGO_GLYPHS).toHaveLength(11);
+    let x = 0;
+    for (const { viewBox: [left, top, width, height] } of LOGO_GLYPHS) {
+      expect(left).toBeCloseTo(x, 6);
+      expect(width).toBeGreaterThan(0);
+      expect([top, height]).toEqual([0, LOGO_HEIGHT]);
+      x = left + width;
+    }
+    expect(x).toBe(430);
+  });
+
+  it('keeps the counters of O, R, A and the mark open', () => {
+    expect(LOGO_GLYPHS.map((g) => g.evenOdd)).toEqual([true, false, false, false, true, true, true, true, false, false, false]);
   });
 });
 
 describe('what the intro draws', () => {
   it('makes up each tile from a ray per cell of its grid, landing exactly on that cell', () => {
     const data = introInstances([tile(-500, 40)], palette, 1440, 900, SEED);
-    const [cols, rows] = PIXEL_GRID.portrait;
+    const [cols, rows] = GRID;
     for (let n = 0; n < cols * rows; n++) {
       const ray = instance(data, n);
       expect(ray.pos).toEqual([-500, 40]);
@@ -211,8 +232,9 @@ describe('what the intro draws', () => {
   });
 
   it('counts every cell of every tile, whatever its shape', () => {
-    const square: IntroTile = { ...tile(0, 0), aspect: 'square', pixels: 'ff8040'.repeat(21 * 21) };
-    expect(introInstances([tile(0, 0), square], palette, 100, 100, SEED).length / INTRO_STRIDE).toBe(CELLS + 21 * 21 + introLineCount(100, 100));
+    const square: IntroTile = { ...tile(0, 0), grid: [21, 21], pixels: 'ff8040'.repeat(21 * 21) };
+    const wide: IntroTile = { ...tile(0, 0), width: 400, height: 160, grid: [33, 13], pixels: '40a0ff'.repeat(33 * 13) };
+    expect(introInstances([tile(0, 0), square, wide], palette, 100, 100, SEED).length / INTRO_STRIDE).toBe(CELLS + 21 * 21 + 33 * 13 + introLineCount(100, 100));
   });
 
   it('sends every line off screen before the tiles land', () => {
@@ -247,7 +269,7 @@ describe('what the intro draws', () => {
   });
 
   it('with a finer grid, keeps the coarse one too: each finer ray moves with its coarse cell, filling it', () => {
-    const [cols, rows] = PIXEL_GRID.portrait;
+    const [cols, rows] = GRID;
     const finer = FLIGHT_GRID_FINER;
     const rgba = new Uint8ClampedArray(cols * finer * rows * finer * 4).map((_, k) => k % 251);
     const data = introInstances([{ ...tile(0, 0), fine: { cols: cols * finer, rows: rows * finer, rgba } }], palette, 0, 0, SEED);
@@ -308,9 +330,23 @@ describe('what the intro draws', () => {
 describe('colour grids', () => {
   it('every image has one, the right size for its shape', () => {
     expect(media.length).toBeGreaterThan(50);
-    for (const { file, aspect, pixels } of media) {
-      const [cols, rows] = PIXEL_GRID[aspect];
-      expect(pixels, file).toMatch(new RegExp(`^[0-9a-f]{${cols * rows * 6}}$`));
+    for (const { file, width, height, grid, pixels } of media) {
+      expect(grid, file).toEqual(gridSize(width, height));
+      expect(pixels, file).toMatch(new RegExp(`^[0-9a-f]{${grid[0] * grid[1] * 6}}$`));
+    }
+  });
+
+  it('has near square cells, about as many whatever the shape', () => {
+    // The tile shapes it has always had.
+    expect(gridSize(4, 3)).toEqual([24, 18]);
+    expect(gridSize(3, 4)).toEqual([18, 24]);
+    expect(gridSize(1, 1)).toEqual([21, 21]);
+    for (const ratio of [0.3, 9 / 16, 2 / 3, 0.9, 1.1, 3 / 2, 16 / 9, 21 / 9, 3]) {
+      const [cols, rows] = gridSize(ratio * 1000, 1000);
+      expect(cols / rows / ratio).toBeGreaterThan(0.9);
+      expect(cols / rows / ratio).toBeLessThan(1.1);
+      expect(cols * rows).toBeGreaterThan(400);
+      expect(cols * rows).toBeLessThan(470);
     }
   });
 

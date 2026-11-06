@@ -5,6 +5,9 @@
  * time, and shipped to the canvas as indices into CanvasData.images.
  */
 
+import type { Category } from './images';
+import { CATEGORIES } from './images';
+
 /** Fewest images a project may have. */
 export const MIN_PROJECT_IMAGES = 3;
 
@@ -91,4 +94,10 @@ export function createProjectIndex(projects: readonly ClientProject[], imageCoun
     },
     byId: (id) => byId.get(id),
   };
+}
+
+/** The categories a project's images are in, each once, in CATEGORIES order. */
+export function projectCategories(project: ClientProject, images: readonly { category: string }[]): Category[] {
+  const used = new Set(project.images.map((image) => images[image]!.category));
+  return CATEGORIES.filter((category) => used.has(category));
 }

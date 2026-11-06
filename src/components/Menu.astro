@@ -1,0 +1,166 @@
+---
+/**
+ * The menu: "M" opens it from anywhere, on the canvas or the about view, whatever is going on
+ * there. A native modal <dialog>, so it sits over everything (the header and info bar too), keeps
+ * focus in itself (on the dialog, so Tab goes to the first link) and leaves the page inert under
+ * it. It opens with the About flight the other way round: the camera backs away from the page
+ * (main.ts, backAway), every image drawn in towards the centre by its depth, blurring and dimming,
+ * the header and the info bar's other hints fading (its own stays, saying Close, ESC joining the M), and the square comes in from behind the camera, big and soft,
+ * settling sharp in front of it all, translucent and blurring what is left far off behind it. Its
+ * links are at the top, but for the last, Start a project, at the bottom; set in the page's sans in
+ * container units so the list scales with the square. Closing, it all runs back.
+ *
+ * The square's open runs from @starting-style (Tailwind's `starting:`), over the flight's time and
+ * ease (FLIGHT_DURATION, FLIGHT_EASE); closing sets data-closing and waits for it before the
+ * dialog actually closes, the page still coming home behind it. html[data-menu-open] is set while it is
+ * open or opening, for the header and info bar.
+ *
+ * The links are placeholders.
+ */
+const links = ['Work', 'Projects', 'About', 'Journal', 'Start a project'];
+// The flight's ease (FLIGHT_EASE, config.ts).
+const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
+---
+
+<dialog
+  data-menu
+  aria-label="Menu"
+  tabindex="-1"
+  class="m-0 size-full max-h-none max-w-none place-items-center overflow-hidden border-0 bg-transparent p-0 text-ink outline-none backdrop:bg-transparent open:grid"
+>
+  <nav
+    data-menu-box
+    aria-label="Main"
+    class:list={[
+      // As big as fits, up to 36 rem, with 1 rem round it on a phone either way up.
+      '@container relative aspect-square w-[min(36rem,calc(100vw_-_2rem),calc(100svh_-_2rem))]',
+      // Glass: what is behind it blurred, and darker on the light canvas or lighter on the dark one
+      // (--glass-brightness, global.css), with a breath of ink over it pushing the same way.
+      'rounded-2xl bg-ink/6 backdrop-blur-xl backdrop-brightness-(--glass-brightness) backdrop-saturate-150 min-[760px]:rounded-3xl',
+      // From behind the camera: big and faint, settling as the page backs away (FLIGHT_DURATION).
+      // Closing, it lingers a moment, then speeds off back there, quicker than the page comes home
+      // (MENU_RETURN_DURATION), so the two cross over instead of leaving a gap. (Its links come
+      // into focus, below; the glass itself is never blurred too, as that costs frames.)
+      'transition-[opacity,scale] duration-800 starting:scale-[1.4] starting:opacity-0',
+      ease,
+      'in-data-closing:scale-[1.4] in-data-closing:opacity-0 in-data-closing:duration-550 in-data-closing:ease-[cubic-bezier(0.5,0,0.75,0.6)]',
+      // With reduced motion, a fade and nothing else.
+      'motion-reduce:transition-opacity motion-reduce:duration-300 motion-reduce:starting:scale-100 motion-reduce:in-data-closing:scale-100',
+    ]}
+  >
+    <ul
+      class:list={[
+        'flex h-full flex-col items-start p-[6cqi] text-[9cqi] leading-[1.1] font-medium tracking-[-0.03em]',
+        // Out of focus coming from behind the camera, sharp as the square settles; soft again leaving.
+        'transition-[filter] duration-800 starting:blur-[12px]',
+        ease,
+        'in-data-closing:blur-[12px] in-data-closing:duration-550 in-data-closing:ease-[cubic-bezier(0.5,0,0.75,0.6)]',
+        'motion-reduce:transition-none motion-reduce:starting:blur-none motion-reduce:in-data-closing:blur-none',
+      ]}
+    >
+      {
+        links.map((link, n) => (
+          <li class:list={[n === links.length - 1 && 'mt-auto']}>
+            <a
+              href="#"
+              data-menu-link
+              class="rounded-sm transition-opacity hover:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
+            >
+              {link}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </nav>
+</dialog>
+
+<script>
+  import { setHint } from '../canvas/hints';
+
+  const dialog = document.querySelector<HTMLDialogElement>('[data-menu]')!;
+  const box = dialog.querySelector('[data-menu-box]')!;
+  const html = document.documentElement;
+
+  /** Tell the canvas (main.ts, backAway), and the header and info bar: open, or not. */
+  const say = (open: boolean) => {
+    if (open) html.dataset.menuOpen = '';
+    else delete html.dataset.menuOpen;
+    // Its hint (InfoBar.astro): Menu to Close, ESC joining the M.
+    setHint('menu', open);
+    window.dispatchEvent(new CustomEvent('menu', { detail: open }));
+  };
+
+  /** Counts closes, so one that a reopen has overtaken doesn't close the dialog once it has run. */
+  let closes = 0;
+
+  function open(): void {
+    closes++;
+    delete dialog.dataset.closing;
+    if (!dialog.open) {
+      dialog.showModal();
+      // The dialog itself, not its first link, so no link is ringed until Tab moves to it.
+      dialog.focus();
+    }
+    say(true);
+  }
+
+  async function close(): Promise<void> {
+    if (!dialog.open || dialog.dataset.closing !== undefined) return;
+    const turn = ++closes;
+    dialog.dataset.closing = '';
+    say(false);
+    await Promise.allSettled(dialog.getAnimations({ subtree: true }).map((a) => a.finished));
+    if (turn !== closes) return;
+    dialog.close();
+    delete dialog.dataset.closing;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 'm' || e.repeat || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+    e.preventDefault();
+    open();
+  });
+
+  // Open, the menu has the keyboard to itself. Caught first, on the way down, no key reaches the
+  // canvas's own (main.ts, input.ts: all on window), and none scrolls the about view under it.
+  // Tab and Enter still move between and follow the links, and the browser's shortcuts still work.
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!dialog.open) return;
+      e.stopPropagation();
+      if (e.altKey || e.metaKey || e.ctrlKey || e.key === 'Tab' || e.key === 'Enter') return;
+      e.preventDefault();
+      if (e.repeat) return;
+      // On its way out, M brings it back.
+      if (e.key.toLowerCase() === 'm' && dialog.dataset.closing !== undefined) open();
+      else if (e.key === 'Escape' || e.key.toLowerCase() === 'm') close();
+    },
+    true,
+  );
+
+  // Any other way the browser asks to close it (Android's back), it closes the same way.
+  dialog.addEventListener('cancel', (e) => {
+    e.preventDefault();
+    close();
+  });
+
+  // A click anywhere but the square closes it.
+  dialog.addEventListener('click', (e) => {
+    if (!box.contains(e.target as Node)) close();
+  });
+
+  // The browser's back button, under it: the canvas is back at once (main.ts), so it goes too.
+  window.addEventListener('popstate', () => close());
+
+  // Placeholders: they go nowhere yet.
+  for (const link of dialog.querySelectorAll('[data-menu-link]')) link.addEventListener('click', (e) => e.preventDefault());
+
+  // The canvas zooms and pans on these from window (input.ts), and the about view scrolls: not under the menu.
+  const hold = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  for (const type of ['wheel', 'touchmove', 'gesturestart', 'gesturechange', 'gestureend']) dialog.addEventListener(type, hold, { passive: false });
+</script>

@@ -1,0 +1,135 @@
+---
+/**
+ * The project view's page, over the canvas and under the header and info bar; projectview.ts
+ * fills and opens it ("P"). The project's images run down one column at the centre, scrolling endlessly,
+ * a little wider than the focused view's image (--project-column, set by main.ts from
+ * PROJECT_COLUMN), the whole width on a phone, 16 px in. The header's band and the info
+ * bar's are kept clear above and below. The project's name is the view's accessible name. The
+ * glass edges are its own (projectview.ts), as the canvas's are: the bands cut out of the column
+ * and drawn again, bent, on a canvas just in front of the background, which fades with the rest.
+ *
+ * It crossfades in and out on its opacity alone, as the canvas backs away behind it or comes home.
+ * Closed it is inert and takes no pointer, but
+ * stays drawn at no opacity, so the project readied for "P" (projectview.ts, prepare) is
+ * rasterised before it is asked for: drawing its images for the first time mid-fade costs
+ * frames. The canvas stays drawn under it, backed away and still, as it is under the menu:
+ * hidden, it would be drawn afresh, blurred tiles and all, the moment it is shown again.
+ */
+---
+
+<section data-project-view aria-label="Project" inert class="project-view fixed inset-0 z-10 bg-canvas text-ink">
+  <!-- The column scrolls in a box of its own, the window's size, so the glass can cut its bands out of it (projectview.ts) and leave the background whole. -->
+  <div
+    data-project-scroll
+    tabindex="-1"
+    class="fixed inset-0 overflow-y-auto overscroll-contain px-4 pt-20 pb-16 outline-none [scrollbar-width:none] min-[760px]:px-6 min-[760px]:pt-24 min-[760px]:pb-24"
+  >
+    <ol data-project-images class="mx-auto flex w-full flex-col gap-4 min-[760px]:w-(--project-column,58vw) min-[760px]:gap-6"></ol>
+  </div>
+</section>
+
+<style is:global>
+  /* Closed it is still there, drawn but at no opacity, so its images are ready to show the moment it opens. */
+  /* In over the canvas backing away (FLIGHT_DURATION, FLIGHT_EASE in config.ts), so it is seen going back; out quicker, so it is seen coming home. */
+  .project-view {
+    opacity: 0;
+    pointer-events: none;
+    will-change: opacity;
+    transition: opacity 0.5s cubic-bezier(0.33, 0, 0.2, 1);
+  }
+  .project-view[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.8s cubic-bezier(0.5, 0, 0.25, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .project-view,
+    .project-view[data-open] {
+      transition-duration: 0.15s;
+    }
+  }
+
+  /* The image flying between its tile and its place in the column (projectview.ts), over the view
+     and under the header; the two ends it flies between are hidden meanwhile. */
+  .project-flight {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 15;
+    overflow: hidden;
+    transform-origin: 0 0;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .project-flight img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* (Not hidden: at no opacity, each stays drawn, so showing it again as the copy lands costs nothing.) */
+  [data-flying] {
+    opacity: 0 !important;
+  }
+
+  /* Zoomed in on the canvas, the key for this view (projecthint.ts), below the focus frame's
+     bottom-right corner, centred on the row of the project's categories (24 px high). */
+  .focus-hint {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    display: flex;
+    align-items: center;
+    height: 24px;
+    color: var(--color-ink);
+    transition:
+      opacity 0.2s ease-out,
+      translate 0.2s ease-out;
+  }
+  .focus-hint[data-hidden] {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+  @media not ((hover: hover) and (pointer: fine)) {
+    .focus-hint {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .focus-hint {
+      transition: none;
+    }
+  }
+
+  /* Each image as wide as the column, in its own shape, but no taller than a 3:4 one: a taller
+     image narrows to that height instead, centred. */
+  .project-image {
+    position: relative;
+    display: block;
+    width: min(100%, calc(100% * var(--ratio) * 4 / 3));
+    margin-inline: auto;
+    aspect-ratio: var(--ratio);
+    overflow: hidden;
+    border-radius: clamp(12px, 1.4vw, 20px);
+    cursor: zoom-in;
+  }
+  .project-image:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 4px;
+  }
+  .project-image img,
+  .project-image video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* A video shows over its poster image once it has a frame to show. */
+  .project-image video {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .project-image video[data-playing] {
+    opacity: 1;
+  }
+</style>

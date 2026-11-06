@@ -1,4 +1,4 @@
-import { FLIGHT_ABERRATION, FLIGHT_ABERRATION_SPEED, FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_EASE, FLIGHT_FADE_FROM, FLIGHT_FADE_TO, FLIGHT_FAR, FLIGHT_FAR_BLUR, FLIGHT_FAR_FADE, FLIGHT_HANDOVER, FLIGHT_LINE_ALPHA, FLIGHT_LINES, FLIGHT_RAY_PACE, FLIGHT_SHUTTER, FLIGHT_THINNING, INTRO_THIN } from './config';
+import { FLIGHT_ABERRATION, FLIGHT_ABERRATION_SPEED, FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_EASE, FLIGHT_FADE_FROM, FLIGHT_FADE_TO, FLIGHT_FAR, FLIGHT_FAR_BLUR, FLIGHT_FAR_FADE, FLIGHT_HANDOVER, FLIGHT_LINE_ALPHA, FLIGHT_LINES, FLIGHT_RAY_PACE, FLIGHT_SHUTTER, FLIGHT_THINNING, INTRO_THIN, MENU_BACK_BLUR, MENU_BACK_DIM, MENU_RETURN_EASE } from './config';
 import { cubicBezier, smoothstep } from './focus';
 import { hash, unit } from './hash';
 import type { IntroFrame, IntroTile } from './intro';
@@ -48,6 +48,28 @@ export function flightView(depth: number, travel: number, out: FlightView): Flig
   out.opacity = 1 - smoothstep(Math.min(1, Math.max(0, (r - FLIGHT_FADE_FROM) / (FLIGHT_FADE_TO - FLIGHT_FADE_FROM))));
   out.blur = FLIGHT_BLUR * smoothstep(Math.min(1, r / FLIGHT_FADE_TO));
   return out;
+}
+
+/**
+ * The menu's flight (Menu.astro): this one the other way round. The camera backs away by `back`
+ * (see menuBackTravel), so an image at `depth` is drawn depth / (depth + back) as big, and its
+ * centre moves in towards the vanishing point by the same factor. Each blurs and dims as it
+ * recedes, by as much as it has shrunk, so both run the whole way there and back, but it stays:
+ * far off and faint behind the menu. Writes into `out`.
+ */
+export function menuBackView(depth: number, back: number, out: FlightView): FlightView {
+  out.scale = 1 / (1 + Math.max(0, back / depth));
+  out.opacity = out.scale ** MENU_BACK_DIM;
+  out.blur = MENU_BACK_BLUR * (1 - out.scale);
+  return out;
+}
+
+const menuReturnEase = cubicBezier(...MENU_RETURN_EASE);
+
+/** How far along a leg of the menu's flight it is at progress p (0 to 1, in time): backing away, eased as the flight is; coming home, on MENU_RETURN_EASE. */
+export function menuBackEase(away: boolean, p: number): number {
+  const x = Math.min(1, Math.max(0, p));
+  return away ? flightEase(x) : menuReturnEase(x);
 }
 
 /**

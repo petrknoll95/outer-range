@@ -4,13 +4,12 @@ import { media as manifest } from '../src/assets/media';
 import { OVERLAP_BUDGET } from '../src/canvas/config';
 import { computeGeometry, forEachCellIn, sizingReach } from '../src/canvas/layout';
 import { DEFAULT_LENS, Lens, type LensPoint } from '../src/canvas/lens';
-import type { Aspect } from '../src/canvas/world';
 import { createWorld } from '../src/canvas/world';
 
 const lens = new Lens(DEFAULT_LENS);
 const flat = new Lens(null);
 const { inner, outer, minScale, roundness } = DEFAULT_LENS;
-const world = createWorld(manifest.map((m) => ({ aspect: m.aspect as Aspect })));
+const world = createWorld(manifest.map((m) => ({ ratio: m.width / m.height })));
 
 const rho = fc.double({ min: 0, max: 3, noNaN: true });
 const coord = fc.double({ min: -2000, max: 2000, noNaN: true });

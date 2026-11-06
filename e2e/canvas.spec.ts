@@ -35,6 +35,7 @@ interface CanvasApi {
   zoomInLevel: () => number;
   activeImage: () => (Omit<Tile, 'scale' | 'opacity'>) | null;
   isSettled: () => boolean;
+  readyProjects: (on: boolean) => void;
   domNodes: () => number;
   onFrame: (fn: () => void) => () => void;
 }
@@ -415,13 +416,16 @@ test('the page never rubber-bands or swipes back', async ({ page }) => {
 });
 
 test('panning 20 screens away and back is pixel-identical', async ({ page }) => {
+  // The project view readied while the canvas rests (main.ts) caches larger copies of its images,
+  // which tiles of the same images made after it then show, a little sharper: not the world changing.
+  await page.addInitScript(() => addEventListener('DOMContentLoaded', () => window.__canvas.readyProjects(false)));
   await open(page);
   // Videos play on: their frames differ between any two shots, so leave them out (video.spec.ts covers them),
   // and with them what a shown video clears under it: every tile shows its poster, on no colour. And
-  // the project label's blur: it spreads the few levels Chrome re-rasterises a tile edge differently.
+  // the project label's and categories' blur: it spreads the few levels Chrome re-rasterises a tile edge differently.
   await page.addStyleTag({
     content:
-      '[data-canvas-layer] video { visibility: hidden } [data-canvas-layer] picture { visibility: visible !important } [data-canvas-layer] > div { background-color: transparent !important } .focus-project { backdrop-filter: none !important }',
+      '[data-canvas-layer] video { visibility: hidden } [data-canvas-layer] picture { visibility: visible !important } [data-canvas-layer] > div { background-color: transparent !important } .focus-project, .focus-category { backdrop-filter: none !important }',
   });
   const shoot = async () => PNG.sync.read(await page.screenshot({ animations: 'disabled' }));
   const tiles = () =>
@@ -514,6 +518,8 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
       dom: window.__canvas.domNodes(),
       pool: window.__canvas.renderer.poolSize,
       videos: document.querySelectorAll('[data-canvas-layer] video').length,
+      // What the focus frame holds: the project's name, its categories, the key for the project view.
+      frame: document.querySelector('.focus-frame')!.getElementsByTagName('*').length,
     }));
 
   // Warm up: zoom all the way out and back, and one lap in every direction, so the pool reaches its working size.
@@ -563,9 +569,9 @@ test('a minute of panning keeps the DOM and the heap flat', async ({ page }) => 
   );
   console.info(`pool bound ${bound}`);
   expect(after.pool).toBeLessThanOrEqual(bound);
-  // Four nodes per tile, one more for a tile that has shown a video, plus the layer, the focus frame and its project label.
+  // Four nodes per tile, one more for a tile that has shown a video, plus the layer, the focus frame and what it holds.
   expect(after.videos).toBeLessThanOrEqual(after.pool);
-  expect(after.dom).toBe(after.pool * 4 + after.videos + 3);
+  expect(after.dom).toBe(after.pool * 4 + after.videos + 2 + after.frame);
   expect(afterHeap - baseHeap).toBeLessThan(1_000_000);
 });
 

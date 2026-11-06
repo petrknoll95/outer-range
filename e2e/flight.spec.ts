@@ -102,20 +102,30 @@ function uniformColour(png: Buffer): number[] | null {
   return first;
 }
 
-test('the About link sits at the top right, set exactly like the wordmark', async ({ page }) => {
+test('the About link sits at the top right, its key and all, set exactly like the info bar\'s hints', async ({ page }) => {
   await open(page);
   const link = page.getByRole('link', { name: 'About' });
   await expect(link).toHaveAttribute('href', '/about');
-  const style = (sel: string) =>
-    page.locator(sel).evaluate((el) => {
-      const s = getComputedStyle(el);
-      return [s.fontFamily, s.fontSize, s.fontWeight, s.letterSpacing, s.color];
-    });
-  expect(await style('header a')).toEqual(await style('header h1'));
-  const box = (await link.boundingBox())!;
+  const label = link.locator('[data-route-label]');
+  const key = link.locator('[data-hint-key]');
+  await expect(key).toHaveText('A');
+  const look = (el: Element) => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return [s.fontFamily, s.fontSize, s.fontWeight, s.letterSpacing, s.color, Math.round(r.width * 10), Math.round(r.height * 10)];
+  };
+  // Against the info bar's Theme hint: the same pill, and a label in the same type.
+  const theme = page.getByRole('complementary', { name: 'Controls' }).getByRole('listitem').filter({ hasText: 'Theme' });
+  expect(await key.evaluate(look)).toEqual(await theme.locator('span').first().evaluate(look));
+  expect((await label.evaluate(look)).slice(0, 5)).toEqual((await theme.locator('span').last().evaluate(look)).slice(0, 5));
+  // 24 px in from the right like the info bar, on the wordmark's line.
+  const end = (await label.boundingBox())!;
   const mark = (await page.getByRole('heading', { name: 'Outer Range' }).boundingBox())!;
-  expect(box.x + box.width).toBeCloseTo(1440 - 24, 0);
-  expect(box.y + box.height / 2).toBeCloseTo(mark.y + mark.height / 2, 0);
+  expect(end.x + end.width).toBeCloseTo(1440 - 24, 0);
+  for (const part of [key, label]) {
+    const box = (await part.boundingBox())!;
+    expect(Math.abs(box.y + box.height / 2 - (mark.y + mark.height / 2))).toBeLessThan(1);
+  }
 });
 
 test('About flies the camera into the canvas: every image grows outward at its own pace and fades, leaving the header over a blank page', async ({
@@ -214,8 +224,8 @@ test('from the zoomed-in view too: the focused image comes at the camera', async
   await page.mouse.move(720, 450);
   await page.mouse.wheel(0, 400);
   expect(await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.physics.x)).toBe(x);
-  // The caption has gone out.
-  await expect(page.locator('.focus-caption')).toBeHidden({ timeout: 2000 });
+  // The frame, and the project's pills on it, have faded out.
+  await expect(page.locator('.focus-frame')).toHaveCSS('opacity', '0', { timeout: 2000 });
   await page.waitForURL((url) => url.pathname === '/about', { timeout: 5000 });
 });
 
@@ -262,7 +272,8 @@ const landed = (page: Page, at: 0 | 1) =>
     at,
     { timeout: 30_000 },
   );
-const label = (page: Page) => page.locator('header a').evaluate((a) => [a.textContent, a.getAttribute('href')]);
+// Its keys (A, and ESC beside it on the about view: KeyHint.astro), label and link.
+const label = (page: Page) => page.locator('header a').evaluate((a) => ['active' in (a as HTMLElement).dataset ? 'A ESC' : 'A', a.querySelector('[data-route-label]')!.textContent, a.getAttribute('href')]);
 
 test('Back flies the canvas back in, the opposite way, to exactly the view it left: zoomed in on the same image', async ({ page }) => {
   await open(page);
@@ -283,7 +294,7 @@ test('Back flies the canvas back in, the opposite way, to exactly the view it le
   });
   await page.getByRole('link', { name: 'About' }).click();
   await landed(page, 1);
-  expect(await label(page)).toEqual(['Back', '/']);
+  expect(await label(page)).toEqual(['A ESC', 'Back', '/']);
   // Coming back: each image shrinks into place from the camera, and fades in.
   await page.evaluate(() => {
     const w = window as unknown as { __back: number[][] };
@@ -308,8 +319,8 @@ test('Back flies the canvas back in, the opposite way, to exactly the view it le
   }
   expect(await view(page)).toEqual(before);
   await expect(page).toHaveTitle('Outer Range');
-  expect(await label(page)).toEqual(['About', '/about']);
-  await expect(page.locator('.focus-caption')).toBeVisible();
+  expect(await label(page)).toEqual(['A', 'About', '/about']);
+  await expect(page.locator('.focus-categories')).toHaveCSS('opacity', '1');
 });
 
 test('Esc on the about view goes back like Back does, to the view it left, zoomed in or out', async ({ page }) => {
@@ -329,7 +340,7 @@ test('Esc on the about view goes back like Back does, to the view it left, zoome
     await page.waitForURL((url) => url.pathname === '/');
     await landed(page, 0);
     expect(await view(page)).toEqual(before);
-    expect(await label(page)).toEqual(['About', '/about']);
+    expect(await label(page)).toEqual(['A', 'About', '/about']);
   }
   // Opened at /about, with no canvas behind it in history: Esc still flies the canvas in.
   await page.goto('/about?test');
@@ -353,7 +364,7 @@ test('the browser’s back and forward buttons run the same flights', async ({ p
   expect(await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.flight()?.to)).toBe(1);
   await landed(page, 1);
   expect(new URL(page.url()).pathname).toBe('/about');
-  expect(await label(page)).toEqual(['Back', '/']);
+  expect(await label(page)).toEqual(['A ESC', 'Back', '/']);
 });
 
 test('a change of mind mid-flight turns it round from where it has got to', async ({ page }) => {
@@ -375,12 +386,12 @@ test('opened at /about: the canvas is flown past, and Back flies it in', async (
   await page.waitForFunction(() => (window as unknown as { __canvas?: Api }).__canvas?.flight()?.u === 1);
   await page.addStyleTag({ content: '[data-about] { visibility: hidden !important; }' });
   expect(uniformColour(await page.screenshot())).not.toBeNull();
-  expect(await label(page)).toEqual(['Back', '/']);
+  expect(await label(page)).toEqual(['A ESC', 'Back', '/']);
   await page.getByRole('link', { name: 'Back' }).click();
   await page.waitForURL((url) => url.pathname === '/');
   await landed(page, 0);
   expect(uniformColour(await page.screenshot())).toBeNull();
-  expect(await label(page)).toEqual(['About', '/about']);
+  expect(await label(page)).toEqual(['A', 'About', '/about']);
 });
 
 test('reloading the about view keeps the view: Back still returns to it', async ({ page }) => {

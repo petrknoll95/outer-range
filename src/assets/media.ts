@@ -1,4 +1,3 @@
-import type { Aspect } from '../canvas/world';
 import videos from './videos/manifest.json';
 import work from './work/manifest.json';
 
@@ -16,12 +15,13 @@ export interface MediaFile {
   file: string;
   /** The still the tile shows and its variants are built from, as a path under src/assets: the image itself, or a video's poster frame. */
   still: string;
-  aspect: Aspect;
   width: number;
   height: number;
   color: string;
   /** Its colour grid: the image pixelated, as hex digits run together (scripts/pixels). */
   pixels: string;
+  /** The colour grid's columns and rows. */
+  grid: readonly [number, number];
   /** A video to play over the still: its copies (see VideoCopies), as paths under src/assets. */
   video?: VideoCopies;
   /** Designed work (fine type, flat colour): its variants are served at a higher quality than photos'. */
@@ -33,15 +33,15 @@ export interface MediaFile {
  * the order the page and its content entries resolve them.
  */
 export const media: MediaFile[] = [
-  ...work.map(({ file, aspect, width, height, color, pixels }) => ({ file, still: `work/${file}`, detail: true, aspect: aspect as Aspect, width, height, color, pixels })),
-  ...videos.map(({ file, webm, small, smallWebm, poster, aspect, width, height, color, pixels }) => ({
+  ...work.map(({ file, width, height, color, pixels, grid }) => ({ file, still: `work/${file}`, detail: true, width, height, color, pixels, grid: grid as [number, number] })),
+  ...videos.map(({ file, webm, small, smallWebm, poster, width, height, color, pixels, grid }) => ({
     file,
     still: `videos/${poster}`,
     video: { webm: `videos/${webm}`, mp4: `videos/${file}`, smallWebm: `videos/${smallWebm}`, smallMp4: `videos/${small}` },
-    aspect: aspect as Aspect,
     width,
     height,
     color,
     pixels,
+    grid: grid as [number, number],
   })),
 ];

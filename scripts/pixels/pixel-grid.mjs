@@ -3,13 +3,18 @@
 // flies a tile in as one ray per cell and shows the grid until the image itself has loaded.
 import sharp from 'sharp';
 
-/** Columns and rows, near square cells, for each aspect; src/canvas/config.ts (PIXEL_GRID) reads them back. */
-const GRID = { landscape: [24, 18], portrait: [18, 24], square: [21, 21] };
+/** Cells in a grid, about: 24 × 18 for 4:3, 21 × 21 for a square. */
+const CELLS = 432;
 /** Source pixels averaged per cell, each way. */
 const SAMPLES = 8;
 
-export async function pixelGrid(input, aspect) {
-  const [cols, rows] = GRID[aspect];
+/** Columns and rows of the grid for an image `width` × `height`: near square cells. The manifests record it as `grid`. */
+export function gridSize(width, height) {
+  const ratio = width / height;
+  return [Math.max(1, Math.round(Math.sqrt(CELLS * ratio))), Math.max(1, Math.round(Math.sqrt(CELLS / ratio)))];
+}
+
+export async function pixelGrid(input, [cols, rows]) {
   const { data } = await sharp(input, { failOn: 'none' })
     .rotate()
     .removeAlpha()

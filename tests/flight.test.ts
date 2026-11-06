@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { FLIGHT_ABERRATION, FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_FADE_FROM, FLIGHT_FAR_BLUR, FLIGHT_GRID_FINER, FLIGHT_HANDOVER, FLIGHT_LINES, PIXEL_GRID, SEED } from '../src/canvas/config';
+import { FLIGHT_ABERRATION, FLIGHT_BLUR, FLIGHT_DEPTH_SPREAD, FLIGHT_FADE_FROM, FLIGHT_FAR_BLUR, FLIGHT_GRID_FINER, FLIGHT_HANDOVER, FLIGHT_LINES, SEED } from '../src/canvas/config';
 import { FLIGHT_TRAVEL, flightDepth, flightFar, flightFrame, flightHandover, flightInstances, flightTravel, flightView } from '../src/canvas/flight';
 import type { IntroTile } from '../src/canvas/intro';
 import { INTRO_STRIDE, introLineCount } from '../src/canvas/intro';
@@ -122,8 +122,8 @@ describe('the flight out of the canvas', () => {
 
 describe("the flight's rays", () => {
   const frame = (u: number, to: 0 | 1) => flightFrame(u, to, { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 });
-  const [cols, rows] = PIXEL_GRID.landscape;
-  const tile: IntroTile = { i: 3, j: -2, x: -120, y: 40, width: 240, height: 180, radius: 10, aspect: 'landscape', pixels: 'a0b0c0'.repeat(cols * rows) };
+  const [cols, rows] = [24, 18] as const;
+  const tile: IntroTile = { i: 3, j: -2, x: -120, y: 40, width: 240, height: 180, radius: 10, grid: [cols, rows], pixels: 'a0b0c0'.repeat(cols * rows) };
   /** Where each instance is, ahead of the camera, at the start and at the end of the flight. */
   const ahead = (data: Float32Array, n: number, travel: number) => data[n * INTRO_STRIDE + 15]! + travel * data[n * INTRO_STRIDE + 16]!;
 

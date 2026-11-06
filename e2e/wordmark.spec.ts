@@ -73,10 +73,22 @@ test('dragging across the wordmark moves the canvas', async ({ page }) => {
   expect(after).toBeLessThan(before - 50);
 });
 
-test('the wordmark and link are a size smaller on a phone', async ({ page }) => {
+test('the wordmark is a size smaller on a phone', async ({ page }) => {
   await page.goto('/?test');
   await expect(page.locator('h1')).toHaveCSS('font-size', '24px');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('h1')).toHaveCSS('font-size', '20px');
-  await expect(page.getByRole('link', { name: 'About' })).toHaveCSS('font-size', '20px');
+});
+
+test('on a touch screen the link is its label alone, with no key to press', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await page.goto('/?test');
+  const link = page.getByRole('link', { name: 'About' });
+  await expect(link).toBeVisible();
+  await expect(link.locator('span').first()).toBeHidden();
+  // Still easy to hit: its tap area is padded out round the label.
+  const box = (await link.boundingBox())!;
+  expect(box.height).toBeGreaterThanOrEqual(24);
+  await context.close();
 });

@@ -80,3 +80,45 @@ test('the frame and its label are drawn over every tile, so an overlapping neigh
   expect(z.sameLayer).toBe(true);
   expect(z.frame).toBeGreaterThan(z.tiles);
 });
+
+/** The categories of the active image's project, as its images' entries have them, in CATEGORIES order. */
+const activeCategories = (page: Page) =>
+  page.evaluate(() => {
+    const data = JSON.parse(document.getElementById('canvas-data')!.textContent!) as { images: { category: string }[]; projects: { images: number[] }[] };
+    const image = (window as unknown as { __canvas: Api }).__canvas.activeImage()!.image;
+    const used = new Set(data.projects.find((p) => p.images.includes(image))!.images.map((n) => data.images[n]!.category));
+    return ['Brand', 'Logo', 'Website', 'Development'].filter((c) => used.has(c));
+  });
+
+/** The category pills' text, and whether the row shows (fully), once its fade has run. */
+const categories = (page: Page) =>
+  page.locator('.focus-categories').evaluate((el) => ({ pills: [...el.children].map((c) => c.textContent), opacity: Number(getComputedStyle(el).opacity) }));
+
+test('the project’s categories sit in pills of the same kind just below the frame’s bottom-left corner, zoomed out and in', async ({ page }) => {
+  await page.goto('/?test');
+  await settled(page);
+  for (const zoom of ['out', 'in'] as const) {
+    if (zoom === 'in') {
+      await page.keyboard.press(' ');
+      await settled(page);
+    }
+    await expect.poll(() => categories(page)).toEqual({ pills: await activeCategories(page), opacity: 1 });
+    const [row, frame] = await Promise.all([page.locator('.focus-categories').boundingBox(), page.locator('.focus-frame').boundingBox()]);
+    expect(row!.x).toBeCloseTo(frame!.x, 0);
+    expect(row!.y - (frame!.y + frame!.height)).toBeCloseTo(8, 0);
+  }
+  // The same pill as the project's name.
+  const style = (selector: string) =>
+    page.locator(selector).first().evaluate((el) => {
+      const s = getComputedStyle(el);
+      return [s.fontSize, s.padding, s.borderRadius, s.backdropFilter, s.backgroundColor].join(' | ');
+    });
+  expect(await style('.focus-category')).toBe(await style('.focus-project'));
+  // Paging to another project's image, the pills follow.
+  const first = await activeCategories(page);
+  for (let n = 0; n < 12 && JSON.stringify(await activeCategories(page)) === JSON.stringify(first); n++) {
+    await page.keyboard.press('ArrowRight');
+    await settled(page);
+  }
+  await expect.poll(() => categories(page)).toEqual({ pills: await activeCategories(page), opacity: 1 });
+});

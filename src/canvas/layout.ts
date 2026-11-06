@@ -1,6 +1,6 @@
 import { ZOOM_NARROW, ZOOM_NARROW_HEIGHT, ZOOM_NARROW_WIDTH, CELLS_PER_VIEWPORT, LENS_REPEAT_SHARE, LONG, PITCH, RADIUS, S_MAX_PX, S_MIN_PX, ZOOM_IN_FILL, ZOOM_MAX } from './config';
 import type { Cell, World } from './world';
-import { emptyCell } from './world';
+import { emptyCell, tileSize } from './world';
 
 /** Pixel geometry for one viewport size. */
 export interface Geometry {
@@ -60,14 +60,19 @@ export function computeGeometry(vw: number, vh: number, world: World, reach = 1)
 }
 
 /**
- * The zoomed-in zoom for a geometry: a portrait image's long edge fills ZOOM_IN_FILL of
+ * The zoomed-in zoom for a geometry: the longest a tile can be, LONG, fills ZOOM_IN_FILL of
  * the viewport's short side, unless images would go soft first (the on-screen short edge
  * in device pixels reaching `sharpEdge`) or ZOOM_MAX is reached. Never below 1. On a narrow
- * viewport, the most any image zooms to (see zoomInFor): a portrait one, the narrowest.
+ * viewport, the most any of the images, by their `ratios` (width over height), zooms to (see zoomInFor).
  */
-export function zoomInLevel(g: Geometry, dpr: number, sharpEdge: number): number {
+export function zoomInLevel(g: Geometry, dpr: number, sharpEdge: number, ratios: readonly number[]): number {
   const fill = (ZOOM_IN_FILL * Math.min(g.vw, g.vh)) / (LONG * g.s);
-  if (g.vw < ZOOM_NARROW) return zoomInFor(g, g.s, LONG * g.s, 1);
+  if (g.vw < ZOOM_NARROW) {
+    return ratios.reduce((most, ratio) => {
+      const { w, h } = tileSize(ratio);
+      return Math.max(most, zoomInFor(g, w * g.s, h * g.s, 1));
+    }, 1);
+  }
   return Math.max(1, Math.min(ZOOM_MAX, sharpEdge / (g.s * dpr), fill));
 }
 

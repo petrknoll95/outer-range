@@ -10,7 +10,10 @@ export const SEED = 0x5eed2026;
 
 // ── World geometry (units of S) ────────────────────────────────────────────
 
-/** Long edge of a 4:3 or 3:4 image. */
+/**
+ * The most a tile spans either way: the long edge of a 4:3 or 3:4 image. A wider or taller
+ * image is fitted inside a LONG × LONG box (tileSize in world.ts), so it never spans more.
+ */
 export const LONG = 4 / 3;
 /** Gap between two facing long edges when neither is jittered. */
 export const GAP = 0.14;
@@ -38,6 +41,14 @@ export const JITTER_Y = GAP * 0.45;
  */
 export const COLUMN_STAGGER = 0.24;
 export const COLUMN_STAGGER_JITTER = 0.12;
+/**
+ * A tile shorter than S (anything wider than 4:3) leaves room above and below it that a 4:3
+ * tile fills, and one narrower than S (taller than 3:4) room at its sides. It jitters into this
+ * share of that room too, so short tiles don't line up in rows of matching gaps. Never past
+ * where a 4:3 or 3:4 tile could reach, so the lattice's reach and the no-repeat sizing hold,
+ * and images in one column still never touch; the overlap budget is checked in tests/world.test.ts.
+ */
+export const SLACK_JITTER = 1;
 /**
  * No-repeat lattice. Cells (i, j) and (i′, j′) can only show the same image when
  * i ≡ i′ (mod REPEAT_COLS) and j ≡ j′ (mod REPEAT_ROWS), so copies are at least this
@@ -96,9 +107,18 @@ export const SETTLE_DISTANCE = 0.05;
  *
  * Under ZOOM_NARROW px wide, as on a phone, each image has its own zoom instead: it fills
  * ZOOM_NARROW_WIDTH of the viewport's width, unless it would then be over ZOOM_NARROW_HEIGHT of
- * its height, which leaves room for the label above and the caption below.
+ * its height, which leaves room for the project's pills above and below.
  */
 export const ZOOM_IN_FILL = 0.7;
+/**
+ * On a wide window the project view's column (ProjectView.astro) is PROJECT_COLUMN times as wide
+ * as the focused view's longest image (LONG at the zoomed-in zoom, which is already held where
+ * images would go soft), so its images come a little larger than they do focused, and no
+ * wider than PROJECT_COLUMN_MAX of the window. A portrait image's width is its short edge, so a
+ * wider column would soon ask more of it than its sharpest copy has.
+ */
+export const PROJECT_COLUMN = 1.1;
+export const PROJECT_COLUMN_MAX = 0.58;
 export const ZOOM_NARROW = 760;
 export const ZOOM_NARROW_WIDTH = 0.9;
 export const ZOOM_NARROW_HEIGHT = 0.62;
@@ -265,6 +285,23 @@ export const FLIGHT_FAR_FADE = 0.35;
 export const FLIGHT_FAR_BLUR = 8;
 /** With reduced motion there is no flight, just a fade this long, s. */
 export const FLIGHT_REDUCED_DURATION = 0.3;
+
+/**
+ * The menu (Menu.astro) opens with the flight the other way round: the camera backs away from
+ * the canvas by MENU_BACK, each image drawn in towards the centre by its depth, the nearer ones
+ * faster, over FLIGHT_DURATION s, eased as the flight is. Coming home is gentler: it sets off at once,
+ * as the menu goes, and lands slowly, over MENU_RETURN_DURATION s on MENU_RETURN_EASE. Each dims and blurs as
+ * it shrinks, all the way back and all the way home again, so the fade never bunches up at one
+ * end: drawn s as big, it is s ** MENU_BACK_DIM as opaque and blurred MENU_BACK_BLUR × (1 − s)
+ * screen px, far off and faint behind the menu (the farther, the fainter), for its glass to blur.
+ * The about view's text backs away as if at depth MENU_BACK_ABOUT.
+ */
+export const MENU_BACK = 1.5;
+export const MENU_BACK_DIM = 3;
+export const MENU_BACK_BLUR = 24;
+export const MENU_BACK_ABOUT = 2;
+export const MENU_RETURN_DURATION = 1;
+export const MENU_RETURN_EASE = [0.33, 0, 0.15, 1] as const;
 /**
  * The flight goes through the intro's wormhole (flight.ts, drawn by introlayer.ts): each image
  * on screen breaks into its colour grid, one ray per cell, and the rays thin into streaks and
@@ -298,20 +335,9 @@ export const FLIGHT_ABERRATION_SPEED = 0.25;
  * between them show the image rather than the page.
  */
 export const FLIGHT_HANDOVER = [0.14, 0.34] as const;
-/** The flight's grids, and the intro's once the images are in, are this many times finer than PIXEL_GRID each way, sampled from the images. */
+/** The flight's grids, and the intro's once the images are in, are this many times finer than its colour grid (scripts/pixels) each way, sampled from the images. */
 export const FLIGHT_GRID_FINER = 3;
 
-// ── Caption (zoomed in) ────────────────────────────────────────────────────
-
-/**
- * The focused image's caption rises in slowly, line by line, each over CAPTION_IN s and
- * CAPTION_STAGGER s after the one before, once the view is still; it leaves upwards fast,
- * CAPTION_OUT s, CAPTION_OUT_STAGGER s apart, the moment anything moves.
- */
-export const CAPTION_IN = 0.9;
-export const CAPTION_STAGGER = 0.1;
-export const CAPTION_OUT = 0.14;
-export const CAPTION_OUT_STAGGER = 0.02;
 /** Zooming onto another image, the frame that stepped aside comes back this far through the zoom. */
 export const FOCUS_FRAME_RETURN = 0.4;
 
@@ -373,10 +399,10 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * Opening the canvas, the camera is already flying: it cruises down the tunnel for
  * INTRO_CRUISE s, its depth falling by INTRO_CRUISE_RATE (in natural log) a second, the lines
  * streaming past. If the images on screen haven't all loaded by then it cruises on until they
- * have, for up to INTRO_WAIT s more. Meanwhile INTRO_LINE_TEXT and then the controls (the
- * info bar's, or on a touch screen only its pictograms) each rise in at the centre and leave
- * again, as INTRO_LINE and INTRO_CONTROLS say: each letter or item through a mask, `stagger` s
- * after the last, in from `start` s over `rise` s, out from `leave` s over `fall` s.
+ * have, for up to INTRO_WAIT s more. Meanwhile the studio logo and then INTRO_TAGLINE_TEXT
+ * each rise in at the centre and leave again, as INTRO_LINE and INTRO_TAGLINE say: each glyph or
+ * letter through a mask, `stagger` s after the last, in from `start` s over `rise` s, out from
+ * `leave` s over `fall` s.
  *
  * Then it accelerates from INTRO_DISTANCE focal lengths away (intro.ts) and arrives over
  * INTRO_DURATION s. A zoom is seen in ratios, so INTRO_EASE eases the logarithm of the zoom: it launches hard, peaks a fifth of the way in, and spends the rest easing out. Each
@@ -395,9 +421,9 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * smoothly over INTRO_FOG_DEPTH more, towards INTRO_FOG_FAR opacity. Pixels are capped at
  * INTRO_DPR.
  */
-export const INTRO_LINE_TEXT = 'Outer Range';
 export const INTRO_LINE = { start: 0.25, rise: 0.55, leave: 1.3, fall: 0.3, stagger: 0.008 };
-export const INTRO_CONTROLS = { start: 1.8, rise: 0.55, leave: 3.05, fall: 0.3, stagger: 0.05 };
+export const INTRO_TAGLINE_TEXT = 'Creative partner for the age of AI';
+export const INTRO_TAGLINE = { start: 1.8, rise: 0.55, leave: 3.0, fall: 0.3, stagger: 0.008 };
 export const INTRO_CRUISE = 3.6;
 export const INTRO_WAIT = 1.5;
 export const INTRO_CRUISE_RATE = 0.25;
@@ -434,6 +460,3 @@ export const GLASS_STRENGTH = 1;
 export const GLASS_CURVE = 1;
 export const GLASS_DISPERSION = 0.3;
 export const GLASS_DPR = 2;
-
-/** Columns and rows of an image's colour grid (scripts/pixels), by its aspect: near square cells. */
-export const PIXEL_GRID = { landscape: [24, 18], portrait: [18, 24], square: [21, 21] } as const;

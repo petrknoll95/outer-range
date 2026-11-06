@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import sharp from 'sharp';
-import {pixelGrid} from '../pixels/pixel-grid.mjs';
+import {gridSize,pixelGrid} from '../pixels/pixel-grid.mjs';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const source=`${root}art/ts-logo/ts-logo-spin-master.mp4`;
@@ -22,9 +22,9 @@ const {dominant}=await sharp(`${out}${poster}`).stats();
 const duration=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',source],{encoding:'utf8'}).trim());
 const entry={
  file:`${id}.mp4`,webm:`${id}.webm`,small:`${id}-small.mp4`,smallWebm:`${id}-small.webm`,poster,
- aspect:'square',width:1080,height:1080,
+ grid:gridSize(1080,1080),width:1080,height:1080,
  color:'#'+[dominant.r,dominant.g,dominant.b].map(n=>n.toString(16).padStart(2,'0')).join(''),
- pixels:await pixelGrid(`${out}${poster}`,'square'),duration,
+ pixels:await pixelGrid(`${out}${poster}`,gridSize(1080,1080)),duration,
  source:'art/ts-logo/ts-logo-spin-master.mp4',
 };
 const manifestPath=`${out}manifest.json`;
