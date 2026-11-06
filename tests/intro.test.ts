@@ -1,10 +1,9 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { media } from '../src/assets/media';
-import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_LINE, INTRO_TAGLINE, INTRO_TAGLINE_TEXT, INTRO_WAIT, FLIGHT_GRID_FINER, INTRO_ABERRATION, SEED } from '../src/canvas/config';
+import { INTRO_DISTANCE, INTRO_CRUISE, INTRO_CRUISE_RATE, INTRO_DURATION, INTRO_FOG_CLEAR, INTRO_FOG_FAR, INTRO_HANDOVER, INTRO_LINES, INTRO_PACE, INTRO_LOGO, INTRO_TAGLINE, INTRO_TITLE, INTRO_WAIT, FLIGHT_GRID_FINER, INTRO_ABERRATION, SEED } from '../src/canvas/config';
 import type { IntroTile } from '../src/canvas/intro';
-import { LOGO_GLYPHS, LOGO_HEIGHT } from '../src/canvas/logo';
-import { Detail, INTRO_LENGTH, INTRO_STRIDE, introDistance, introFog, introFrame, introInstances, introLetter, introLineCount, introPalette, introTitleEnd, introTravel, LINE_CLEAR } from '../src/canvas/intro';
+import { Detail, INTRO_LENGTH, INTRO_STRIDE, introDistance, introFog, introFrame, introInstances, introLineCount, introPalette, introTravel, introZoom, introZoomEnd, LINE_CLEAR } from '../src/canvas/intro';
 import { hexRgb, pixelColor, pixelColors } from '../src/canvas/pixels';
 import { gridSize } from '../scripts/pixels/pixel-grid.mjs';
 
@@ -137,48 +136,63 @@ describe('the depth fog', () => {
 });
 
 describe('the logo and the tagline', () => {
-  it('wait below the mask, rise to their place, and leave above it', () => {
-    expect(introLetter(0, 0, INTRO_TAGLINE)).toBe(1);
-    expect(introLetter(INTRO_TAGLINE.leave - 0.01, 0, INTRO_TAGLINE)).toBeCloseTo(0, 2);
-    expect(introLetter(introTitleEnd(INTRO_TAGLINE_TEXT.length, INTRO_TAGLINE), 0, INTRO_TAGLINE)).toBe(-1);
+  const zoom = (t: number, z = INTRO_LOGO) => introZoom(t, z);
+  const at = (u: number, z = INTRO_LOGO) => z.start + u * z.duration;
+
+  it('come out of the far end, tiny and unseen, and rush past the camera, huge and gone', () => {
+    for (const z of [INTRO_LOGO, INTRO_TAGLINE]) {
+      expect(zoom(z.start, z)).toEqual({ scale: Math.exp(-INTRO_TITLE.range), opacity: 0 });
+      expect(zoom(introZoomEnd(z), z)).toEqual({ scale: Math.exp(INTRO_TITLE.range), opacity: 0 });
+      // Halfway, at their own size, fully there.
+      expect(zoom(at(0.5, z), z).scale).toBeCloseTo(1, 9);
+      expect(zoom(at(0.5, z), z).opacity).toBe(1);
+    }
   });
 
-  it('set off one after the other', () => {
-    const t = INTRO_TAGLINE.start + 0.1;
-    expect(introLetter(t, 0, INTRO_TAGLINE)).toBeLessThan(introLetter(t, 1, INTRO_TAGLINE));
-    expect(introLetter(introTitleEnd(INTRO_TAGLINE_TEXT.length, INTRO_TAGLINE), INTRO_TAGLINE_TEXT.length - 1, INTRO_TAGLINE)).toBe(-1);
+  it('only ever come on, in one motion: fast, slowing to a drift about their own size, then fast again', () => {
+    const rate = (u: number) => (Math.log(zoom(at(u + 0.005)).scale) - Math.log(zoom(at(u - 0.005)).scale)) / (0.01 * INTRO_LOGO.duration);
+    for (let u = 0.01; u < 1; u += 0.01) expect(rate(u)).toBeGreaterThan(0);
+    // Never still: in the middle the scale still grows, by about a quarter a second…
+    expect(rate(0.5)).toBeGreaterThan(0.2);
+    expect(rate(0.5)).toBeLessThan(0.6);
+    // …many times slower than as it comes out of the tunnel or goes past.
+    expect(rate(0.05)).toBeGreaterThan(rate(0.5) * 10);
+    expect(rate(0.95)).toBeGreaterThan(rate(0.5) * 10);
   });
 
-  it('come one at a time: the logo has gone before the tagline rises', () => {
-    expect(introTitleEnd(LOGO_GLYPHS.length, INTRO_LINE)).toBeLessThanOrEqual(INTRO_TAGLINE.start);
+  it('fade in eased out, and out eased in, each over a good part of the way', () => {
+    const { fadeIn, fadeOut } = INTRO_TITLE;
+    expect(fadeIn).toBeGreaterThanOrEqual(0.2);
+    expect(fadeOut[1] - fadeOut[0]).toBeGreaterThanOrEqual(0.2);
+    // Quick to show: well past a quarter a quarter of the way in, and easing into full.
+    expect(zoom(at(fadeIn / 4)).opacity).toBeGreaterThan(0.5);
+    expect(zoom(at(fadeIn * 0.9)).opacity).toBeGreaterThan(0.99);
+    // Slow to go: still nearly all there a quarter of the way out, then going fast.
+    expect(zoom(at(fadeOut[0] + (fadeOut[1] - fadeOut[0]) / 4)).opacity).toBeGreaterThan(0.95);
+    expect(zoom(at(fadeOut[0] + (fadeOut[1] - fadeOut[0]) * 0.9)).opacity).toBeLessThan(0.3);
   });
 
-  it('stay up long enough to read', () => {
-    const settled = ({ start, rise }: typeof INTRO_LINE) => start + rise * 0.7;
-    expect(INTRO_LINE.leave - settled(INTRO_LINE)).toBeGreaterThan(0.6);
-    expect(INTRO_TAGLINE.leave - settled(INTRO_TAGLINE)).toBeGreaterThan(0.8);
+  it('linger long enough to read: about a second within a third of their own size', () => {
+    let readable = 0;
+    for (let u = 0; u <= 1; u += 0.001) {
+      const { scale, opacity } = zoom(at(u));
+      if (scale > 2 / 3 && scale < 3 / 2 && opacity > 0.9) readable += 0.001 * INTRO_LOGO.duration;
+    }
+    expect(readable).toBeGreaterThan(0.9);
+  });
+
+  it('come one after the other: the tagline comes out of the tunnel as the logo goes past, never both readable at once', () => {
+    expect(INTRO_TAGLINE.start).toBeLessThan(introZoomEnd(INTRO_LOGO));
+    for (let t = INTRO_TAGLINE.start; t <= introZoomEnd(INTRO_LOGO); t += 0.01) {
+      const logo = zoom(t);
+      const tagline = zoom(t, INTRO_TAGLINE);
+      // While the tagline shows at all, the logo is already well past its own size, or gone.
+      if (tagline.opacity > 0) expect(logo.scale > 3 || logo.opacity === 0).toBe(true);
+    }
   });
 
   it('are gone before the wormhole gets going', () => {
-    expect(introTitleEnd(INTRO_TAGLINE_TEXT.length, INTRO_TAGLINE)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
-  });
-});
-
-describe('the logo', () => {
-  it('is cut into its glyphs, left to right, the slices making up its full width exactly', () => {
-    expect(LOGO_GLYPHS).toHaveLength(11);
-    let x = 0;
-    for (const { viewBox: [left, top, width, height] } of LOGO_GLYPHS) {
-      expect(left).toBeCloseTo(x, 6);
-      expect(width).toBeGreaterThan(0);
-      expect([top, height]).toEqual([0, LOGO_HEIGHT]);
-      x = left + width;
-    }
-    expect(x).toBe(430);
-  });
-
-  it('keeps the counters of O, R, A and the mark open', () => {
-    expect(LOGO_GLYPHS.map((g) => g.evenOdd)).toEqual([true, false, false, false, true, true, true, true, false, false, false]);
+    expect(introZoomEnd(INTRO_TAGLINE)).toBeLessThanOrEqual(INTRO_CRUISE + 1e-9);
   });
 });
 

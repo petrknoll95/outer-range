@@ -400,9 +400,13 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * INTRO_CRUISE s, its depth falling by INTRO_CRUISE_RATE (in natural log) a second, the lines
  * streaming past. If the images on screen haven't all loaded by then it cruises on until they
  * have, for up to INTRO_WAIT s more. Meanwhile the studio logo and then INTRO_TAGLINE_TEXT
- * each rise in at the centre and leave again, as INTRO_LINE and INTRO_TAGLINE say: each glyph or
- * letter through a mask, `stagger` s after the last, in from `start` s over `rise` s, out from
- * `leave` s over `fall` s.
+ * fly at the camera down the middle of it, each in one motion from `start` s over `duration` s
+ * (INTRO_LOGO, INTRO_TAGLINE): out of the far end, slowing to a drift about its own size to be
+ * read, still coming on, then rushing past. Its scale runs e^(±INTRO_TITLE.range) at either end,
+ * the logarithm on a curve that flattens in the middle to INTRO_TITLE.drift of its steepness
+ * (introZoom, intro.ts). It fades in over the first `fadeIn` of the time, easing out, and out
+ * between the shares `fadeOut` says, easing in, as it passes. The tagline comes out of the
+ * tunnel as the logo flies past.
  *
  * Then it accelerates from INTRO_DISTANCE focal lengths away (intro.ts) and arrives over
  * INTRO_DURATION s. A zoom is seen in ratios, so INTRO_EASE eases the logarithm of the zoom: it launches hard, peaks a fifth of the way in, and spends the rest easing out. Each
@@ -421,9 +425,10 @@ export const VARIANT_SHORT_EDGES = [256, 512, 768, 1024, 1536, 2048, 2880] as co
  * smoothly over INTRO_FOG_DEPTH more, towards INTRO_FOG_FAR opacity. Pixels are capped at
  * INTRO_DPR.
  */
-export const INTRO_LINE = { start: 0.25, rise: 0.55, leave: 1.3, fall: 0.3, stagger: 0.008 };
+export const INTRO_LOGO = { start: 0.1, duration: 1.85 };
 export const INTRO_TAGLINE_TEXT = 'Creative partner for the age of AI';
-export const INTRO_TAGLINE = { start: 1.8, rise: 0.55, leave: 3.0, fall: 0.3, stagger: 0.008 };
+export const INTRO_TAGLINE = { start: 1.8, duration: 1.8 };
+export const INTRO_TITLE = { range: 3.6, drift: 0.1, fadeIn: 0.22, fadeOut: [0.74, 0.97] as const };
 export const INTRO_CRUISE = 3.6;
 export const INTRO_WAIT = 1.5;
 export const INTRO_CRUISE_RATE = 0.25;

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { INTRO_LOGO, INTRO_TAGLINE } from '../src/canvas/config';
 
 interface Api {
   intro: () => boolean;
@@ -72,44 +73,59 @@ test('hands over to the real tiles for the last of the way, then leaves them unt
   await expect(page.locator('.focus-frame')).toHaveCSS('opacity', '1');
 });
 
-test('first the logo, glyph by glyph, its letters as tall as the wordmark’s, then the tagline, set like the wordmark', async ({ page }) => {
-  const line = page.locator('[data-intro-line]');
-  const glyphs = line.locator('svg');
-  const tagline = page.locator('[data-intro-tagline]');
-  const first = tagline.locator('span span').first();
+/** How big a title is drawn, and how solid, from its inline style. */
+const drawn = (page: Page, selector: string) =>
+  page.locator(`${selector} > span`).evaluate((el) => {
+    const s = (el as HTMLElement).style;
+    return { scale: Number(/scale\(([\d.e-]+)\)/.exec(s.transform)?.[1] ?? NaN), opacity: Number(s.opacity) };
+  });
+
+test('the logo flies at the camera down the middle: out of the far end, a drift about its own size, then past', async ({ page }) => {
+  const logo = page.locator('[data-intro-logo]');
   await open(page);
-  await expect(glyphs).toHaveCount(11);
-  await expect(tagline).toHaveText('Creative partner for the age of AI');
-  await expect(line).toHaveAttribute('aria-hidden', 'true');
-  await expect(tagline).toHaveAttribute('aria-hidden', 'true');
-  await hold(page, 1.1);
-  await expect.poll(() => glyphs.last().evaluate((el) => (el as SVGElement).style.transform)).toBe('translateY(0%)');
-  expect(await first.evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(170%)');
-  // The logo centred; its U (a flat-topped capital, 16.7 of its 104 units) as tall as the wordmark's capitals, give or take.
-  const box = (await line.locator('> span').boundingBox())!;
+  await expect(logo).toHaveAttribute('aria-hidden', 'true');
+  await expect(logo.locator('svg')).toHaveCount(1);
+  // Coming out of the far end: tiny, and only just there.
+  await hold(page, INTRO_LOGO.start + 0.05);
+  const far = await drawn(page, '[data-intro-logo]');
+  expect(far.scale).toBeLessThan(0.1);
+  expect(far.opacity).toBeLessThan(0.5);
+  // Halfway: its own size, solid, centred, and smaller than it used to be (under 300 px across), drawn in the ink.
+  const mid = INTRO_LOGO.start + INTRO_LOGO.duration / 2;
+  await hold(page, mid);
+  await expect.poll(() => drawn(page, '[data-intro-logo]')).toEqual({ scale: 1, opacity: 1 });
+  const box = (await logo.locator('svg').boundingBox())!;
   const view = page.viewportSize()!;
   expect(Math.abs(box.x + box.width / 2 - view.width / 2)).toBeLessThan(2);
-  const u = (await glyphs.nth(1).boundingBox())!;
-  const fontSize = await page.locator('h1').evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
-  expect((u.height * 16.7) / 104).toBeCloseTo(fontSize * 0.7, -0.5);
-  const type = (el: Element) => { const css = getComputedStyle(el); return [css.fontSize, css.fontWeight, css.letterSpacing]; };
-  expect(await tagline.locator('span').first().evaluate(type)).toEqual(await page.locator('h1').evaluate(type));
-  await hold(page, 1.9);
-  await expect(line).toHaveCount(0);
-  await expect.poll(() => first.evaluate((el) => (el as HTMLElement).style.transform)).not.toBe('translateY(170%)');
+  expect(Math.abs(box.y + box.height / 2 - view.height / 2)).toBeLessThan(2);
+  expect(box.width).toBeLessThan(300);
+  expect(await logo.locator('path').first().evaluate((el) => getComputedStyle(el).fill)).toBe(await logo.locator('> span').evaluate((el) => getComputedStyle(el).color));
+  // Lingering it still comes on, slowly: a little bigger a third of a second on.
+  await hold(page, mid + 0.35);
+  const later = await drawn(page, '[data-intro-logo]');
+  expect(later.scale).toBeGreaterThan(1.03);
+  expect(later.scale).toBeLessThan(1.5);
+  // Then past the camera, and gone.
+  await hold(page, INTRO_LOGO.start + INTRO_LOGO.duration - 0.05);
+  expect((await drawn(page, '[data-intro-logo]')).scale).toBeGreaterThan(10);
+  await hold(page, INTRO_LOGO.start + INTRO_LOGO.duration + 0.05);
+  await expect(logo).toHaveCount(0);
 });
 
-test('the tagline rises in at the centre, and has gone before the launch', async ({ page }) => {
+test('then the tagline the same way, set like the wordmark, gone before the launch', async ({ page }) => {
   const tagline = page.locator('[data-intro-tagline]');
-  const last = tagline.locator('span span').last();
   await open(page);
-  await hold(page, 2.8);
-  await expect.poll(() => last.evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateY(0%)');
+  await expect(tagline).toHaveText('Creative partner for the age of AI');
+  await expect(tagline).toHaveAttribute('aria-hidden', 'true');
+  const type = (el: Element) => { const css = getComputedStyle(el); return [css.fontSize, css.fontWeight, css.letterSpacing]; };
+  expect(await tagline.locator('> span').evaluate(type)).toEqual(await page.locator('h1').evaluate(type));
+  await hold(page, INTRO_TAGLINE.start + INTRO_TAGLINE.duration / 2);
+  await expect.poll(() => drawn(page, '[data-intro-tagline]')).toEqual({ scale: 1, opacity: 1 });
   const box = (await tagline.locator('> span').boundingBox())!;
   const view = page.viewportSize()!;
   expect(Math.abs(box.x + box.width / 2 - view.width / 2)).toBeLessThan(2);
   expect(Math.abs(box.y + box.height / 2 - view.height / 2)).toBeLessThan(2);
-  await hold(page, 3.7);
+  await hold(page, INTRO_TAGLINE.start + INTRO_TAGLINE.duration + 0.05);
   await expect(tagline).toHaveCount(0);
 });
 
@@ -173,7 +189,7 @@ for (const [what, act] of [
     expect(await waiting(page)).toBe(false);
     await expect(layer(page)).toHaveCount(0);
     await expect(page.locator('[data-intro-tagline]')).toHaveCount(0);
-    await expect(page.locator('[data-intro-line]')).toHaveCount(0);
+    await expect(page.locator('[data-intro-logo]')).toHaveCount(0);
     await expect(page.locator('[data-canvas-layer]')).toHaveCSS('transform', 'none');
   });
 }

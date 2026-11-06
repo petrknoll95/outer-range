@@ -524,7 +524,7 @@ let route: Route = routeAt(location.pathname);
  */
 interface Intro {
   lines: IntroLayer;
-  line: IntroTitle;
+  logo: IntroTitle;
   tagline: IntroTitle;
   /** Timed from its first frame, so the page's own start doesn't eat into it. */
   start: number | null;
@@ -567,9 +567,9 @@ function startIntro(): void {
   if (!lines) return;
   const stop = new AbortController();
   for (const type of ['pointerdown', 'wheel', 'keydown']) window.addEventListener(type, endIntro, { capture: true, passive: true, signal: stop.signal });
-  intro = { lines, line: IntroTitle.line(root, Z_LEVELS + 3), tagline: IntroTitle.tagline(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 }, palette, build: null, refined: false, stop };
+  intro = { lines, logo: IntroTitle.logo(root, Z_LEVELS + 3), tagline: IntroTitle.tagline(root, Z_LEVELS + 3), start: null, held: null, gliding: false, loaded: false, launched: false, wait: 0, frame: { z: 0, tail: 0, scale: 0, closed: 0, corners: 0, fade: 0, rays: 0, lines: 0, flight: 0, back: 0, aberration: 0, handover: 0 }, palette, build: null, refined: false, stop };
   lines.draw(introFrame(0, intro.frame));
-  intro.line.draw(0);
+  intro.logo.draw(0);
   intro.tagline.draw(0);
   frame.conceal();
 }
@@ -590,7 +590,7 @@ function stepIntro(): void {
   }
   if (at >= INTRO_LENGTH + i.wait) return endIntro();
   const f = introFrame(at, i.frame, i.wait);
-  i.line.draw(at);
+  i.logo.draw(at);
   i.tagline.draw(at);
   if (f.z <= INTRO_HANDOVER && !i.gliding) {
     i.gliding = true;
@@ -639,7 +639,7 @@ function refineIntro(i: Intro): void {
 function endIntro(): void {
   if (!intro) return;
   intro.lines.leave();
-  intro.line.remove();
+  intro.logo.remove();
   intro.tagline.remove();
   intro.stop.abort();
   intro = null;
