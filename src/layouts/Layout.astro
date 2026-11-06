@@ -52,6 +52,8 @@ const absolute = (path: string) => new URL(path, Astro.site ?? Astro.url).href;
     <meta property="og:video:width" content="1200" />
     <meta property="og:video:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={absolute(ogPoster)} />
+    <meta name="twitter:image:alt" content="The Outer Range logo over streaks of light rushing past, as if flying down a tunnel." />
     <!-- The wordmark's weight is preloaded so it paints in the right font straight away; the serif is there to use. -->
     <Font cssVariable="--font-timeless-sans" preload={[{ weight: 500, style: 'normal' }]} />
     <Font cssVariable="--font-timeless-serif" />
