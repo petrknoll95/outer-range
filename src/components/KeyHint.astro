@@ -11,7 +11,7 @@
  * after a left-edge one has to move over by as much itself (InfoBar.astro, I after P).
  */
 import type { HTMLAttributes } from 'astro/types';
-import { ESC_GAP, ESC_MOVE, ESC_WIDTH, glyph, label, pill } from './hint';
+import { ESC_GAP, ESC_MOVE, ESC_WIDTH, glyph, GPU, label, pill } from './hint';
 
 interface Props extends HTMLAttributes<'a'> {
   /** Which view's (setHint finds it by this). */
@@ -34,7 +34,7 @@ const { name, letter, label: text, activeLabel, active = false, as = 'li', keysO
 // Typed as a link or list item: their attributes pass through as they are, a button's `type` included.
 const Tag = as as 'a' | 'li';
 // After the label has changed, the ESC comes in and the key makes room; leaving, both go at once.
-const move = `transition-[translate,opacity,scale] ${ESC_MOVE} group-data-active/hint:delay-150`;
+const move = `transition-[translate,opacity,scale] ${ESC_MOVE} ${GPU} group-data-active/hint:delay-150`;
 /** The key's width (w-6), design px. */
 const KEY_WIDTH = 24;
 const left = edge === 'left';
@@ -48,7 +48,7 @@ const left = edge === 'left';
   class:list={['group/hint flex items-center gap-[9.6px]', className]}
   {...rest}
 >
-  <span class:list={['relative', keysOnlyWithKeyboard ? 'hidden [@media(hover:hover)_and_(pointer:fine)]:flex' : 'flex']}>
+  <span class:list={['relative', GPU, keysOnlyWithKeyboard ? 'hidden [@media(hover:hover)_and_(pointer:fine)]:flex' : 'flex']}>
     <span aria-hidden="true" data-hint-key class:list={[pill, 'w-6', move, !left && 'group-data-active/hint:-translate-x-(--hint-shift)']} style={`--hint-shift: ${ESC_WIDTH + ESC_GAP}px`}>
       <span class={glyph}>{letter}</span>
     </span>
@@ -68,7 +68,7 @@ const left = edge === 'left';
     </span>
   </span>
   <!-- A mask with a little room above and below the letters, for the label to slide through. -->
-  <span class:list={['-my-[0.15em] overflow-hidden py-[0.15em]', left && [move, 'group-data-active/hint:translate-x-(--hint-shift)']]} style={left ? `--hint-shift: ${ESC_WIDTH + ESC_GAP}px` : undefined}>
-    <span data-hint-label class:list={[label, 'block']} {...labelAttributes}>{active ? activeLabel : text}</span>
+  <span class:list={['-my-[0.15em] overflow-hidden py-[0.15em]', GPU, left && [move, 'group-data-active/hint:translate-x-(--hint-shift)']]} style={left ? `--hint-shift: ${ESC_WIDTH + ESC_GAP}px` : undefined}>
+    <span data-hint-label class:list={[label, 'block', GPU]} {...labelAttributes}>{active ? activeLabel : text}</span>
   </span>
 </Tag>

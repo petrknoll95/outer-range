@@ -27,7 +27,7 @@ import dragHorizontal from '../assets/infobar/drag-horizontal.svg?url';
 import pinch from '../assets/infobar/pinch.svg?url';
 import scrollVertical from '../assets/infobar/scroll-vertical.svg?url';
 import KeyHint from './KeyHint.astro';
-import { ESC_GAP, ESC_MOVE, ESC_WIDTH, glyph, label, pill, SCALE } from './hint';
+import { ESC_GAP, ESC_MOVE, ESC_WIDTH, glyph, GPU, label, pill, SCALE } from './hint';
 
 interface Props {
   route: 'home' | 'about' | 'start';
@@ -43,11 +43,13 @@ const underMenu = 'transition-[opacity,visibility,translate] duration-500 [html[
  * after it (hidden too, so it isn't read out or clicked).
  */
 const canvasSet = [
+  GPU,
   'delay-150',
   '[html[data-focused-project]_&]:invisible [html[data-focused-project]_&]:translate-y-[40%] [html[data-focused-project]_&]:opacity-0 [html[data-focused-project]_&]:delay-0',
   '[html[data-showing-project]_&]:invisible [html[data-showing-project]_&]:translate-y-[40%] [html[data-showing-project]_&]:opacity-0 [html[data-showing-project]_&]:delay-0',
 ].join(' ');
 const projectSet = [
+  GPU,
   'invisible translate-y-[40%] opacity-0 transition-[opacity,visibility,translate] duration-500',
   '[html[data-focused-project]:not([data-menu-open])_&]:visible [html[data-focused-project]:not([data-menu-open])_&]:translate-y-0 [html[data-focused-project]:not([data-menu-open])_&]:opacity-100 [html[data-focused-project]:not([data-menu-open])_&]:delay-150',
   '[html[data-showing-project]:not([data-menu-open])_&]:visible [html[data-showing-project]:not([data-menu-open])_&]:translate-y-0 [html[data-showing-project]:not([data-menu-open])_&]:opacity-100 [html[data-showing-project]:not([data-menu-open])_&]:delay-150',
@@ -79,7 +81,7 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, '/');
       />
       <!-- Over by as much as Back moves for the ESC beside P (KeyHint.astro), with it. -->
       <span
-        class:list={['flex transition-[translate] peer-data-active/project:translate-x-(--esc-room) peer-data-active/project:delay-150', ESC_MOVE]}
+        class:list={['flex transition-[translate] peer-data-active/project:translate-x-(--esc-room) peer-data-active/project:delay-150', ESC_MOVE, GPU]}
         style={`--esc-room: ${ESC_WIDTH + ESC_GAP}px`}
       >
         <KeyHint as="button" type="button" name="info" letter="I" label="Project info" activeLabel="Close" edge="left" data-info-trigger class={button} />

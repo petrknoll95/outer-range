@@ -347,6 +347,11 @@ export const FOCUS_FRAME_RETURN = 0.4;
 export const DRAG_THRESHOLD = 5;
 /** Pixels per wheel line (deltaMode 1). */
 export const LINE_HEIGHT = 40;
+/**
+ * The project view's column eases after the wheel with this time constant, s: most of the way in
+ * a third of a second, all of it in about a second, as the about view's ScrollSmoother does.
+ */
+export const PROJECT_SCROLL_TAU = 0.22;
 /** Arrow-key step, in on-screen lattice pitches. Shift+arrow moves most of a viewport. */
 export const KEY_STEP = 0.75;
 export const KEY_PAGE = 0.8;

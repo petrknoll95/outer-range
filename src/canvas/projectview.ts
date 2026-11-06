@@ -1,4 +1,5 @@
-import { FLIGHT_DURATION, FLIGHT_EASE, FLIGHT_REDUCED_DURATION, MENU_BACK, MENU_BACK_ABOUT, MENU_RETURN_DURATION, MENU_RETURN_EASE } from './config';
+import { gsap } from 'gsap';
+import { FLIGHT_DURATION, FLIGHT_EASE, FLIGHT_REDUCED_DURATION, LINE_HEIGHT, MENU_BACK, MENU_BACK_ABOUT, MENU_RETURN_DURATION, MENU_RETURN_EASE, PROJECT_SCROLL_TAU } from './config';
 import type { FlightView } from './flight';
 import { menuBackView } from './flight';
 import type { ClientProject } from './projects';
@@ -37,6 +38,14 @@ export class ProjectView {
   private readonly list: HTMLElement;
   /** The box the column scrolls in, the window's size. */
   private readonly scroller: HTMLElement;
+  /**
+   * Its scroll, eased after the wheel on GSAP's ticker, as the about view's is (main.ts,
+   * ScrollSmoother, of which a page has only one): where the column is drawn, and where the
+   * wheel has asked for, and whether it is on its way there.
+   */
+  private scrollAt = 0;
+  private scrollGoal = 0;
+  private easing = false;
   private readonly videos = new Set<HTMLVideoElement>();
   /** Which opening is current, so a slow decode from an earlier one doesn't start a fade. */
   private opening = 0;
@@ -83,7 +92,17 @@ export class ProjectView {
       if (!item || !this.isOpen) return;
       this.onPick(Number(item.dataset.image));
     });
-    this.scroller.addEventListener('scroll', () => this.loop(), { passive: true });
+    this.scroller.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
+    // Any other scroll (touch, keys, scrollTo) is the browser's own, as on the about view: taken as it is.
+    this.scroller.addEventListener(
+      'scroll',
+      () => {
+        if (this.easing) return;
+        this.loop();
+        this.scrollAt = this.scrollGoal = this.scroller.scrollTop;
+      },
+      { passive: true },
+    );
     el.addEventListener('transitionend', (e) => {
       if (e.target !== el || e.propertyName !== 'opacity') return;
       // Covered: its videos start.
@@ -291,10 +310,45 @@ export class ProjectView {
     if (!this.isShown) this.onHidden();
   }
 
+  /** The wheel asks for the column `deltaY` further on: it eases there (ease). Zooming the page is left to the browser. */
+  private wheel(e: WheelEvent): void {
+    if (e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    const unit = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? LINE_HEIGHT : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? this.scroller.clientHeight : 1;
+    this.scrollGoal += e.deltaY * unit;
+    if (this.easing) return;
+    this.easing = true;
+    this.scrollAt = this.scroller.scrollTop;
+    gsap.ticker.add(this.ease);
+  }
+
+  /** One frame of the column easing after the wheel (PROJECT_SCROLL_TAU), kept within one run as it goes (loop). */
+  private readonly ease = (_time: number, deltaMs: number): void => {
+    // (The first frame's delta runs from whenever the ticker last ran: no more than a slow frame's.)
+    const k = reducedMotion.matches ? 1 : 1 - Math.exp(-Math.min(deltaMs, 34) / 1000 / PROJECT_SCROLL_TAU);
+    this.scrollAt += (this.scrollGoal - this.scrollAt) * k;
+    if (Math.abs(this.scrollGoal - this.scrollAt) < 0.5) this.scrollAt = this.scrollGoal;
+    this.scroller.scrollTop = this.scrollAt;
+    // Moved on by whole runs at an end: the goal moves with it.
+    const before = this.scroller.scrollTop;
+    this.loop();
+    const shift = this.scroller.scrollTop - before;
+    this.scrollAt += shift;
+    this.scrollGoal += shift;
+    if (this.scrollAt === this.scrollGoal) this.stopEasing();
+  };
+
+  private stopEasing(): void {
+    if (!this.easing) return;
+    this.easing = false;
+    gsap.ticker.remove(this.ease);
+  }
+
   /** Scroll so `image` is at the centre of the window (laid out, though maybe not seen), and return the item showing it there. */
   private scrollTo(image: number): HTMLElement | null {
     const item = this.list.querySelector<HTMLElement>(`[data-run="1"] [data-image="${image}"]`);
     if (!item) return null;
+    this.stopEasing();
     const r = item.getBoundingClientRect();
     const view = this.scroller.getBoundingClientRect();
     this.scroller.scrollTop += r.top + r.height / 2 - (view.top + view.height / 2);

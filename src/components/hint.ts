@@ -15,7 +15,13 @@ export const SCALE = 0.85;
 export const ESC_WIDTH = 35;
 export const ESC_GAP = 4.8;
 /**
- * How a view's hint makes room for its ESC (KeyHint.astro): over half a second, easing out, none of
- * it with reduced motion. Whatever moves with it moves on these too (the wait for its label is each one's own).
+ * How a view's hint makes room for its ESC (KeyHint.astro): over half a second, setting off gently
+ * (no lurch on the first frame) and easing out long, none of it with reduced motion. Whatever moves
+ * with it moves on these too (the wait for its label is each one's own), and so does what its label
+ * moves when it changes width (src/canvas/hints.ts): ESC_EASE and ESC_DURATION are the same, for script.
  */
-export const ESC_MOVE = 'duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none';
+export const ESC_MOVE = 'duration-500 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none';
+export const ESC_DURATION = 500;
+export const ESC_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+/** Kept on the GPU, each on its own layer, so it is never redrawn as it moves, nor when it stops. */
+export const GPU = 'will-change-[transform,translate,scale,opacity]';

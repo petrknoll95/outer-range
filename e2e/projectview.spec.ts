@@ -372,6 +372,32 @@ test('it opens with the image it was opened on at the centre of the window, and 
   expect(await camera(page)).toEqual(before);
 });
 
+test('the wheel scrolls the column smoothly, as the about view’s text is: easing after it over many frames, and landing where it asked', async ({ page }) => {
+  await focusOnProject(page, 4);
+  await page.keyboard.press('p');
+  await covered(page);
+  await page.mouse.move(720, 450);
+  // Every frame's scroll from here on.
+  await scroller(page).evaluate((el) => {
+    const w = window as unknown as { __ys: number[] };
+    w.__ys = [];
+    const frame = () => {
+      w.__ys.push(el.scrollTop);
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  const start = await scroller(page).evaluate((el) => el.scrollTop);
+  await page.mouse.wheel(0, 300);
+  await page.waitForTimeout(1500);
+  const ys = await page.evaluate(() => (window as unknown as { __ys: number[] }).__ys);
+  const steps = ys.slice(1).map((y, n) => y - ys[n]!).filter((d) => d > 0.4);
+  // Eased: never most of it at once, and still going for a good part of a second.
+  expect(Math.max(...steps)).toBeLessThan(100);
+  expect(steps.length).toBeGreaterThan(15);
+  expect(ys.at(-1)! - start).toBeCloseTo(300, 0);
+});
+
 test('the images run down one column at the centre, a little wider than the focused view’s image, every one as wide as it', async ({ page }) => {
   await focusOnProject(page, 4);
   await page.keyboard.press('p');
