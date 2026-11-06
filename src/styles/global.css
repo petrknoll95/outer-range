@@ -208,13 +208,9 @@
   [data-view="start"] [data-view-content="start"] {
     display: block;
   }
-  /* Scrolled, the text fades out under the header band instead of running into the wordmark;
-     with the glass edges (glass.ts) it bends away under them instead, as the canvas does. */
+  /* Scrolled, the text fades out under the header band instead of running into the wordmark. */
   .about-view {
     mask-image: linear-gradient(to bottom, transparent 56px, black 104px);
-  }
-  html[data-glass] .about-view {
-    mask-image: none;
   }
   /* All of it centred, set from the copy's own hierarchy: a statement, then sections. */
   .about {

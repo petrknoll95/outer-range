@@ -14,8 +14,7 @@ import {
   VIDEO_SMALL_EDGE,
 } from './config';
 import type { FlightView } from './flight';
-import { flightDepth, flightView } from './flight';
-import type { GlassTile } from './glass';
+import { flightDepth, flightView, menuBackView } from './flight';
 import { hash, unit } from './hash';
 import type { CellRange, CellRect, Geometry } from './layout';
 import { cellRange } from './layout';
@@ -141,6 +140,8 @@ interface Slot {
   /** Opacity now, and the last value written to CSS. */
   opacity: number;
   cssOpacity: number;
+  /** Drawn with the camera backed away for the menu (setBack), not as placed. */
+  backed: boolean;
 }
 
 // Cell keys pack (i, j) into one float64-safe integer; valid for |i|, |j| < 2^25.
@@ -231,6 +232,9 @@ export class Renderer {
     | { slot: Slot; x: number; y: number; scale: number; restX: number; restY: number; restScale: number; opacity: number; depth: number; now: FlightPose }[]
     | null = null;
   private readonly view: FlightView = { scale: 1, opacity: 1, blur: 0 };
+  /** How far the camera has backed away for the menu (menuBackView), or 0; and whether it only fades (reduced motion). */
+  private back = 0;
+  private backStill = false;
   /** The flight's finer grids, by image, sampled when the page has a moment once each has loaded (introTiles). */
   private readonly fine = new Map<number, NonNullable<IntroTile['fine']>>();
   private readonly fineQueue = new Set<Slot>();
@@ -402,19 +406,62 @@ export class Renderer {
         // Faded right out, it is left out of compositing altogether: drawing invisible layers costs frames.
         if ((slot.opacity < 0.004) !== (slot.cssOpacity < 0.004)) slot.el.style.visibility = slot.opacity < 0.004 ? 'hidden' : '';
         slot.cssOpacity = slot.opacity;
-        slot.el.style.opacity = slot.opacity === 1 ? '' : slot.opacity.toFixed(3);
+        if (!this.back) slot.el.style.opacity = slot.opacity === 1 ? '' : slot.opacity.toFixed(3);
       }
-      if (x === slot.cssX && y === slot.cssY && scale === slot.cssScale) continue;
-      slot.cssX = x;
-      slot.cssY = y;
-      slot.cssScale = scale;
-      slot.el.style.transform = transform(x, y, scale);
+      const moved = x !== slot.cssX || y !== slot.cssY || scale !== slot.cssScale;
+      if (moved) {
+        slot.cssX = x;
+        slot.cssY = y;
+        slot.cssScale = scale;
+      }
+      if (this.back) this.drawBacked(slot, hx, hy);
+      else if (slot.backed) this.unback(slot);
+      else if (moved) slot.el.style.transform = transform(x, y, scale);
     }
     // The centremost image is active; keep the current one unless another is clearly closer.
     const current = this.activeSlot;
     if (!current || current.key < 0 || !this.byKey.has(current.key) || (nearest && nearest.distance < current.distance - ACTIVE_SWITCH_MARGIN)) {
       this.setActive(nearest);
     }
+  }
+
+  /**
+   * Draw the canvas with the camera backed away by `back` for the menu (0: not), from the next
+   * update on. The canvas carries on under it as ever, its motion and trails included, so it is
+   * at rest by the time it is home: only how each tile is drawn changes (drawBacked). `still`:
+   * it only fades (reduced motion).
+   */
+  setBack(back: number, still: boolean): void {
+    this.back = back;
+    this.backStill = still;
+  }
+
+  /** A tile as seen with the camera backed away (menuBackView): drawn in towards the viewport centre by its depth, dimmed and blurred as much. */
+  private drawBacked(slot: Slot, cx: number, cy: number): void {
+    const v = menuBackView(flightDepth(slot.i, slot.j, this.world.seed), this.back, this.view);
+    const s = this.backStill ? 1 : v.scale;
+    slot.backed = true;
+    // Only what is on screen as placed is drawn, as on the flight (beginFlight); the rest is left
+    // out of compositing altogether, as a blurred layer costs frames even unseen.
+    const g = this.geometry!;
+    const off = slot.cssX > g.vw || slot.cssY > g.vh || slot.cssX + slot.drawnWidth < 0 || slot.cssY + slot.drawnHeight < 0;
+    slot.el.style.visibility = off || slot.cssOpacity < 0.004 ? 'hidden' : '';
+    if (off) return;
+    const scale = slot.cssScale * s;
+    slot.el.style.transform = transform(cx + (slot.cssX - cx) * s, cy + (slot.cssY - cy) * s, scale);
+    slot.el.style.opacity = (slot.cssOpacity * v.opacity).toFixed(3);
+    // The blur is drawn before the tile is scaled: ask for the share that comes out at v.blur on screen.
+    const blur = this.backStill ? 0 : v.blur / scale;
+    slot.el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
+  }
+
+  /** Back to drawing a tile as placed. */
+  private unback(slot: Slot): void {
+    slot.backed = false;
+    slot.el.style.visibility = slot.cssOpacity < 0.004 ? 'hidden' : '';
+    slot.el.style.transform = transform(slot.cssX, slot.cssY, slot.cssScale);
+    slot.el.style.opacity = slot.cssOpacity === 1 ? '' : slot.cssOpacity.toFixed(3);
+    slot.el.style.filter = '';
   }
 
   /**
@@ -650,39 +697,6 @@ export class Renderer {
     }));
   }
 
-  /** The tiles as drawn on the page now, bottom to top, flight and all, for the glass edges (glass.ts). */
-  glassTiles(): GlassTile[] {
-    const g = this.geometry;
-    if (!g) return [];
-    const poses = this.flight
-      ? this.flight.map((f) => ({ slot: f.slot, ...f.now }))
-      : this.active.map((slot) => ({ slot, x: slot.cssX, y: slot.cssY, scale: slot.cssScale, opacity: slot.cssOpacity, blur: 0 }));
-    const level = (slot: Slot) => (slot === this.activeSlot ? Z_LEVELS : slot.z);
-    // Stacked as on the page: by z-index, then in the order the elements are in.
-    return poses
-      .filter((p) => p.opacity >= 0.004 && Number.isFinite(p.x))
-      .sort((a, b) => level(a.slot) - level(b.slot) || this.slots.indexOf(a.slot) - this.slots.indexOf(b.slot))
-      .map(({ slot, x, y, scale, opacity, blur }) => {
-        const video = slot.video;
-        // The video once it shows (see setVideo), over its image once that is in, over the colour grid.
-        const playing = video !== null && slot.videoSrc !== null && video.dataset.waiting === undefined && video.readyState >= 2;
-        const image = this.images[slot.image]!;
-        return {
-          left: x,
-          top: y,
-          width: Math.round(slot.width * slot.layout * 100) / 100 * scale,
-          height: Math.round(slot.height * slot.layout * 100) / 100 * scale,
-          radius: Math.round(g.radius * slot.layout * 100) / 100 * scale,
-          opacity,
-          blur,
-          source: playing ? video : slot.loaded ? slot.img : null,
-          pixels: image.pixels,
-          grid: image.grid,
-          live: !slot.loaded || (video !== null && slot.videoSrc !== null && !video.paused),
-        };
-      });
-  }
-
   /** Sample the finer grids of the loaded images on screen, for about `budget` ms at most: whether all of them are in. */
   sampleOnScreen(budget: number): boolean {
     const until = performance.now() + budget;
@@ -884,6 +898,7 @@ export class Renderer {
       distance: Number.POSITIVE_INFINITY,
       opacity: 1,
       cssOpacity: 1,
+      backed: false,
     };
     this.slots.push(slot);
     this.slotOf.set(el, slot);

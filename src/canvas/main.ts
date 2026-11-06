@@ -6,8 +6,6 @@ import type { FlightView } from './flight';
 import { flightFar, flightFrame, flightHandover, flightInstances, flightTravel, menuBackEase, menuBackView } from './flight';
 import { centerDelta, focusDuration, nearestImageCentre } from './focus';
 import { FocusFrame } from './focusframe';
-import { GlassLayer } from './glass';
-import { GlassText } from './glasstext';
 import { setHint } from './hints';
 import { attachInput } from './input';
 import type { IntroFrame } from './intro';
@@ -18,7 +16,7 @@ import type { CellRect, Geometry } from './layout';
 import { computeGeometry, sizingReach, zoomInFor, zoomInLevel } from './layout';
 import { DEFAULT_LENS, Lens } from './lens';
 import type { Snapper } from './physics';
-import { CameraPhysics, GLIDE, ZOOM_TO } from './physics';
+import { CameraPhysics, DRAG_END, GLIDE, ZOOM_TO } from './physics';
 import { ProjectLabel } from './projectlabel';
 import type { Leg } from './projectview';
 import { ProjectView } from './projectview';
@@ -87,7 +85,6 @@ const projectView = new ProjectView(
   document.querySelector<HTMLElement>('[data-project-view]')!,
   data.images,
   (image) => closeProject(image),
-  params.has('glass'),
 );
 projectView.onHidden = () => playVideos();
 
@@ -318,22 +315,6 @@ const atRest = () => physics.isAtRest() && renderer.isAtRest();
 /** The tile layer's scale about the centre: the intro's glide, or 1. */
 let layerScale = 1;
 
-// The glass edges, on the canvas and the about view: drawn last each frame, from the tiles and text as drawn. Tests ask for it with `?glass`.
-const glass = GlassLayer.create(
-  root,
-  layer,
-  new GlassText(document.querySelector<HTMLElement>('[data-about-layer]')!, document.querySelector<HTMLElement>('[data-about]')!),
-  params.has('glass'),
-  // (The window as it is: on the about view the canvas is only laid out again on the way back.)
-  () => ({ tiles: renderer.glassTiles(), vw: root.clientWidth, vh: root.clientHeight, scale: layerScale }),
-  () => awake,
-);
-
-function tick(): void {
-  advance();
-  glass?.draw();
-}
-
 function advance(): void {
   markFocus();
   if (backing) {
@@ -348,10 +329,7 @@ function advance(): void {
     stepFlight();
     return;
   }
-  physics.advance(now());
-  // (A zoom-to keeps its zoom and target equal at every step; it's at rest only once it lands.)
-  draw(physics.stepVx, physics.stepVy, physics.z === physics.tz && !physics.zoomingTo);
-  for (const fn of listeners) fn();
+  stepCanvas(now());
   if (atRest() && listeners.size === 0) {
     // One last update so tiles are laid out sharp at the final zoom, then sleep.
     draw(0, 0, true);
@@ -359,17 +337,25 @@ function advance(): void {
   }
 }
 
+/** One frame of the canvas's own motion (the camera, the trails), drawn: browsing, or backed away under the menu. */
+function stepCanvas(t: number): void {
+  physics.advance(t);
+  // (A zoom-to keeps its zoom and target equal at every step; it's at rest only once it lands.)
+  draw(physics.stepVx, physics.stepVy, physics.z === physics.tz && !physics.zoomingTo);
+  for (const fn of listeners) fn();
+}
+
 function wake(): void {
   if (awake || document.hidden) return;
   awake = true;
   physics.resync();
-  gsap.ticker.add(tick);
+  gsap.ticker.add(advance);
 }
 
 function sleep(): void {
   if (!awake) return;
   awake = false;
-  gsap.ticker.remove(tick);
+  gsap.ticker.remove(advance);
   readyProject();
 }
 
@@ -446,9 +432,9 @@ attachInput({
   toggleZoom,
   escape: zoomOut,
   enabled: () => !intro && !flight && !projectView.isOpen,
-  // Backed away for the menu, nothing runs the camera: a scroll's momentum would only pile up,
-  // to carry the view off from where it was the moment it is home.
-  held: () => backing !== null,
+  // Backing away for the menu, and behind it, the canvas takes no gestures; coming home, it is
+  // browsed again straight away (it carries on under the backing: stepBacking).
+  held: () => backing?.to === 1,
   metrics: () => ({ pitch: geometry.pitch * physics.tz, vw: geometry.vw, vh: geometry.vh }),
   toCanvas,
 });
@@ -883,10 +869,6 @@ const smoother = ScrollSmoother.create({
   smooth: smoothing(),
   smoothTouch: false,
   effects: false,
-  // The text under the glass moves with it. (Mid-flight the canvas's loop draws it.)
-  onUpdate: () => {
-    if (!awake) glass?.draw();
-  },
 });
 reducedMotion.addEventListener('change', () => smoother.smooth(smoothing()));
 const far: FlightView = { scale: 1, opacity: 1, blur: 0 };
@@ -980,12 +962,11 @@ function backAway(open: boolean, who: 'menu' | 'project' | 'info'): void {
     stepFlight();
     flightHeld = null;
   }
-  physics.halt();
-  if (route === 'home') {
-    renderer.beginFlight();
-    // The frame fades, as it does for a flight.
-    document.documentElement.dataset.leaving = '';
-  }
+  // The canvas carries on under it: a scroll, glide or zoom under way finishes as the camera
+  // backs away, so it is at rest by the time it is home. Only a drag is let go of, as if released.
+  if (physics.dragging) physics.push(DRAG_END, now());
+  // The frame fades, as it does for a flight.
+  if (route === 'home') document.documentElement.dataset.leaving = '';
   backing = { back: 0, from: 0, to: 1, p: 0, last: now() };
   wake();
 }
@@ -999,20 +980,28 @@ function stepBacking(): void {
   b.p = duration > 0 ? Math.min(1, b.p + (t - b.last) / duration) : 1;
   b.last = t;
   b.back = b.from + (target - b.from) * menuBackEase(b.to === 1, b.p);
-  if (route !== 'home') placeAbout(menuBackView(MENU_BACK_ABOUT, b.back, far), still);
-  else renderer.drawFlight(b.back, still, 1, menuBackView);
+  if (route !== 'home') {
+    placeAbout(menuBackView(MENU_BACK_ABOUT, b.back, far), still);
+  } else {
+    // The canvas as ever, drawn from the camera backed away.
+    renderer.setBack(b.back, still);
+    stepCanvas(t);
+  }
   if (b.p < 1) return;
-  // Backed away: held there, behind the menu, until it closes.
-  if (b.to === 1) return sleep();
-  // Back where it was: browse on from exactly here.
+  // Backed away: held there, behind the menu, until it closes, once the canvas has come to rest.
+  if (b.to === 1) {
+    if (route !== 'home' || atRest()) sleep();
+    return;
+  }
+  // Home: browse on from exactly here, as it is.
   backing = null;
   if (route !== 'home') {
     drawAbout(flightTravel(1), still);
   } else {
-    renderer.endFlight();
+    renderer.setBack(0, still);
+    draw(physics.stepVx, physics.stepVy, physics.z === physics.tz && !physics.zoomingTo);
     if (!flight) delete document.documentElement.dataset.leaving;
     relayout();
-    resettle(t);
   }
 }
 
@@ -1099,8 +1088,6 @@ window.addEventListener('keydown', (e) => {
   const html = document.documentElement;
   const next = (html.dataset.theme ?? (systemDark.matches ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark';
   html.dataset.theme = next;
-  // The about text's colours fade (global.css) under the glass too.
-  glass?.liveFor(0.35);
   try {
     localStorage.setItem(THEME_KEY, next);
   } catch {
@@ -1152,7 +1139,6 @@ if (route !== 'home' || arriving) {
 }
 if (!intro) delete document.documentElement.dataset.intro;
 playVideos();
-glass?.draw();
 
 // Dev only, and out of the built site: "X" deletes the active image for good (devdelete.ts).
 if (import.meta.env.DEV) {

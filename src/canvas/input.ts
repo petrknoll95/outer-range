@@ -33,7 +33,7 @@ export interface InputOptions {
   escape?: (t: number) => void;
   /** While this is false the canvas ignores input (e.g. while leaving it for another page). */
   enabled?: () => boolean;
-  /** While this is true the canvas is held still: the wheel, pinches and drags move nothing (nor the page); keys still count. */
+  /** While this is true the canvas takes no gestures: the wheel, pinches and drags move nothing (nor the page), and one under way is dropped; keys still count. */
   held?: () => boolean;
   /** Current on-screen pitch and viewport, px, for keyboard steps. */
   metrics: () => { pitch: number; vw: number; vh: number };
@@ -209,6 +209,14 @@ export function attachInput({ root, physics, wake, tap, zoom, toggleZoom, escape
   const onPointerMove = (e: PointerEvent) => {
     const p = pointers.get(e.pointerId);
     if (!p) return;
+    // Held, a drag or pinch under way is let go of, as if every finger had lifted: what's
+    // pressed now waits for a fresh press. (The canvas lets go of it itself: see held.)
+    if (held()) {
+      pointers.clear();
+      if (mode === 'drag' || mode === 'pinch') delete root.dataset.dragging;
+      mode = 'idle';
+      return;
+    }
     p.x = e.clientX;
     p.y = e.clientY;
     if (mode === 'press') {

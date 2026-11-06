@@ -4,9 +4,7 @@
  * fills and opens it ("P"). The project's images run down one column at the centre, scrolling endlessly,
  * a little wider than the focused view's image (--project-column, set by main.ts from
  * PROJECT_COLUMN), the whole width on a phone, 16 px in. The header's band and the info
- * bar's are kept clear above and below. The project's name is the view's accessible name. The
- * glass edges are its own (projectview.ts), as the canvas's are: the bands cut out of the column
- * and drawn again, bent, on a canvas just in front of the background, which fades with the rest.
+ * bar's are kept clear above and below. The project's name is the view's accessible name.
  *
  * It crossfades in and out on its opacity alone, as the canvas backs away behind it or comes home.
  * Closed it is inert and takes no pointer, but
@@ -20,9 +18,8 @@
 <section data-project-view aria-label="Project" inert class="project-view fixed inset-0 z-10 bg-canvas text-ink">
   <!--
     The depth: all of it backs away from the camera under the menu or the project's info, as the
-    canvas does, and comes home (projectview.ts, backAway). Inside it, the stage: the column and its glass, which come in from in front of the camera and leave
-    past it (projectview.ts, moveStage). The column scrolls in a box of its own, the window's
-    size, so the glass can cut its bands out of it and leave the background whole.
+    canvas does, and comes home (projectview.ts, backAway). Inside it, the stage: the column, which comes in from in front of the camera and leaves
+    past it (projectview.ts, moveStage). The column scrolls in a box of its own, the window's size.
   -->
   <div data-project-depth class="fixed inset-0">
   <div data-project-stage class="fixed inset-0">

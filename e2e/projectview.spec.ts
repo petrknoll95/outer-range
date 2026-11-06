@@ -286,7 +286,7 @@ test('as for the menu, the canvas backs away as the image comes forward to its p
   await expect(page.locator('.project-flight')).toHaveCount(0);
   expect(await page.locator('[data-flying]').count()).toBe(0);
 
-  // Leaving, as the menu's square does: the column (and its glass) flies on past the camera, bigger and softer, and nothing flies back.
+  // Leaving, as the menu's square does: the column flies on past the camera, bigger and softer, and nothing flies back.
   await page.keyboard.press('Escape');
   const leaving = await page.evaluate(() => {
     const a = document.querySelector('[data-project-stage]')!.getAnimations()[0]!;
@@ -553,105 +553,6 @@ test('going to the about view closes it', async ({ page }) => {
   expect(await openProject(page)).toBeNull();
   await page.waitForFunction(() => (window as unknown as { __canvas: Api }).__canvas.route() === 'about');
   await gone(page);
-});
-
-test('it has the glass edges too: the bands cut out of the column and drawn again, bent, redrawn as it scrolls', async ({ page }) => {
-  await page.addInitScript(() => addEventListener('DOMContentLoaded', () => (window as unknown as { __canvas: { renderer: { setVideos: (on: boolean) => void } } }).__canvas.renderer.setVideos(false)));
-  await page.goto('/?test&glass');
-  await settled(page);
-  await page.keyboard.press(' ');
-  await settled(page);
-  await page.keyboard.press('p');
-  await covered(page);
-  // Its own glass, in the view (so it fades with it), masking the same bands out of the column as the canvas's does out of the tiles.
-  const glass = await page.evaluate(() => {
-    const view = document.querySelector('section[data-project-view]')!;
-    const canvas = view.querySelector('canvas[data-glass]');
-    const mask = (el: HTMLElement) => ({ image: el.style.maskImage, size: el.style.maskSize, position: el.style.maskPosition });
-    return {
-      inView: canvas !== null && canvas.nextElementSibling === view.querySelector('[data-project-scroll]'),
-      column: mask(view.querySelector('[data-project-scroll]')!),
-      tiles: mask(document.querySelector('[data-canvas-layer]')!),
-    };
-  });
-  expect(glass.inView).toBe(true);
-  // The same gradient over the window: clear through each band, then fading in through the strip past it (glass.ts, clip).
-  expect(glass.column.image).toMatch(/^linear-gradient\(/);
-  expect(glass.column).toEqual(glass.tiles);
-  const bandEdge = (Number(/transparent ([\d.]+)%/.exec(glass.column.image)![1]) / 100) * 900;
-  // Through the top band, the image under it, not the bare background: the column itself is cut away there.
-  const band = async () => {
-    const shot = PNG.sync.read(await page.screenshot({ clip: { x: 0, y: 0, width: 1440, height: bandEdge - 2 }, animations: 'disabled' }));
-    const column = { from: Math.round(1440 * 0.21 + 8), to: Math.round(1440 * 0.79 - 8) };
-    let off = 0;
-    const bg = [shot.data[0], shot.data[1], shot.data[2]];
-    for (let y = 0; y < shot.height; y += 4)
-      for (let x = column.from; x < column.to; x += 4) {
-        const k = (y * shot.width + x) * 4;
-        if (Math.abs(shot.data[k]! - bg[0]!) + Math.abs(shot.data[k + 1]! - bg[1]!) + Math.abs(shot.data[k + 2]! - bg[2]!) > 24) off++;
-      }
-    return { off, data: shot.data };
-  };
-  // An image under the top band.
-  await scroller(page).evaluate((el) => {
-    const item = [...el.querySelectorAll('[data-image]')].find((i) => i.getBoundingClientRect().top < -40 && i.getBoundingClientRect().bottom > 120);
-    if (!item) el.scrollTop += el.querySelector('[data-image]')!.getBoundingClientRect().height / 2;
-  });
-  await page.waitForTimeout(300);
-  const before = await band();
-  expect(before.off).toBeGreaterThan(50);
-  await page.mouse.move(720, 450);
-  await page.mouse.wheel(0, 333);
-  await page.waitForTimeout(400);
-  const after = await band();
-  expect(Buffer.compare(Buffer.from(before.data), Buffer.from(after.data))).not.toBe(0);
-});
-
-test('at the bands\' inner edges, where nothing bends yet, the glass\'s copy of the column lines up with the page to the pixel', async ({ browser }) => {
-  // At 2×, where a box laid out between whole px is drawn a device px from where it's laid out (projectview.ts, glassFrame).
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
-  const page = await context.newPage();
-  await page.addInitScript(() => addEventListener('DOMContentLoaded', () => (window as unknown as { __canvas: { renderer: { setVideos: (on: boolean) => void } } }).__canvas.renderer.setVideos(false)));
-  await page.goto('/?test&glass');
-  await settled(page);
-  await page.keyboard.press(' ');
-  await settled(page);
-  await page.keyboard.press('p');
-  await covered(page);
-  // An image across the top band's edge.
-  await scroller(page).evaluate((el) => {
-    const item = [...el.querySelectorAll<HTMLElement>('[data-image]')].find((i) => i.getBoundingClientRect().top > 300)!;
-    el.scrollTop += item.getBoundingClientRect().top - 72 + item.getBoundingClientRect().height / 2;
-  });
-  await page.waitForTimeout(600);
-  // Rows 60–72 of the window, in device px.
-  const rows = async () => PNG.sync.read(await page.screenshot({ clip: { x: 0, y: 60, width: 1440, height: 12 }, animations: 'disabled' }));
-  const glass = await rows();
-  // The page itself there: the glass hidden, nothing masked out.
-  await page.evaluate(() => {
-    for (const c of document.querySelectorAll<HTMLElement>('canvas[data-glass]')) c.style.visibility = 'hidden';
-    for (const el of document.querySelectorAll<HTMLElement>('[data-canvas-layer], [data-project-scroll]')) el.style.setProperty('mask-image', 'none', 'important');
-  });
-  await page.waitForTimeout(300);
-  const own = await rows();
-  const W = glass.width;
-  // Just inside the band (the last 6 css px of it), against the page, unshifted and a device px either way: unshifted is best, by far.
-  const error = (dx: number) => {
-    let sum = 0;
-    let n = 0;
-    for (let y = 12; y < 24; y++)
-      for (let x = 800; x < 2080; x++) {
-        const a = (y * W + x) * 4;
-        const b = (y * W + x + dx) * 4;
-        for (let c = 0; c < 3; c++) sum += Math.abs(glass.data[a + c]! - own.data[b + c]!);
-        n++;
-      }
-    return sum / n;
-  };
-  const [left, none, right] = [error(-1), error(0), error(1)];
-  expect(none).toBeLessThan(6);
-  expect(none).toBeLessThan(Math.min(left, right));
-  await context.close();
 });
 
 test('on a phone the images take the whole width', async ({ page }) => {

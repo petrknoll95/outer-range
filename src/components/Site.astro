@@ -82,8 +82,7 @@ const data = JSON.stringify({ sharpEdge, images, projects } satisfies CanvasData
 );
 
 // The about text, split where it places the services list (`<!-- services -->` in about.md). Each
-// chapter's heading starts with "Chapter" as text, not generated content, so the glass edges
-// (glass.ts) can draw it as it passes under them.
+// chapter's heading starts with "Chapter", as text.
 const [aboutBefore, aboutAfter = ''] = (await compiledContent())
   .replace(/<h3([^>]*)>/g, '<h3$1><span class="chapter">Chapter</span> ')
   .split('<!-- services -->');

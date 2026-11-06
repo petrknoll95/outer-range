@@ -1,8 +1,6 @@
 import { FLIGHT_DURATION, FLIGHT_EASE, FLIGHT_REDUCED_DURATION, MENU_BACK, MENU_BACK_ABOUT, MENU_RETURN_DURATION, MENU_RETURN_EASE } from './config';
 import type { FlightView } from './flight';
 import { menuBackView } from './flight';
-import type { GlassTile } from './glass';
-import { GlassLayer } from './glass';
 import type { ClientProject } from './projects';
 import type { ClientImage } from './renderer';
 
@@ -37,10 +35,8 @@ export class ProjectView {
   /** The project showing, or null. */
   project: ClientProject | null = null;
   private readonly list: HTMLElement;
-  /** The box the column scrolls in, the window's size: what the glass cuts its bands out of. */
+  /** The box the column scrolls in, the window's size. */
   private readonly scroller: HTMLElement;
-  /** Its glass edges (glass.ts), or none where they can't be drawn. */
-  private readonly glass: GlassLayer | null;
   private readonly videos = new Set<HTMLVideoElement>();
   /** Which opening is current, so a slow decode from an earlier one doesn't start a fade. */
   private opening = 0;
@@ -48,7 +44,7 @@ export class ProjectView {
   private fading = false;
   /** Faded right out after closing. */
   onHidden: () => void = () => {};
-  /** The stage: the column and its glass, which come in from in front of the camera and go past it, and its move under way. */
+  /** The stage: the column, which comes in from in front of the camera and goes past it, and its move under way. */
   private readonly stage: HTMLElement;
   private stageMove: Animation | null = null;
   /** All of it, which backs away under the menu or the project's info (backAway), and its move under way. */
@@ -77,29 +73,17 @@ export class ProjectView {
     private readonly el: HTMLElement,
     private readonly images: readonly ClientImage[],
     private readonly onPick: (image: number) => void,
-    /** Glass even on a software renderer (`?glass`, for tests). */
-    glassAnyway = false,
   ) {
     this.list = el.querySelector('[data-project-images]')!;
     this.scroller = el.querySelector('[data-project-scroll]')!;
     this.stage = el.querySelector('[data-project-stage]')!;
     this.depth = el.querySelector('[data-project-depth]')!;
-    // Its canvas goes just before the scroller, inside the view: over its background, fading with it.
-    this.glass = GlassLayer.create(this.scroller, this.scroller, null, glassAnyway, () => this.glassFrame(), () => false);
     this.list.addEventListener('click', (e) => {
       const item = (e.target as Element).closest<HTMLElement>('[data-image]');
       if (!item || !this.isOpen) return;
       this.onPick(Number(item.dataset.image));
     });
-    this.scroller.addEventListener(
-      'scroll',
-      () => {
-        this.loop();
-        this.glass?.request();
-      },
-      { passive: true },
-    );
-    addEventListener('resize', () => this.glass?.request());
+    this.scroller.addEventListener('scroll', () => this.loop(), { passive: true });
     el.addEventListener('transitionend', (e) => {
       if (e.target !== el || e.propertyName !== 'opacity') return;
       // Covered: its videos start.
@@ -134,7 +118,7 @@ export class ProjectView {
   prepare(project: ClientProject, image: number): void {
     if (this.isShown) return;
     this.build(project);
-    void this.decodeInView(this.scrollTo(image)).then(() => this.glass?.request());
+    void this.decodeInView(this.scrollTo(image));
   }
 
   /**
@@ -153,7 +137,6 @@ export class ProjectView {
     void Promise.race([this.decodeInView(item), new Promise((resolve) => setTimeout(resolve, DECODE_WAIT))]).then(() => {
       if (opening !== this.opening || !this.isOpen) return;
       this.el.dataset.open = '';
-      this.glass?.request();
       // Where the tile is drawn now, at home, before the canvas sets off.
       if (!this.flight && tile) this.home = tile.getBoundingClientRect();
       const leg = start();
@@ -224,7 +207,6 @@ export class ProjectView {
       if (this.depthMove !== move || away) return;
       move.cancel();
       this.depthMove = null;
-      this.glass?.request();
     };
   }
 
@@ -250,7 +232,6 @@ export class ProjectView {
       if (this.stageMove !== move) return;
       move.cancel();
       this.stageMove = null;
-      this.glass?.request();
     };
   }
 
@@ -281,7 +262,6 @@ export class ProjectView {
     document.body.append(copy);
     from.dataset.flying = '';
     to.dataset.flying = '';
-    this.glass?.request();
     // Rounded as each end is, in the copy's own px (it is scaled by the transform).
     const at = (el: HTMLElement, r: DOMRect) => ({
       transform: `translate(${r.left}px, ${r.top}px) scale(${r.width / big.width})`,
@@ -304,56 +284,6 @@ export class ProjectView {
     this.flight = null;
     flight.copy.remove();
     for (const el of flight.ends) delete el.dataset.flying;
-    this.glass?.request();
-  }
-
-  /**
-   * What the glass draws: the column's images in or near the window, as the page draws them (the
-   * video once it plays, over the image once that is in, over the colour grid), but not the one an
-   * image is flying to or from, which isn't seen yet.
-   */
-  private glassFrame(): { tiles: GlassTile[]; vw: number; vh: number; scale: number } {
-    const vw = this.scroller.clientWidth;
-    const vh = this.scroller.clientHeight;
-    const tiles: GlassTile[] = [];
-    let radius = -1;
-    // In the stage's own px: its glass canvas moves with it, so a tile is drawn where it sits on it.
-    const stage = this.stage.getBoundingClientRect();
-    const k = stage.width / vw || 1;
-    // The browser paints the column's boxes with their edges at whole CSS px in the scrolled
-    // content, whatever fractions their layout has (a box laid out from 373.5 px is drawn from
-    // 374). Taken as laid out, the glass's copy met the page's a device px off at the bands' inner
-    // edges, a seam along every image crossing one; so its edges are rounded the same way.
-    const { scrollLeft, scrollTop } = this.scroller;
-    const edge = (screen: number, origin: number, scroll: number) => Math.round((screen - origin) / k + scroll) - scroll;
-    for (const item of this.list.querySelectorAll<HTMLElement>('[data-image]')) {
-      if ('flying' in item.dataset) continue;
-      const box = item.getBoundingClientRect();
-      const [left, right] = [edge(box.left, stage.left, scrollLeft), edge(box.right, stage.left, scrollLeft)];
-      const [top, bottom] = [edge(box.top, stage.top, scrollTop), edge(box.bottom, stage.top, scrollTop)];
-      const r = { left, top, width: right - left, height: bottom - top };
-      if (r.top + r.height < -vh / 2 || r.top > vh * 1.5) continue;
-      if (radius < 0) radius = parseFloat(getComputedStyle(item).borderRadius) || 0;
-      const image = this.images[Number(item.dataset.image)]!;
-      const img = item.querySelector('img')!;
-      const video = item.querySelector('video');
-      const loaded = img.complete && img.naturalWidth > 0;
-      const playing = video !== null && 'playing' in video.dataset && !video.paused;
-      tiles.push({
-        left: r.left,
-        top: r.top,
-        width: r.width,
-        height: r.height,
-        radius,
-        opacity: 1,
-        blur: 0,
-        source: playing ? video : loaded ? img : null,
-        pixels: image.pixels,
-        grid: image.grid,
-        live: !loaded || playing,
-      });
-    }
-    return { tiles, vw, vh, scale: 1 };
   }
 
   /** Closed, faded right out and nothing flying: say so. */

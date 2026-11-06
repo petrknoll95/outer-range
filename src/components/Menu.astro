@@ -175,7 +175,9 @@ const ease = 'ease-[cubic-bezier(0.5,0,0.25,1)]';
   }
 
   // The canvas zooms and pans on these from window (input.ts), and the about view scrolls: not under the menu.
+  // (Closing, they are the canvas's again at once, as it comes home: main.ts, held.)
   const hold = (e: Event) => {
+    if (dialog.dataset.closing !== undefined) return;
     e.preventDefault();
     e.stopPropagation();
   };

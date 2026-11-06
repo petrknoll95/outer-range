@@ -166,30 +166,52 @@ test('open, the menu has the keyboard and the wheel: nothing moves under it, and
   expect(new URL(page.url()).hash).toBe('');
 });
 
-test('opened mid-scroll, the scroll carrying on as it closes and comes home: home, the canvas stays where it was', async ({ page }) => {
+test('closing, the canvas takes the wheel again at once: a scroll as it comes home moves it', async ({ page }) => {
   await page.goto('/?test');
   await settled(page);
   await page.mouse.move(720, 450);
-  // The wheel keeps going, as a trackpad's momentum does, until the canvas is home.
-  let home = false;
-  const scroll = (async () => {
-    while (!home) {
-      await page.mouse.wheel(0, 30);
-      await page.waitForTimeout(16);
-    }
-  })();
-  await page.waitForTimeout(300);
   await page.keyboard.press('m');
   await backedAway(page);
   const before = await camera(page);
   await page.keyboard.press('Escape');
+  // Scrolling the moment it closes, while it is still coming home.
+  for (let n = 0; n < 10; n++) {
+    await page.mouse.wheel(0, 30);
+    await page.waitForTimeout(16);
+  }
+  expect(await page.evaluate(() => (window as unknown as { __canvas: Api }).__canvas.backing()?.to)).toBe(0);
+  await expect.poll(async () => (await camera(page)).y - before.y).toBeGreaterThan(100);
   await backHome(page);
-  home = true;
-  await scroll;
-  await page.waitForTimeout(1000);
-  // (A wheel or two that lands once it's home moves it, as it should; what piled up while away would be several times that.)
-  expect(Math.abs((await camera(page)).y - before.y)).toBeLessThan(61);
 });
+
+for (const zoomed of [false, true]) {
+  test(`opened mid-scroll${zoomed ? ', zoomed in' : ''}, the scroll finishes under it: once home, no image moves`, async ({ page }) => {
+    await page.goto('/?test');
+    await settled(page);
+    await page.mouse.move(720, 450);
+    if (zoomed) {
+      await page.keyboard.press('Space');
+      await settled(page);
+    }
+    // Scrolling (zoomed in, paging on to the next image) as M is pressed.
+    for (let n = 0; n < 18; n++) {
+      await page.mouse.wheel(0, zoomed ? 60 : 40);
+      await page.waitForTimeout(16);
+    }
+    await page.keyboard.press('m');
+    await backedAway(page);
+    await page.keyboard.press('Escape');
+    await backHome(page);
+    const at = () =>
+      page.evaluate(() => [...document.querySelectorAll<HTMLElement>('[data-canvas-layer] > :not([hidden])')].map((el) => [el.getBoundingClientRect().x, el.getBoundingClientRect().y]));
+    const home = await at();
+    await page.waitForTimeout(1000);
+    const later = await at();
+    // Home as it settled: no trail springing back, no glide on to an image.
+    const moved = Math.max(...later.map(([x, y], n) => Math.hypot(x! - home[n]![0]!, y! - home[n]![1]!)));
+    expect(moved).toBeLessThan(0.5);
+  });
+}
 
 test('M, Esc and a click off the square each close it, and the canvas is back in charge', async ({ page }) => {
   await page.goto('/?test');
